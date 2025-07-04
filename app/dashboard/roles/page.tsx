@@ -17,6 +17,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { RoleWithPermissions } from "@/types/auth"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
+import { RoleUsersSheet } from "@/components/roles/role-users-sheet"
+import { RolePermissionsSheet } from "@/components/roles/role-permissions-sheet"
+import { EditRoleSheet } from "@/components/roles/edit-role-sheet"
+import { DeleteRoleDialog } from "@/components/roles/delete-role-dialog"
+import { usePermissions } from "@/hooks/use-permissions"
+import { CreateRoleSheet } from "@/components/roles/create-role-sheet"
 
 interface RoleWithCount extends RoleWithPermissions {
   _count: {
@@ -28,7 +34,15 @@ export default function RolesPage() {
   const [roles, setRoles] = useState<RoleWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const { hasPermission } = usePermissions()
+
+  // États pour les modales/sheets
   const [showCreateRole, setShowCreateRole] = useState(false)
+  const [viewingRoleUsers, setViewingRoleUsers] = useState<RoleWithCount | null>(null)
+  const [managingRolePermissions, setManagingRolePermissions] = useState<RoleWithCount | null>(null)
+  const [editingRole, setEditingRole] = useState<RoleWithCount | null>(null)
+  const [deletingRole, setDeletingRole] = useState<RoleWithCount | null>(null)
+
   const [stats, setStats] = useState({
     totalRoles: 0,
     systemRoles: 0,
@@ -41,6 +55,7 @@ export default function RolesPage() {
   }, [])
 
   const loadRoles = async () => {
+    setLoading(true)
     try {
       const response = await fetch("/api/roles")
       if (response.ok) {
@@ -67,6 +82,33 @@ export default function RolesPage() {
     setShowCreateRole(true)
   }
 
+  const handleViewRoleUsers = (role: RoleWithCount) => {
+    setViewingRoleUsers(role)
+  }
+
+  const handleManageRolePermissions = (role: RoleWithCount) => {
+    setManagingRolePermissions(role)
+  }
+
+  const handleEditRole = (role: RoleWithCount) => {
+    setEditingRole(role)
+  }
+
+  const handleDeleteRole = (role: RoleWithCount) => {
+    setDeletingRole(role)
+  }
+
+  const handleRoleUpdated = () => {
+    setEditingRole(null)
+    setManagingRolePermissions(null)
+    loadRoles()
+  }
+
+  const handleRoleDeleted = () => {
+    setDeletingRole(null)
+    loadRoles()
+  }
+
   const filteredRoles = roles.filter(
     (role) =>
       role.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -91,11 +133,15 @@ export default function RolesPage() {
           title="Rôles & Permissions"
           description="Contrôle d'accès et sécurité"
           icon={Shield}
-          primaryAction={{
-            label: "Nouveau rôle",
-            onClick: handleCreateRole,
-            icon: Plus,
-          }}
+          primaryAction={
+            hasPermission("roles.create")
+              ? {
+                  label: "Nouveau rôle",
+                  onClick: handleCreateRole,
+                  icon: Plus,
+                }
+              : undefined
+          }
         />
 
         <main className="py-8">
@@ -210,15 +256,29 @@ export default function RolesPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Users className="h-4 w-4 text-gray-400" />
-                              <span>{role._count.userRoles}</span>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-auto p-0 font-normal"
+                              onClick={() => handleViewRoleUsers(role)}
+                            >
+                              <div className="flex items-center space-x-2">
+                                <Users className="h-4 w-4 text-gray-400" />
+                                <span>{role._count.userRoles}</span>
+                              </div>
+                            </Button>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {role.rolePermissions.length} permissions
-                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-auto p-0 font-normal"
+                              onClick={() => handleManageRolePermissions(role)}
+                            >
+                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {role.rolePermissions.length} permissions
+                              </Badge>
+                            </Button>
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
@@ -228,26 +288,28 @@ export default function RolesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleManageRolePermissions(role)}>
                                   <Eye className="mr-2 h-4 w-4" />
-                                  Voir les détails
+                                  Voir les permissions
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewRoleUsers(role)}>
                                   <Users className="mr-2 h-4 w-4" />
                                   Voir les utilisateurs
                                 </DropdownMenuItem>
-                                {!role.isSystem && (
+                                {!role.isSystem && hasPermission("roles.edit") && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleEditRole(role)}>
                                       <Edit className="mr-2 h-4 w-4" />
                                       Modifier
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-red-600">
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Supprimer
-                                    </DropdownMenuItem>
                                   </>
+                                )}
+                                {!role.isSystem && hasPermission("roles.delete") && (
+                                  <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteRole(role)}>
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Supprimer
+                                  </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -261,6 +323,44 @@ export default function RolesPage() {
             </div>
           </div>
         </main>
+
+        {/* Modales et Sheets */}
+        {viewingRoleUsers && (
+          <RoleUsersSheet
+            role={viewingRoleUsers}
+            open={!!viewingRoleUsers}
+            onOpenChange={(open) => !open && setViewingRoleUsers(null)}
+          />
+        )}
+
+        {managingRolePermissions && (
+          <RolePermissionsSheet
+            role={managingRolePermissions}
+            open={!!managingRolePermissions}
+            onOpenChange={(open) => !open && setManagingRolePermissions(null)}
+            onPermissionsUpdated={handleRoleUpdated}
+          />
+        )}
+
+        {editingRole && (
+          <EditRoleSheet
+            role={editingRole}
+            open={!!editingRole}
+            onOpenChange={(open) => !open && setEditingRole(null)}
+            onRoleUpdated={handleRoleUpdated}
+          />
+        )}
+
+        {deletingRole && (
+          <DeleteRoleDialog
+            role={deletingRole}
+            open={!!deletingRole}
+            onOpenChange={(open) => !open && setDeletingRole(null)}
+            onRoleDeleted={handleRoleDeleted}
+          />
+        )}
+
+        <CreateRoleSheet open={showCreateRole} onOpenChange={setShowCreateRole} onRoleCreated={handleRoleUpdated} />
       </div>
     </PermissionGuard>
   )

@@ -26,9 +26,10 @@ interface ModuleNavbarProps {
     icon?: React.ComponentType<{ className?: string }>
   }
   children?: React.ReactNode
+  secondaryActions?: React.ReactNode
 }
 
-export function ModuleNavbar({ title, description, icon: Icon, primaryAction, children }: ModuleNavbarProps) {
+export function ModuleNavbar({ title, description, icon: Icon, primaryAction, children, secondaryActions }: ModuleNavbarProps) {
   const { session, user } = useAuth()
   const router = useRouter()
 
@@ -107,6 +108,10 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
                 {primaryAction.icon && <primaryAction.icon className="mr-2 h-4 w-4" />}
                 {primaryAction.label}
               </Button>
+            )}
+
+            {secondaryActions && (
+                secondaryActions
             )}
 
             {/* Notifications */}

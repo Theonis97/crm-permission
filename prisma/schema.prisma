@@ -58,9 +58,14 @@ model Contact {
   photo       String?
   job         String?
   description String?
-  tags        String[]      // tableau de tags
+  tags        String[]     
+
+  assignedUserId String       @map("assigned_user_id")
+  assignedUser   User         @relation(fields: [assignedUserId], references: [id])
+   // tableau de tags
   type        ContactType   @default(PERSONNE)
   status      ContactStatus @default(PROSPECT)
+
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -265,6 +270,7 @@ model User {
   OpportunityParticipant OpportunityParticipant[]
   Opportunity Opportunity[]
   AuditLog AuditLog[]
+  Contact Contact[]
 }
 
 model VerificationToken {

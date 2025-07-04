@@ -8,7 +8,19 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Users, UserCheck, UserX, Shield, Search, Filter, MoreHorizontal, Edit, Trash2, Key } from "lucide-react"
+import {
+  Users,
+  UserCheck,
+  UserX,
+  Shield,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Key,
+  UserPlus,
+} from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +29,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
-import { UserPlus } from "lucide-react"
+import { CreateUserSheet } from "@/components/users/create-user-sheet"
+import { EditUserSheet } from "@/components/users/edit-user-sheet"
+import { DeleteUserDialog } from "@/components/users/delete-user-dialog"
+import { UserRolesSheet } from "@/components/users/user-roles-sheet"
+import { usePermissions } from "@/hooks/use-permissions"
 
 interface User {
   id: string
@@ -39,7 +55,14 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const { hasPermission } = usePermissions()
+
+  // États pour les modales/sheets
   const [showCreateUser, setShowCreateUser] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [deletingUser, setDeletingUser] = useState<User | null>(null)
+  const [managingUserRoles, setManagingUserRoles] = useState<User | null>(null)
+
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -52,6 +75,7 @@ export default function UsersPage() {
   }, [])
 
   const loadUsers = async () => {
+    setLoading(true)
     try {
       const response = await fetch("/api/users")
       if (response.ok) {
@@ -76,6 +100,38 @@ export default function UsersPage() {
 
   const handleCreateUser = () => {
     setShowCreateUser(true)
+  }
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user)
+  }
+
+  const handleDeleteUser = (user: User) => {
+    setDeletingUser(user)
+  }
+
+  const handleManageUserRoles = (user: User) => {
+    setManagingUserRoles(user)
+  }
+
+  const handleUserCreated = () => {
+    setShowCreateUser(false)
+    loadUsers()
+  }
+
+  const handleUserUpdated = () => {
+    setEditingUser(null)
+    loadUsers()
+  }
+
+  const handleUserDeleted = () => {
+    setDeletingUser(null)
+    loadUsers()
+  }
+
+  const handleUserRolesUpdated = () => {
+    setManagingUserRoles(null)
+    loadUsers()
   }
 
   const filteredUsers = users.filter(
@@ -136,11 +192,15 @@ export default function UsersPage() {
           title="Utilisateurs"
           description="Gestion des comptes utilisateurs"
           icon={Users}
-          primaryAction={{
-            label: "Nouvel utilisateur",
-            onClick: handleCreateUser,
-            icon: UserPlus,
-          }}
+          primaryAction={
+            hasPermission("users.create")
+              ? {
+                  label: "Nouvel utilisateur",
+                  onClick: handleCreateUser,
+                  icon: UserPlus,
+                }
+              : undefined
+          }
         />
 
         <main className="py-8">
@@ -264,19 +324,26 @@ export default function UsersPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Modifier
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Key className="mr-2 h-4 w-4" />
-                                  Gérer les rôles
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-red-600">
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Supprimer
-                                </DropdownMenuItem>
+                                {hasPermission("users.edit") && (
+                                  <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Modifier
+                                  </DropdownMenuItem>
+                                )}
+                                {hasPermission("roles.assign") && (
+                                  <DropdownMenuItem onClick={() => handleManageUserRoles(user)}>
+                                    <Key className="mr-2 h-4 w-4" />
+                                    Gérer les rôles
+                                  </DropdownMenuItem>
+                                )}
+                                {(hasPermission("users.edit") || hasPermission("roles.assign")) &&
+                                  hasPermission("users.delete") && <DropdownMenuSeparator />}
+                                {hasPermission("users.delete") && (
+                                  <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteUser(user)}>
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Supprimer
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -289,6 +356,36 @@ export default function UsersPage() {
             </div>
           </div>
         </main>
+
+        {/* Modales et Sheets */}
+        <CreateUserSheet open={showCreateUser} onOpenChange={setShowCreateUser} onUserCreated={handleUserCreated} />
+
+        {editingUser && (
+          <EditUserSheet
+            user={editingUser}
+            open={!!editingUser}
+            onOpenChange={(open) => !open && setEditingUser(null)}
+            onUserUpdated={handleUserUpdated}
+          />
+        )}
+
+        {deletingUser && (
+          <DeleteUserDialog
+            user={deletingUser}
+            open={!!deletingUser}
+            onOpenChange={(open) => !open && setDeletingUser(null)}
+            onUserDeleted={handleUserDeleted}
+          />
+        )}
+
+        {managingUserRoles && (
+          <UserRolesSheet
+            user={managingUserRoles}
+            open={!!managingUserRoles}
+            onOpenChange={(open) => !open && setManagingUserRoles(null)}
+            onRolesUpdated={handleUserRolesUpdated}
+          />
+        )}
       </div>
     </PermissionGuard>
   )
