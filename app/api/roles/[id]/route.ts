@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -11,11 +11,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const roleId = params.id
+    const { id } = await params
     const { name, description } = await request.json()
 
     const role = await prisma.role.update({
-      where: { id: roleId },
+      where: { id },
       data: {
         name,
         description,
@@ -42,7 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -50,11 +50,11 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const roleId = params.id
+    const { id } = await params
 
     // Vérifier si le rôle est un rôle système
     const role = await prisma.role.findUnique({
-      where: { id: roleId },
+      where: { id },
     })
 
     if (role?.isSystem) {
@@ -62,7 +62,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     await prisma.role.delete({
-      where: { id: roleId },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })

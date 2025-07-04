@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -12,7 +12,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const userId = params.id
+    const { id } = await params
     const body = await request.json()
     const { email, firstName, lastName, password, status } = body
 
@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         where: {
           email,
           NOT: {
-            id: userId,
+            id,
           },
         },
       })
@@ -48,7 +48,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const user = await prisma.user.update({
-      where: { id: userId },
+      where: { id },
       data: updateData,
       include: {
         userRoles: {
@@ -66,7 +66,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -74,15 +74,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const userId = params.id
+    const { id } = await params
 
     // Vérifier que l'utilisateur ne se supprime pas lui-même
-    if (userId === session.user.id) {
+    if (id === session.user.id) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
     }
 
     await prisma.user.delete({
-      where: { id: userId },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })

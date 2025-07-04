@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -11,19 +11,19 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const userId = params.id
+    const { id } = await params
     const { roleIds } = await request.json()
 
     // Supprimer tous les rôles actuels
     await prisma.userRole.deleteMany({
-      where: { userId },
+      where: { userId: id },
     })
 
     // Ajouter les nouveaux rôles
     if (roleIds.length > 0) {
       await prisma.userRole.createMany({
         data: roleIds.map((roleId: string) => ({
-          userId,
+          userId: id,
           roleId,
           assignedBy: session.user.id,
         })),

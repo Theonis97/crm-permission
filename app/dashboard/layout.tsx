@@ -5,12 +5,12 @@ import { useEffect, useState } from "react"
 import { signOut } from "next-auth/react"
 import { useRouter, usePathname } from "next/navigation"
 import { usePermissions } from "@/hooks/use-permissions"
+import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Users, Shield, Contact, Package, FileText, CheckSquare, TrendingUp, LogOut, Menu, X, Home } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/hooks/use-auth"
 
 const navigation = [
   { name: "Tableau de bord", href: "/dashboard", icon: Home },
@@ -29,23 +29,33 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { session, isAuthenticated, isLoading } = useAuth()
-  const { user, hasPermission, loading } = usePermissions()
+  const { session, isAuthenticated, isLoading, isInitialized } = useAuth()
+  const { user, hasPermission, loading: permissionsLoading } = usePermissions()
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Attendre que l'authentification soit initialisée
+    if (isInitialized && !isAuthenticated) {
       router.push("/login")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isInitialized, router])
 
   const handleLogout = async () => {
-    await signOut({ redirect: false })
-    router.push("/login")
+    try {
+      await signOut({
+        redirect: false,
+        callbackUrl: "/login",
+      })
+      router.push("/login")
+    } catch (error) {
+      console.error("Logout error:", error)
+      router.push("/login")
+    }
   }
 
-  if (isLoading || loading) {
+  // Afficher le loader tant que l'auth n'est pas initialisée
+  if (!isInitialized || isLoading || permissionsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center space-y-4">
@@ -56,7 +66,8 @@ export default function DashboardLayout({
     )
   }
 
-  if (!session || !isAuthenticated) {
+  // Rediriger si pas authentifié (après initialisation)
+  if (!isAuthenticated || !session) {
     return null
   }
 
