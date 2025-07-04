@@ -1,86 +1,276 @@
 "use client"
 
 import { usePermissions } from "@/hooks/use-permissions"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Users, Shield, Contact, Package, TrendingUp, Activity } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Users,
+  Shield,
+  Contact,
+  Package,
+  CheckSquare,
+  TrendingUp,
+  BarChart3,
+  Settings,
+  Calendar,
+  MessageSquare,
+  Building2,
+  ArrowRight,
+  Sparkles,
+  Clock,
+  Activity,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import HomeLayout from "./home-layout"
+
+const modules = [
+  {
+    id: "users",
+    name: "Utilisateurs",
+    description: "Gestion des comptes utilisateurs",
+    icon: Users,
+    color: "from-blue-500 to-blue-600",
+    permission: "users.view",
+    href: "/dashboard/users",
+    stats: "12 utilisateurs",
+  },
+  {
+    id: "roles",
+    name: "Rôles & Permissions",
+    description: "Contrôle d'accès et sécurité",
+    icon: Shield,
+    color: "from-emerald-500 to-emerald-600",
+    permission: "roles.view",
+    href: "/dashboard/roles",
+    stats: "5 rôles",
+  },
+  {
+    id: "contacts",
+    name: "Contacts",
+    description: "Base de données clients",
+    icon: Contact,
+    color: "from-teal-500 to-teal-600",
+    permission: "contacts.view",
+    href: "/dashboard/contacts",
+    stats: "248 contacts",
+  },
+  {
+    id: "crm",
+    name: "CRM",
+    description: "Gestion relation client",
+    icon: Building2,
+    color: "from-indigo-500 to-indigo-600",
+    permission: "opportunities.view",
+    href: "/dashboard/crm",
+    stats: "15 opportunités",
+  },
+  {
+    id: "sales",
+    name: "Ventes",
+    description: "Devis, factures et commandes",
+    icon: TrendingUp,
+    color: "from-orange-500 to-orange-600",
+    permission: "quotes.view",
+    href: "/dashboard/sales",
+    stats: "€45,230 ce mois",
+  },
+  {
+    id: "products",
+    name: "Produits",
+    description: "Catalogue et inventaire",
+    icon: Package,
+    color: "from-amber-500 to-amber-600",
+    permission: "products.view",
+    href: "/dashboard/products",
+    stats: "67 produits",
+  },
+  {
+    id: "tasks",
+    name: "Tâches",
+    description: "Gestion des activités",
+    icon: CheckSquare,
+    color: "from-purple-500 to-purple-600",
+    permission: "tasks.view",
+    href: "/dashboard/tasks",
+    stats: "8 en cours",
+  },
+  {
+    id: "reports",
+    name: "Rapports",
+    description: "Analyses et statistiques",
+    icon: BarChart3,
+    color: "from-pink-500 to-pink-600",
+    permission: "reports.view",
+    href: "/dashboard/reports",
+    stats: "12 rapports",
+  },
+  {
+    id: "calendar",
+    name: "Calendrier",
+    description: "Planning et événements",
+    icon: Calendar,
+    color: "from-cyan-500 to-cyan-600",
+    permission: "tasks.view",
+    href: "/dashboard/calendar",
+    stats: "3 événements",
+  },
+  {
+    id: "messages",
+    name: "Messages",
+    description: "Communication interne",
+    icon: MessageSquare,
+    color: "from-rose-500 to-rose-600",
+    permission: "users.view",
+    href: "/dashboard/messages",
+    stats: "5 nouveaux",
+  },
+  {
+    id: "settings",
+    name: "Paramètres",
+    description: "Configuration système",
+    icon: Settings,
+    color: "from-gray-500 to-gray-600",
+    permission: "roles.view",
+    href: "/dashboard/settings",
+    stats: "Système",
+  },
+]
+
+const quickActions = [
+  {
+    name: "Nouveau contact",
+    description: "Ajouter un contact",
+    icon: Contact,
+    color: "bg-blue-50 text-blue-600",
+    permission: "contacts.create",
+  },
+  {
+    name: "Créer une tâche",
+    description: "Nouvelle tâche",
+    icon: CheckSquare,
+    color: "bg-green-50 text-green-600",
+    permission: "tasks.create",
+  },
+  {
+    name: "Nouveau devis",
+    description: "Créer un devis",
+    icon: TrendingUp,
+    color: "bg-orange-50 text-orange-600",
+    permission: "quotes.create",
+  },
+]
 
 export default function DashboardPage() {
-  const { user, permissions, hasPermission } = usePermissions()
+  const { user, hasPermission, loading } = usePermissions()
+  const router = useRouter()
 
-  const stats = [
-    {
-      name: "Utilisateurs",
-      value: "12",
-      icon: Users,
-      permission: "users.view",
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
-    },
-    {
-      name: "Rôles",
-      value: "5",
-      icon: Shield,
-      permission: "roles.view",
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-    },
-    {
-      name: "Contacts",
-      value: "248",
-      icon: Contact,
-      permission: "contacts.view",
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
-    },
-    {
-      name: "Produits",
-      value: "67",
-      icon: Package,
-      permission: "products.view",
-      color: "text-orange-600",
-      bgColor: "bg-orange-50",
-    },
-  ]
+  const handleModuleClick = (module: (typeof modules)[0]) => {
+    if (hasPermission(module.permission)) {
+      router.push(module.href)
+    }
+  }
 
-  const visibleStats = stats.filter((stat) => hasPermission(stat.permission))
+  if (loading) {
+    return (
+      <HomeLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </HomeLayout>
+    )
+  }
+
+  const availableModules = modules.filter((m) => hasPermission(m.permission))
+  const restrictedModules = modules.filter((m) => !hasPermission(m.permission))
 
   return (
-    <div className="space-y-8">
-      {/* En-tête de bienvenue */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center space-x-4">
-          <div className="flex-shrink-0">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <Activity className="w-6 h-6 text-blue-600" />
+
+    
+    <HomeLayout>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Section de bienvenue */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                Bonjour, {user?.firstName || user?.email?.split("@")[0] || "Utilisateur"} 👋
+              </h1>
+              <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail CRM Pro</p>
             </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Bienvenue, {user?.firstName || user?.email?.split("@")[0] || "Utilisateur"}
-            </h1>
-            <p className="text-gray-600 mt-1">Voici un aperçu de votre CRM et de vos activités récentes</p>
+            
           </div>
         </div>
-      </div>
 
-      {/* Statistiques */}
-      {visibleStats.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistiques</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {visibleStats.map((stat) => {
-              const Icon = stat.icon
+        {/* Actions rapides */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Actions rapides</h2>
+            <Button variant="outline" size="sm">
+              <Sparkles className="mr-2 h-4 w-4" />
+              Personnaliser
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {quickActions.map((action) => {
+              const hasAccess = hasPermission(action.permission)
+              const Icon = action.icon
+
               return (
-                <Card key={stat.name} className="hover:shadow-md transition-shadow">
+                <Card
+                  key={action.name}
+                  className={cn(
+                    "group py-0 cursor-pointer transition-all duration-200 hover:shadow-md border-gray-200",
+                    hasAccess ? "hover:scale-[1.02]" : "opacity-50 cursor-not-allowed",
+                  )}
+                >
                   <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600">{stat.name}</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">{stat.value}</p>
+                    <div className="flex items-center space-x-4">
+                      <div className={cn("p-3 rounded-lg", action.color)}>
+                        <Icon className="h-6 w-6" />
                       </div>
-                      <div className={`p-3 rounded-full ${stat.bgColor}`}>
-                        <Icon className={`h-6 w-6 ${stat.color}`} />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900">{action.name}</h3>
+                        <p className="text-sm text-gray-500">{action.description}</p>
+                      </div>
+                      {hasAccess && <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Modules disponibles */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Modules disponibles ({availableModules.length})</h2>
+            <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+              {availableModules.length} modules actifs
+            </Badge>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {availableModules.map((module) => {
+              const Icon = module.icon
+
+              return (
+                <Card
+                  key={module.id}
+                  className="group cursor-pointer py-0 transition-all duration-300 hover:shadow-xl hover:scale-[1.02] border-gray-200 overflow-hidden"
+                  onClick={() => handleModuleClick(module)}
+                >
+                  <CardContent className="p-0">
+                    <div className={cn("h-32 bg-gradient-to-br flex items-center justify-center", module.color)}>
+                      <Icon className="h-12 w-12 text-white" />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="font-bold text-gray-900 mb-2">{module.name}</h3>
+                      <p className="text-sm text-gray-600 mb-3">{module.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-500">{module.stats}</span>
+                        <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all" />
                       </div>
                     </div>
                   </CardContent>
@@ -89,56 +279,44 @@ export default function DashboardPage() {
             })}
           </div>
         </div>
-      )}
 
-      {/* Permissions utilisateur */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Shield className="w-5 h-5 text-gray-600" />
-            <span>Vos permissions</span>
-          </CardTitle>
-          <CardDescription>
-            Liste des permissions accordées à votre compte ({permissions.length} au total)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {permissions.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {permissions.map((permission) => (
-                <Badge key={permission} variant="secondary" className="justify-start p-2 text-xs font-medium">
-                  {permission}
-                </Badge>
-              ))}
+        {/* Modules restreints */}
+        {restrictedModules.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Modules restreints</h2>
+              <Badge variant="secondary" className="bg-gray-50 text-gray-600 border-gray-200">
+                {restrictedModules.length} modules
+              </Badge>
             </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Shield className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Aucune permission trouvée</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {restrictedModules.map((module) => {
+                const Icon = module.icon
 
-      {/* Activités récentes (placeholder) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <TrendingUp className="w-5 h-5 text-gray-600" />
-            <span>Activités récentes</span>
-          </CardTitle>
-          <CardDescription>Vos dernières actions dans le CRM</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-            <p>Aucune activité récente</p>
-            <p className="text-sm mt-1">
-              Les activités apparaîtront ici une fois que vous commencerez à utiliser le CRM
-            </p>
+                return (
+                  <Card key={module.id} className="opacity-50 py-0 cursor-not-allowed border-gray-200 overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="h-32 bg-gray-100 flex items-center justify-center">
+                        <Icon className="h-12 w-12 text-gray-400" />
+                      </div>
+                      <div className="p-6">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-bold text-gray-500">{module.name}</h3>
+                          <Badge variant="secondary" className="text-xs bg-red-50 text-red-600 border-red-200">
+                            Restreint
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-3">{module.description}</p>
+                        <span className="text-xs text-gray-400">Accès non autorisé</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </div>
+    </HomeLayout>
   )
 }
