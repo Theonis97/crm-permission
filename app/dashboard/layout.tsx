@@ -19,13 +19,11 @@ export default function DashboardLayout({
     if (status === "loading") return // Encore en cours de chargement
 
     if (status === "unauthenticated") {
-      console.log("Not authenticated, redirecting to login")
       router.push(`/login?from=${encodeURIComponent(pathname)}`)
       return
     }
 
     if (status === "authenticated" && session) {
-      console.log("Authenticated user:", session.user)
       setIsChecking(false)
     }
   }, [status, session, router, pathname])
