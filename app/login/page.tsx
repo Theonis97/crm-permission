@@ -31,6 +31,8 @@ export default function LoginPage() {
         redirect: false,
       })
 
+      console.log(result)
+
       if (result?.error) {
         setError("Email ou mot de passe incorrect")
       } else {

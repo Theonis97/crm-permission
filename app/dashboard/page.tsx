@@ -19,8 +19,6 @@ import {
   Building2,
   ArrowRight,
   Sparkles,
-  Clock,
-  Activity,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
