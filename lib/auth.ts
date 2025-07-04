@@ -13,10 +13,13 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          console.log("Missing credentials")
           return null
         }
 
         try {
+          console.log("Attempting to find user:", credentials.email)
+
           const user = await prisma.user.findUnique({
             where: {
               email: credentials.email,
@@ -32,20 +35,31 @@ export const authOptions: NextAuthOptions = {
             },
           })
 
-          if (!user || !user.password) {
+          if (!user) {
+            console.log("User not found")
+            return null
+          }
+
+          if (!user.password) {
+            console.log("User has no password")
             return null
           }
 
           // Vérifier si l'utilisateur est actif
           if (user.status !== "ACTIVE") {
+            console.log("User is not active:", user.status)
             return null
           }
 
+          console.log("Verifying password...")
           const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
 
           if (!isPasswordValid) {
+            console.log("Invalid password")
             return null
           }
+
+          console.log("Login successful for user:", user.email)
 
           return {
             id: user.id,
@@ -73,6 +87,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       // Lors de la connexion initiale
       if (user) {
+        console.log("JWT callback - user login:", user)
         token.id = user.id
         token.email = user.email
         token.name = user.name
@@ -97,6 +112,7 @@ export const authOptions: NextAuthOptions = {
         session.user.firstName = token.firstName as string
         session.user.lastName = token.lastName as string
       }
+      console.log("Session callback:", session)
       return session
     },
   },
@@ -117,7 +133,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   debug: process.env.NODE_ENV === "development",
-  // Pour la production - gestion des hosts
+  // Pour la production
   ...(process.env.NODE_ENV === "production" && {
     useSecureCookies: true,
   }),

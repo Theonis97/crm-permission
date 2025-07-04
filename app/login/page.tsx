@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { signIn, getSession } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,18 +18,16 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session, status } = useSession()
 
-  // Vérifier si l'utilisateur est déjà connecté
+  // Rediriger si déjà connecté
   useEffect(() => {
-    const checkSession = async () => {
-      const session = await getSession()
-      if (session) {
-        const callbackUrl = searchParams.get("callbackUrl") || searchParams.get("from") || "/dashboard"
-        router.push(callbackUrl)
-      }
+    if (status === "authenticated" && session) {
+      const redirectTo = searchParams.get("from") || searchParams.get("callbackUrl") || "/dashboard"
+      console.log("Already authenticated, redirecting to:", redirectTo)
+      router.push(redirectTo)
     }
-    checkSession()
-  }, [router, searchParams])
+  }, [status, session, router, searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +35,8 @@ export default function LoginPage() {
     setError("")
 
     try {
+      console.log("Attempting login with:", email)
+
       const result = await signIn("credentials", {
         email,
         password,
@@ -46,30 +46,57 @@ export default function LoginPage() {
       console.log("Login result:", result)
 
       if (result?.error) {
+        console.error("Login error:", result.error)
         setError("Email ou mot de passe incorrect")
       } else if (result?.ok) {
-        // Attendre un peu pour que la session soit établie
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        console.log("Login successful!")
 
-        const callbackUrl = searchParams.get("callbackUrl") || searchParams.get("from") || "/dashboard"
-        console.log("Redirecting to:", callbackUrl)
-
-        // Forcer le rechargement de la page pour s'assurer que la session est prise en compte
-        window.location.href = callbackUrl
+        // Attendre que la session soit mise à jour
+        setTimeout(() => {
+          const redirectTo = searchParams.get("from") || searchParams.get("callbackUrl") || "/dashboard"
+          console.log("Redirecting to:", redirectTo)
+          router.push(redirectTo)
+          // Forcer un refresh pour s'assurer que la session est prise en compte
+          window.location.href = redirectTo
+        }, 1000)
       }
     } catch (error) {
-      console.error("Login error:", error)
-      setError("Une erreur est survenue")
+      console.error("Login exception:", error)
+      setError("Une erreur est survenue lors de la connexion")
     } finally {
       setLoading(false)
     }
+  }
+
+  // Si déjà en cours d'authentification, afficher un loader
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-gray-600">Vérification de la session...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Si déjà connecté, ne pas afficher le formulaire
+  if (status === "authenticated") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-gray-600">Redirection en cours...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Connexion CRM</CardTitle>
+          <CardTitle>Connexion CRM Pro</CardTitle>
           <CardDescription>Connectez-vous à votre compte pour accéder au CRM</CardDescription>
         </CardHeader>
         <CardContent>
@@ -84,6 +111,7 @@ export default function LoginPage() {
                 required
                 disabled={loading}
                 placeholder="admin@example.com"
+                autoComplete="email"
               />
             </div>
             <div className="space-y-2">
@@ -96,6 +124,7 @@ export default function LoginPage() {
                 required
                 disabled={loading}
                 placeholder="password"
+                autoComplete="current-password"
               />
             </div>
             {error && (
@@ -108,9 +137,20 @@ export default function LoginPage() {
               Se connecter
             </Button>
           </form>
-          <div className="mt-4 text-sm text-gray-600">
-            <p>Comptes de test :</p>
-            <p>Email: admin@example.com | Mot de passe: password</p>
+
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm font-medium text-blue-900 mb-2">Comptes de test :</p>
+            <div className="space-y-1 text-sm text-blue-800">
+              <p>
+                <strong>Admin :</strong> admin@example.com / password
+              </p>
+              <p>
+                <strong>Manager :</strong> manager@example.com / password
+              </p>
+              <p>
+                <strong>Commercial :</strong> commercial@example.com / password
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

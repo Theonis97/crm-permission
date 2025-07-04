@@ -26,11 +26,18 @@ export function useAuth() {
   }, [status])
 
   const isAuthenticated = status === "authenticated" && !!session?.user?.id
-  const isLoading = status === "loading" || !isInitialized
+  const isLoading = status === "loading"
 
   const refreshSession = async () => {
     await update()
   }
+
+  // Debug logs
+  useEffect(() => {
+    console.log("Auth status:", status)
+    console.log("Session:", session)
+    console.log("Is authenticated:", isAuthenticated)
+  }, [status, session, isAuthenticated])
 
   return {
     session: session as AuthenticatedSession | null,
