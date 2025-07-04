@@ -3,14 +3,24 @@ import { NextResponse } from "next/server"
 
 export default withAuth(
   function middleware(req) {
-    // Vérifier si l'utilisateur essaie d'accéder au dashboard sans être connecté
-    if (req.nextUrl.pathname.startsWith("/dashboard") && !req.nextauth.token) {
-      return NextResponse.redirect(new URL("/login", req.url))
+    const token = req.nextauth.token
+    const isAuth = !!token
+    const isAuthPage = req.nextUrl.pathname.startsWith("/login")
+    const isDashboard = req.nextUrl.pathname.startsWith("/dashboard")
+
+    // Si l'utilisateur est sur la page de login et qu'il est authentifié
+    if (isAuthPage && isAuth) {
+      return NextResponse.redirect(new URL("/dashboard", req.url))
     }
 
-    // Rediriger vers le dashboard si l'utilisateur est connecté et va sur login
-    if (req.nextUrl.pathname === "/login" && req.nextauth.token) {
-      return NextResponse.redirect(new URL("/dashboard", req.url))
+    // Si l'utilisateur essaie d'accéder au dashboard sans être authentifié
+    if (isDashboard && !isAuth) {
+      let from = req.nextUrl.pathname
+      if (req.nextUrl.search) {
+        from += req.nextUrl.search
+      }
+
+      return NextResponse.redirect(new URL(`/login?from=${encodeURIComponent(from)}`, req.url))
     }
 
     return NextResponse.next()
@@ -19,15 +29,16 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         // Permettre l'accès aux pages publiques
-        if (req.nextUrl.pathname === "/login" || req.nextUrl.pathname === "/") {
+        if (req.nextUrl.pathname === "/" || req.nextUrl.pathname === "/login") {
           return true
         }
 
-        // Exiger une authentification pour les routes protégées
+        // Pour les routes du dashboard, vérifier le token
         if (req.nextUrl.pathname.startsWith("/dashboard")) {
           return !!token
         }
 
+        // Permettre l'accès aux autres routes
         return true
       },
     },
@@ -42,7 +53,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public folder
      */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|public).*)",
   ],
 }

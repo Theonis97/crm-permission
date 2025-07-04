@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
-import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { signIn, getSession } from "next-auth/react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +17,19 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Vérifier si l'utilisateur est déjà connecté
+  useEffect(() => {
+    const checkSession = async () => {
+      const session = await getSession()
+      if (session) {
+        const callbackUrl = searchParams.get("callbackUrl") || searchParams.get("from") || "/dashboard"
+        router.push(callbackUrl)
+      }
+    }
+    checkSession()
+  }, [router, searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,14 +43,22 @@ export default function LoginPage() {
         redirect: false,
       })
 
-      console.log(result)
+      console.log("Login result:", result)
 
       if (result?.error) {
         setError("Email ou mot de passe incorrect")
-      } else {
-        router.push("/dashboard")
+      } else if (result?.ok) {
+        // Attendre un peu pour que la session soit établie
+        await new Promise((resolve) => setTimeout(resolve, 500))
+
+        const callbackUrl = searchParams.get("callbackUrl") || searchParams.get("from") || "/dashboard"
+        console.log("Redirecting to:", callbackUrl)
+
+        // Forcer le rechargement de la page pour s'assurer que la session est prise en compte
+        window.location.href = callbackUrl
       }
     } catch (error) {
+      console.error("Login error:", error)
       setError("Une erreur est survenue")
     } finally {
       setLoading(false)

@@ -13,9 +13,6 @@ import {
   CheckSquare,
   TrendingUp,
   BarChart3,
-  Settings,
-  Calendar,
-  MessageSquare,
   Building2,
   ArrowRight,
   Sparkles,
@@ -104,36 +101,6 @@ const modules = [
     href: "/dashboard/reports",
     stats: "12 rapports",
   },
-  {
-    id: "calendar",
-    name: "Calendrier",
-    description: "Planning et événements",
-    icon: Calendar,
-    color: "from-cyan-500 to-cyan-600",
-    permission: "tasks.view",
-    href: "/dashboard/calendar",
-    stats: "3 événements",
-  },
-  {
-    id: "messages",
-    name: "Messages",
-    description: "Communication interne",
-    icon: MessageSquare,
-    color: "from-rose-500 to-rose-600",
-    permission: "users.view",
-    href: "/dashboard/messages",
-    stats: "5 nouveaux",
-  },
-  {
-    id: "settings",
-    name: "Paramètres",
-    description: "Configuration système",
-    icon: Settings,
-    color: "from-gray-500 to-gray-600",
-    permission: "roles.view",
-    href: "/dashboard/settings",
-    stats: "Système",
-  },
 ]
 
 const quickActions = [
@@ -184,8 +151,6 @@ export default function DashboardPage() {
   const restrictedModules = modules.filter((m) => !hasPermission(m.permission))
 
   return (
-
-    
     <HomeLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Section de bienvenue */}
@@ -197,7 +162,6 @@ export default function DashboardPage() {
               </h1>
               <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail CRM Pro</p>
             </div>
-            
           </div>
         </div>
 
@@ -219,7 +183,7 @@ export default function DashboardPage() {
                 <Card
                   key={action.name}
                   className={cn(
-                    "group py-0 cursor-pointer transition-all duration-200 hover:shadow-md border-gray-200",
+                    "group cursor-pointer py-0 transition-all duration-200 hover:shadow-md border-gray-200",
                     hasAccess ? "hover:scale-[1.02]" : "opacity-50 cursor-not-allowed",
                   )}
                 >
