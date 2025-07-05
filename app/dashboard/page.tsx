@@ -160,48 +160,8 @@ export default function DashboardPage() {
               <h1 className="text-4xl font-bold text-gray-900 mb-2">
                 Bonjour, {user?.firstName || user?.email?.split("@")[0] || "Utilisateur"} 👋
               </h1>
-              <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail CRM Pro</p>
+              <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail CRM PRO</p>
             </div>
-          </div>
-        </div>
-
-        {/* Actions rapides */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Actions rapides</h2>
-            <Button variant="outline" size="sm">
-              <Sparkles className="mr-2 h-4 w-4" />
-              Personnaliser
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {quickActions.map((action) => {
-              const hasAccess = hasPermission(action.permission)
-              const Icon = action.icon
-
-              return (
-                <Card
-                  key={action.name}
-                  className={cn(
-                    "group cursor-pointer py-0 transition-all duration-200 hover:shadow-md border-gray-200",
-                    hasAccess ? "hover:scale-[1.02]" : "opacity-50 cursor-not-allowed",
-                  )}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-center space-x-4">
-                      <div className={cn("p-3 rounded-lg", action.color)}>
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900">{action.name}</h3>
-                        <p className="text-sm text-gray-500">{action.description}</p>
-                      </div>
-                      {hasAccess && <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />}
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
           </div>
         </div>
 

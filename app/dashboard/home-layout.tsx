@@ -91,12 +91,12 @@ export default function HomeLayout({
             {/* Logo et titre */}
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-10 h-10 bg-blue-950 rounded-xl flex items-center justify-center shadow-lg">
                   <span className="text-white font-bold text-lg">C</span>
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    CRM Pro
+                  <h1 className="text-2xl font-bold bg-blue-950 bg-clip-text text-transparent">
+                    CRM PRO
                   </h1>
                   <p className="text-xs text-gray-500">Plateforme de gestion</p>
                 </div>
@@ -128,7 +128,7 @@ export default function HomeLayout({
                   <Button variant="ghost" className="flex items-center space-x-3 hover:bg-gray-50">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={session.user?.image || ""} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white font-semibold text-sm">
+                      <AvatarFallback className="bg-blue-950 text-white font-semibold text-sm">
                         {getUserInitials()}
                       </AvatarFallback>
                     </Avatar>

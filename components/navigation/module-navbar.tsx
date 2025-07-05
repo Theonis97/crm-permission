@@ -87,7 +87,7 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
 
             {/* Icône et titre du module */}
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-blue-950 rounded-lg flex items-center justify-center">
                 <Icon className="h-5 w-5 text-white" />
               </div>
               <div>
@@ -129,7 +129,7 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
                 <Button variant="ghost" className="flex items-center space-x-2 hover:bg-gray-50 h-9">
                   <Avatar className="h-7 w-7">
                     <AvatarImage src={session?.user?.image || ""} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white font-semibold text-xs">
+                    <AvatarFallback className="bg-blue-950 text-white font-semibold text-xs">
                       {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>

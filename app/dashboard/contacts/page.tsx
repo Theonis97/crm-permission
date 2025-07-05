@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Search,
   Plus,
@@ -26,25 +27,23 @@ import {
   Grid3X3,
   List,
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { Contact, ContactType, ContactStatus, ContactFilters } from "@/types/contacts"
 import { CreateContactSheet } from "@/components/contacts/create-contact-sheet"
 import { EditContactSheet } from "@/components/contacts/edit-contact-sheet"
 import { DeleteContactDialog } from "@/components/contacts/delete-contact-dialog"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
 
 export default function ContactsPage() {
+  const router = useRouter()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<ContactFilters>({})
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
 
   // États pour les modales
   const [createSheetOpen, setCreateSheetOpen] = useState(false)
@@ -102,6 +101,10 @@ export default function ContactsPage() {
   // Gestionnaires d'événements
   const handleCreateContact = () => {
     setCreateSheetOpen(true)
+  }
+
+  const handleViewContact = (contact: Contact) => {
+    router.push(`/dashboard/contacts/${contact.id}`)
   }
 
   const handleEditContact = (contact: Contact) => {
@@ -185,6 +188,239 @@ export default function ContactsPage() {
     }
   }
 
+  const renderGridView = () => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {filteredContacts.map((contact) => (
+        <Card
+          key={contact.id}
+          className="hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => handleViewContact(contact)}
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Avatar>
+                  <AvatarImage src={contact.photo || "/placeholder.svg"} />
+                  <AvatarFallback>{getContactInitials(contact)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold">{getContactName(contact)}</h3>
+                  {contact.job && <p className="text-sm text-muted-foreground">{contact.job}</p>}
+                </div>
+              </div>
+              <PermissionGuard permission="contacts.edit">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="sm">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleViewContact(contact)
+                      }}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Voir le détail
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEditContact(contact)
+                      }}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Modifier
+                    </DropdownMenuItem>
+                    <PermissionGuard permission="contacts.delete">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteContact(contact)
+                        }}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </PermissionGuard>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </PermissionGuard>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge className={getStatusColor(contact.status)}>{contact.status}</Badge>
+              <Badge className={getTypeColor(contact.type)}>{contact.type}</Badge>
+            </div>
+
+            {contact.email && (
+              <div className="flex items-center text-sm text-muted-foreground">
+                <Mail className="mr-2 h-4 w-4" />
+                <span className="truncate">{contact.email}</span>
+              </div>
+            )}
+
+            {contact.phone && (
+              <div className="flex items-center text-sm text-muted-foreground">
+                <Phone className="mr-2 h-4 w-4" />
+                <span>{contact.phone}</span>
+              </div>
+            )}
+
+            {contact.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {contact.tags.slice(0, 3).map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+                {contact.tags.length > 3 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{contact.tags.length - 3}
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {contact.assignedUser && (
+              <div className="text-xs text-muted-foreground">
+                Assigné à {contact.assignedUser.firstName} {contact.assignedUser.lastName}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+
+  const renderTableView = () => (
+    <Card>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Contact</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Statut</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Téléphone</TableHead>
+            <TableHead>Assigné à</TableHead>
+            <TableHead>Créé le</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredContacts.map((contact) => (
+            <TableRow
+              key={contact.id}
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleViewContact(contact)}
+            >
+              <TableCell>
+                <div className="flex items-center space-x-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={contact.photo || "/placeholder.svg"} />
+                    <AvatarFallback className="text-xs">{getContactInitials(contact)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="font-medium">{getContactName(contact)}</div>
+                    {contact.job && <div className="text-sm text-muted-foreground">{contact.job}</div>}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge className={getTypeColor(contact.type)}>{contact.type}</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge className={getStatusColor(contact.status)}>{contact.status}</Badge>
+              </TableCell>
+              <TableCell>
+                {contact.email && (
+                  <a
+                    href={`mailto:${contact.email}`}
+                    className="text-blue-600 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {contact.email}
+                  </a>
+                )}
+              </TableCell>
+              <TableCell>
+                {contact.phone && (
+                  <a
+                    href={`tel:${contact.phone}`}
+                    className="text-blue-600 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {contact.phone}
+                  </a>
+                )}
+              </TableCell>
+              <TableCell>
+                {contact.assignedUser && (
+                  <div className="text-sm">
+                    {contact.assignedUser.firstName} {contact.assignedUser.lastName}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="text-sm text-muted-foreground">
+                  {format(new Date(contact.createdAt), "dd/MM/yyyy", { locale: fr })}
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                <PermissionGuard permission="contacts.edit">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleViewContact(contact)
+                        }}
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Voir le détail
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditContact(contact)
+                        }}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Modifier
+                      </DropdownMenuItem>
+                      <PermissionGuard permission="contacts.delete">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteContact(contact)
+                          }}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </PermissionGuard>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </PermissionGuard>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  )
+
   return (
     <PermissionGuard permission="contacts.view">
       <div className="min-h-screen bg-gray-50">
@@ -198,37 +434,43 @@ export default function ContactsPage() {
             icon: Plus,
           }}
           secondaryActions={
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <MoreHorizontal className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border rounded-md">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("grid")}
+                  className="rounded-r-none"
+                >
+                  <Grid3X3 className="h-4 w-4" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleImport}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importer des contacts
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exporter la liste
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}>
-                  {viewMode === "grid" ? (
-                    <>
-                      <List className="h-4 w-4 mr-2" />
-                      Vue liste
-                    </>
-                  ) : (
-                    <>
-                      <Grid3X3 className="h-4 w-4 mr-2" />
-                      Vue grille
-                    </>
-                  )}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <Button
+                  variant={viewMode === "table" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                  className="rounded-l-none"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleImport}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importer des contacts
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExport}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Exporter la liste
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           }
         />
 
@@ -325,7 +567,7 @@ export default function ContactsPage() {
               </Select>
             </div>
 
-            {/* Liste des contacts */}
+            {/* Contenu principal */}
             {loading ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -360,93 +602,10 @@ export default function ContactsPage() {
                   </Button>
                 )}
               </div>
+            ) : viewMode === "grid" ? (
+              renderGridView()
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredContacts.map((contact) => (
-                  <Card key={contact.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <Avatar>
-                            <AvatarImage src={contact.photo || "/placeholder.svg"} />
-                            <AvatarFallback>{getContactInitials(contact)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <h3 className="font-semibold">{getContactName(contact)}</h3>
-                            {contact.job && <p className="text-sm text-muted-foreground">{contact.job}</p>}
-                          </div>
-                        </div>
-                        <PermissionGuard permission="contacts.edit">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditContact(contact)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Modifier
-                              </DropdownMenuItem>
-                              <PermissionGuard permission="contacts.delete">
-                                <DropdownMenuItem onClick={() => handleDeleteContact(contact)} className="text-red-600">
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Supprimer
-                                </DropdownMenuItem>
-                              </PermissionGuard>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </PermissionGuard>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Badge className={getStatusColor(contact.status)}>{contact.status}</Badge>
-                        <Badge className={getTypeColor(contact.type)}>{contact.type}</Badge>
-                      </div>
-
-                      {contact.email && (
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Mail className="mr-2 h-4 w-4" />
-                          <a href={`mailto:${contact.email}`} className="hover:underline">
-                            {contact.email}
-                          </a>
-                        </div>
-                      )}
-
-                      {contact.phone && (
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Phone className="mr-2 h-4 w-4" />
-                          <a href={`tel:${contact.phone}`} className="hover:underline">
-                            {contact.phone}
-                          </a>
-                        </div>
-                      )}
-
-                      {contact.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {contact.tags.slice(0, 3).map((tag) => (
-                            <Badge key={tag} variant="outline" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {contact.tags.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{contact.tags.length - 3}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-
-                      {contact.assignedUser && (
-                        <div className="text-xs text-muted-foreground">
-                          Assigné à {contact.assignedUser.firstName} {contact.assignedUser.lastName}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              renderTableView()
             )}
           </div>
         </main>

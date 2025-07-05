@@ -17,36 +17,30 @@ import { toast } from "sonner"
 interface DeleteContactDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  contact: Contact | null
+  contact: Contact
   onContactDeleted: () => void
 }
 
 export function DeleteContactDialog({ open, onOpenChange, contact, onContactDeleted }: DeleteContactDialogProps) {
   const [loading, setLoading] = useState(false)
 
-  if (!contact) return null
-
-  const getContactName = () => {
+  const getContactName = (contact: Contact) => {
     if (contact.type === "ENTREPRISE") {
       return contact.firstName || "Entreprise"
     }
-    return `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Contact"
+    return `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Sans nom"
   }
 
   const handleDelete = async () => {
-    setLoading(true)
-
     try {
+      setLoading(true)
       const response = await fetch(`/api/contacts/${contact.id}`, {
         method: "DELETE",
       })
 
-      if (!response.ok) {
-        throw new Error("Erreur lors de la suppression")
-      }
+      if (!response.ok) throw new Error("Erreur lors de la suppression")
 
       onContactDeleted()
-      onOpenChange(false)
     } catch (error) {
       console.error("Erreur:", error)
       toast.error("Erreur lors de la suppression du contact")
@@ -65,16 +59,16 @@ export function DeleteContactDialog({ open, onOpenChange, contact, onContactDele
             </div>
             <div>
               <DialogTitle>Supprimer le contact</DialogTitle>
-              <DialogDescription>Cette action est irréversible.</DialogDescription>
+              <DialogDescription>
+                Êtes-vous sûr de vouloir supprimer le contact "{getContactName(contact)}" ?
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <div className="py-4">
           <p className="text-sm text-muted-foreground">
-            Êtes-vous sûr de vouloir supprimer le contact{" "}
-            <span className="font-medium text-foreground">{getContactName()}</span> ? Cette action ne peut pas être
-            annulée.
+            Cette action est irréversible. Toutes les données associées à ce contact seront définitivement supprimées.
           </p>
         </div>
 
