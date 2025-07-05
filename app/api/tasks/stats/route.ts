@@ -18,13 +18,13 @@ export async function GET(request: NextRequest) {
       prisma.task.count({
         where: {
           dueDate: { lt: new Date() },
-          status: { not: TaskStatus.DONE },
+          status: { not: TaskStatus.COMPLETED },
         },
       }),
       prisma.task.count({
         where: {
           dueDate: { lt: new Date() },
-          status: { not: TaskStatus.DONE },
+          status: { not: TaskStatus.COMPLETED },
         },
       }),
     ])

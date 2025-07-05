@@ -12,7 +12,8 @@ import { CreateTaskSheet } from "@/components/tasks/create-task-sheet"
 import { EditTaskSheet } from "@/components/tasks/edit-task-sheet"
 import { DeleteTaskDialog } from "@/components/tasks/delete-task-dialog"
 import type { Task, TaskFilters as TaskFiltersType, TaskStats, TaskStatus } from "@/types/tasks"
-import { CheckSquare, Plus, Loader2, AlertCircle } from "lucide-react"
+import { CheckSquare, Plus, Loader2, AlertCircle, Grid3X3, List } from "lucide-react"
+import { TaskTable } from "@/components/tasks/task-table"
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -24,6 +25,7 @@ export default function TasksPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [deletingTask, setDeletingTask] = useState<Task | null>(null)
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards")
 
   const fetchTasks = async () => {
     try {
@@ -159,6 +161,13 @@ export default function TasksPage() {
             onClick: () => setIsCreateOpen(true),
             icon: Plus,
           }}
+      
+          secondaryActions = {
+            <Button variant={"outline"} onClick={() => setViewMode(viewMode === "cards" ? "table" : "cards")}>
+              {viewMode === "cards" ? "Vue table" : "Vue cartes"}
+              {viewMode === "cards" ? <List/> : <Grid3X3/>}
+            </Button>
+          }
         />
 
         <main className="py-8">
@@ -252,7 +261,7 @@ export default function TasksPage() {
                   </Button>
                 </CardContent>
               </Card>
-            ) : (
+            ) : viewMode === "cards" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {tasks.map((task) => (
                   <TaskCard
@@ -264,6 +273,13 @@ export default function TasksPage() {
                   />
                 ))}
               </div>
+            ) : (
+              <TaskTable
+                tasks={tasks}
+                onEdit={setEditingTask}
+                onDelete={setDeletingTask}
+                onStatusChange={handleStatusChange}
+              />
             )}
           </div>
         </main>

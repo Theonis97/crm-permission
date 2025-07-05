@@ -28,7 +28,8 @@ enum OpportunityStatus {
 enum TaskStatus {
   TODO
   IN_PROGRESS
-  DONE
+  COMPLETED
+  CANCELLED
 }
 
 enum UserStatus {
@@ -78,7 +79,7 @@ model ProductCategory {
   id             String             @id @default(cuid())
   name           String
   description    String?
-  
+
   parentId       String?            @map("parent_id")
   parent         ProductCategory?   @relation("Subcategories", fields: [parentId], references: [id])
   subcategories  ProductCategory[]  @relation("Subcategories")
