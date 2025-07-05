@@ -80,7 +80,7 @@ export function ProductFilters({ filters, onFiltersChange, categories }: Product
 
             {/* Prix minimum */}
             <div className="space-y-2">
-              <Label>Prix minimum (€)</Label>
+              <Label>Prix minimum (XAF )</Label>
               <Input
                 type="number"
                 placeholder="0"
@@ -96,7 +96,7 @@ export function ProductFilters({ filters, onFiltersChange, categories }: Product
 
             {/* Prix maximum */}
             <div className="space-y-2">
-              <Label>Prix maximum (€)</Label>
+              <Label>Prix maximum (XAF )</Label>
               <Input
                 type="number"
                 placeholder="1000"

@@ -114,12 +114,7 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
                 secondaryActions
             )}
 
-            {/* Notifications */}
-            <Button variant="ghost" size="sm" className="relative h-9 w-9 p-0">
-              <Bell className="h-4 w-4" />
-              <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full text-xs"></span>
-            </Button>
-
+   
             {/* Sélecteur de modules */}
             <ModuleSelector />
 

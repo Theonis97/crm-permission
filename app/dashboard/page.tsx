@@ -69,7 +69,7 @@ const modules = [
     color: "from-orange-500 to-orange-600",
     permission: "quotes.view",
     href: "/dashboard/sales",
-    stats: "€45,230 ce mois",
+    stats: "XAF 45,230 ce mois",
   },
   {
     id: "products",

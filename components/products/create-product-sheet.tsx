@@ -138,7 +138,7 @@ export function CreateProductSheet({ open, onOpenChange, onProductCreated, categ
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="prixVente">Prix de vente (€) *</Label>
+              <Label htmlFor="prixVente">Prix de vente (XAF ) *</Label>
               <Input
                 id="prixVente"
                 type="number"
@@ -151,7 +151,7 @@ export function CreateProductSheet({ open, onOpenChange, onProductCreated, categ
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prixAchat">Prix d'achat (€) *</Label>
+              <Label htmlFor="prixAchat">Prix d'achat (XAF ) *</Label>
               <Input
                 id="prixAchat"
                 type="number"

@@ -18,6 +18,27 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ItemType {
+  PRODUCT
+  SERVICE
+}
+
+enum ActionType {
+  CREATE
+  UPDATE
+  DELETE
+}
+
 enum OpportunityStatus {
   NEW
   IN_PROGRESS
@@ -71,7 +92,8 @@ model Contact {
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
   @@map("contacts")
-  Invoice Invoice[]
+    quotes   Quote[]
+  invoices Invoice[]
   Opportunity Opportunity[]
 }
 
@@ -104,7 +126,9 @@ model Product {
   categoryId   String?          @map("category_id")
   category     ProductCategory? @relation(fields: [categoryId], references: [id])
 
-  InvoiceItem  InvoiceItem[]
+  quoteItems   QuoteItem[]
+  invoiceItems InvoiceItem[]
+
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
@@ -135,21 +159,85 @@ enum StockType {
   RETURN
 }
 
-model Invoice {
-  id             String         @id @default(cuid())
-  number         String         @unique
-  contactId      String         @map("contact_id")
-  opportunityId  String?        @map("opportunity_id")
-  status         InvoiceStatus  @default(DRAFT)
-  remise         Float          @default(0) // % ou valeur
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+model Quote {
+  id            String      @id @default(cuid())
+  number        String      @unique
+  contactId     String
+  status        QuoteStatus @default(DRAFT)
+  title         String
+  description   String?
+  subtotal      Float       @default(0)
+  totalDiscount Float       @default(0)
+  totalTax      Float       @default(0)
+  total         Float       @default(0)
+  validUntil    DateTime
+  notes         String?
+  terms         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  sentAt        DateTime?
+  viewedAt      DateTime?
+  acceptedAt    DateTime?
+  rejectedAt    DateTime?
+  userId        String
 
-  contact        Contact        @relation(fields: [contactId], references: [id])
-  opportunity    Opportunity?   @relation(fields: [opportunityId], references: [id])
-  items          InvoiceItem[]
+  contact Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items   QuoteItem[]
+  invoices Invoice[]
+
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String   @id @default(cuid())
+  quoteId     String
+  productId   String?
+  name        String
+  description String?
+  quantity    Int      @default(1)
+  unitPrice   Float    @default(0)
+  discount    Float    @default(0)
+  taxRate     Float    @default(20)
+  total       Float    @default(0)
+  type        ItemType @default(SERVICE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@map("quote_items")
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  number        String        @unique
+  contactId     String
+  quoteId       String?
+  status        InvoiceStatus @default(DRAFT)
+  title         String
+  description   String?
+  subtotal      Float         @default(0)
+  totalDiscount Float         @default(0)
+  totalTax      Float         @default(0)
+  total         Float         @default(0)
+  dueDate       DateTime
+  paidAt        DateTime?
+  notes         String?
+  terms         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  sentAt        DateTime?
+  userId        String
+
+  contact Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  quote   Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items   InvoiceItem[]
 
   @@map("invoices")
+  Opportunity Opportunity[]
 }
 
 model InvoiceItem {
@@ -164,7 +252,6 @@ model InvoiceItem {
 
   @@map("invoice_items")
 }
-
 
 model Opportunity {
   id             String            @id @default(cuid())
@@ -211,12 +298,6 @@ model AuditLog {
   user        User     @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
-}
-
-enum ActionType {
-  CREATE
-  UPDATE
-  DELETE
 }
 
 model OpportunityParticipant {
@@ -294,6 +375,9 @@ model User {
   accounts  Account[]
   sessions  Session[]
   userRoles UserRole[]
+
+  quotes   Quote[]
+  invoices Invoice[]
 
   assignedRoles UserRole[] @relation("AssignedBy")
 
