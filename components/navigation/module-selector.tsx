@@ -69,7 +69,7 @@ const modules = [
     icon: Building2,
     color: "from-indigo-500 to-indigo-600",
     permission: "opportunities.view",
-    href: "/dashboard/crm",
+    href: "/dashboard/opportunities",
   },
   {
     id: "sales",

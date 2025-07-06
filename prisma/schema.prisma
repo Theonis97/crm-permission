@@ -285,6 +285,19 @@ model OpportunityDocument {
   @@map("opportunity_documents")
 }
 
+model OpportunityParticipant {
+  id            String       @id @default(cuid())
+  opportunityId String       @map("opportunity_id")
+  userId        String       @map("user_id")
+  addedAt       DateTime     @default(now()) @map("added_at")
+
+  opportunity   Opportunity  @relation(fields: [opportunityId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
+
+  @@unique([opportunityId, userId])
+  @@map("opportunity_participants")
+}
+
 model AuditLog {
   id          String   @id @default(cuid())
   userId      String   @map("user_id")
@@ -298,19 +311,6 @@ model AuditLog {
   user        User     @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
-}
-
-model OpportunityParticipant {
-  id            String       @id @default(cuid())
-  opportunityId String       @map("opportunity_id")
-  userId        String       @map("user_id")
-  addedAt       DateTime     @default(now()) @map("added_at")
-
-  opportunity   Opportunity  @relation(fields: [opportunityId], references: [id])
-  user          User         @relation(fields: [userId], references: [id])
-
-  @@unique([opportunityId, userId])
-  @@map("opportunity_participants")
 }
 
 model Task {
