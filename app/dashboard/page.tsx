@@ -9,11 +9,12 @@ import {
   Users,
   Shield,
   Contact,
-  Package,
+  Warehouse,
   CheckSquare,
   TrendingUp,
   BarChart3,
   Building2,
+  Store,
   ArrowRight,
   Sparkles,
 } from "lucide-react"
@@ -30,6 +31,7 @@ const modules = [
     permission: "users.view",
     href: "/dashboard/users",
     stats: "12 utilisateurs",
+    clickable: true,
   },
   {
     id: "roles",
@@ -40,16 +42,29 @@ const modules = [
     permission: "roles.view",
     href: "/dashboard/roles",
     stats: "5 rôles",
+    clickable: true,
   },
   {
-    id: "contacts",
-    name: "Contacts",
-    description: "Base de données clients",
-    icon: Contact,
+    id: "warehouse",
+    name: "Entrepôt",
+    description: "Gestion des stocks et inventaire",
+    icon: Warehouse,
+    color: "from-amber-500 to-amber-600",
+    permission: "products.view",
+    href: "/dashboard/products",
+    stats: "67 produits",
+    clickable: false,
+  },
+  {
+    id: "stores",
+    name: "Nos Magasins",
+    description: "Gestion des points de vente",
+    icon: Store,
     color: "from-teal-500 to-teal-600",
     permission: "contacts.view",
-    href: "/dashboard/contacts",
-    stats: "248 contacts",
+    href: "/dashboard/stores",
+    stats: "5 magasins",
+    clickable: false,
   },
   {
     id: "crm",
@@ -60,6 +75,7 @@ const modules = [
     permission: "opportunities.view",
     href: "/dashboard/opportunities",
     stats: "15 opportunités",
+    clickable: false,
   },
   {
     id: "sales",
@@ -70,16 +86,7 @@ const modules = [
     permission: "quotes.view",
     href: "/dashboard/sales",
     stats: "XAF 45,230 ce mois",
-  },
-  {
-    id: "products",
-    name: "Produits",
-    description: "Catalogue et inventaire",
-    icon: Package,
-    color: "from-amber-500 to-amber-600",
-    permission: "products.view",
-    href: "/dashboard/products",
-    stats: "67 produits",
+    clickable: false,
   },
   {
     id: "tasks",
@@ -90,6 +97,7 @@ const modules = [
     permission: "tasks.view",
     href: "/dashboard/tasks",
     stats: "8 en cours",
+    clickable: false,
   },
   {
     id: "reports",
@@ -100,6 +108,7 @@ const modules = [
     permission: "reports.view",
     href: "/dashboard/reports",
     stats: "12 rapports",
+    clickable: false,
   },
 ]
 
@@ -132,7 +141,7 @@ export default function DashboardPage() {
   const router = useRouter()
 
   const handleModuleClick = (module: (typeof modules)[0]) => {
-    if (hasPermission(module.permission)) {
+    if (module.clickable && hasPermission(module.permission)) {
       router.push(module.href)
     }
   }
@@ -160,7 +169,7 @@ export default function DashboardPage() {
               <h1 className="text-4xl font-bold text-gray-900 mb-2">
                 Bonjour, {user?.firstName || user?.email?.split("@")[0] || "Utilisateur"} 👋
               </h1>
-              <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail CRM PRO</p>
+              <p className="text-xl text-gray-600">Bienvenue sur votre espace de travail INTECH ERP</p>
             </div>
           </div>
         </div>
@@ -180,7 +189,12 @@ export default function DashboardPage() {
               return (
                 <Card
                   key={module.id}
-                  className="group cursor-pointer py-0 transition-all duration-300 hover:shadow-xl hover:scale-[1.02] border-gray-200 overflow-hidden"
+                  className={cn(
+                    "group py-0 transition-all duration-300 border-gray-200 overflow-hidden",
+                    module.clickable
+                      ? "cursor-pointer hover:shadow-xl hover:scale-[1.02]"
+                      : "cursor-default"
+                  )}
                   onClick={() => handleModuleClick(module)}
                 >
                   <CardContent className="p-0">
@@ -192,7 +206,9 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-600 mb-3">{module.description}</p>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-gray-500">{module.stats}</span>
-                        <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all" />
+                        {module.clickable && (
+                          <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all" />
+                        )}
                       </div>
                     </div>
                   </CardContent>

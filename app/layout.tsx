@@ -7,7 +7,7 @@ import { SessionProvider } from "@/components/providers/session-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "CRM Pro",
+  title: "INTECH ERP",
   description: "Système de gestion de la relation client",
 }
 

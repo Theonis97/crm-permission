@@ -53,7 +53,7 @@ export default function HomePage() {
           </div>
 
           <h1 className="text-5xl font-bold text-gray-900 mb-6">
-            CRM <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Pro</span>
+            INTECH <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">ERP</span>
           </h1>
 
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
@@ -99,7 +99,7 @@ export default function HomePage() {
             size="lg"
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
-            Accéder au CRM
+            Accéder à l'ERP
             <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
 

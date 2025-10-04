@@ -96,8 +96,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Connexion CRM Pro</CardTitle>
-          <CardDescription>Connectez-vous à votre compte pour accéder au CRM</CardDescription>
+          <CardTitle>Connexion INTECH ERP</CardTitle>
+          <CardDescription>Connectez-vous à votre compte pour accéder à l'ERP</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
