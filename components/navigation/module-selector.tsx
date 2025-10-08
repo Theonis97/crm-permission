@@ -22,6 +22,8 @@ import {
   Grid3X3,
   Search,
   Home,
+  Warehouse,
+  Store,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -54,13 +56,22 @@ const modules = [
     href: "/dashboard/roles",
   },
   {
-    id: "contacts",
-    name: "Contacts",
-    description: "Base de données clients",
-    icon: Contact,
+    id: "warehouse",
+    name: "Entrepôt",
+    description: "Gestion des stocks et inventaire",
+    icon: Warehouse,
+    color: "from-amber-500 to-amber-600",
+    permission: "products.view",
+    href: "/dashboard/warehouse",
+  },
+  {
+    id: "stores",
+    name: "Nos Magasins",
+    description: "Gestion des points de vente",
+    icon: Store,
     color: "from-teal-500 to-teal-600",
     permission: "contacts.view",
-    href: "/dashboard/contacts",
+    href: "/dashboard/stores",
   },
   {
     id: "crm",
@@ -81,15 +92,6 @@ const modules = [
     href: "/dashboard/sales",
   },
   {
-    id: "products",
-    name: "Produits",
-    description: "Catalogue et inventaire",
-    icon: Package,
-    color: "from-amber-500 to-amber-600",
-    permission: "products.view",
-    href: "/dashboard/products",
-  },
-  {
     id: "tasks",
     name: "Tâches",
     description: "Gestion des activités",
@@ -106,6 +108,15 @@ const modules = [
     color: "from-pink-500 to-pink-600",
     permission: "reports.view",
     href: "/dashboard/reports",
+  },
+  {
+    id: "contacts",
+    name: "Contacts",
+    description: "Base de données clients",
+    icon: Contact,
+    color: "from-blue-400 to-blue-500",
+    permission: "contacts.view",
+    href: "/dashboard/contacts",
   },
   {
     id: "calendar",
@@ -136,7 +147,12 @@ const modules = [
   },
 ]
 
-export function ModuleSelector() {
+interface ModuleSelectorProps {
+  showLabel?: boolean
+  className?: string
+}
+
+export function ModuleSelector({ showLabel = false, className }: ModuleSelectorProps = {}) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const { hasPermission } = usePermissions()
@@ -159,10 +175,17 @@ export function ModuleSelector() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
-          <Grid3X3 className="h-5 w-5" />
-          <span className="sr-only">Applications</span>
-        </Button>
+        {showLabel ? (
+          <Button variant="ghost" className={cn("w-full justify-start gap-3 h-auto p-2.5", className)}>
+            <Grid3X3 className="h-5 w-5 text-gray-500 flex-shrink-0" />
+            <span className="text-sm font-medium text-gray-700">Mes applications</span>
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className={cn("h-9 w-9 p-0", className)}>
+            <Grid3X3 className="h-5 w-5" />
+            <span className="sr-only">Applications</span>
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className="w-96 p-0" align="end">
         <div className="p-4 border-b">

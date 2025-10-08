@@ -126,6 +126,51 @@ async function main() {
       // Reports management
       { name: "reports.view", description: "Voir les rapports", module: "reports", action: "view" },
       { name: "reports.export", description: "Exporter les rapports", module: "reports", action: "export" },
+
+      // Warehouses management (Entrepôts)
+      { name: "warehouses.view", description: "Voir les entrepôts", module: "warehouses", action: "view" },
+      { name: "warehouses.create", description: "Créer des entrepôts", module: "warehouses", action: "create" },
+      { name: "warehouses.edit", description: "Modifier les entrepôts", module: "warehouses", action: "edit" },
+      { name: "warehouses.delete", description: "Supprimer les entrepôts", module: "warehouses", action: "delete" },
+      {
+        name: "warehouses.manage_stock",
+        description: "Gérer les stocks dans les entrepôts",
+        module: "warehouses",
+        action: "manage_stock",
+      },
+      {
+        name: "warehouses.transfer",
+        description: "Transférer des stocks entre entrepôts",
+        module: "warehouses",
+        action: "transfer",
+      },
+      {
+        name: "warehouses.inventory",
+        description: "Faire l'inventaire des entrepôts",
+        module: "warehouses",
+        action: "inventory",
+      },
+      { name: "warehouses.export", description: "Exporter les données d'entrepôt", module: "warehouses", action: "export" },
+
+      // Stores management (Magasins)
+      { name: "stores.view", description: "Voir les magasins", module: "stores", action: "view" },
+      { name: "stores.create", description: "Créer des magasins", module: "stores", action: "create" },
+      { name: "stores.edit", description: "Modifier les magasins", module: "stores", action: "edit" },
+      { name: "stores.delete", description: "Supprimer les magasins", module: "stores", action: "delete" },
+      {
+        name: "stores.assign_manager",
+        description: "Assigner un gestionnaire au magasin",
+        module: "stores",
+        action: "assign_manager",
+      },
+      {
+        name: "stores.manage_inventory",
+        description: "Gérer l'inventaire du magasin",
+        module: "stores",
+        action: "manage_inventory",
+      },
+      { name: "stores.view_sales", description: "Voir les ventes du magasin", module: "stores", action: "view_sales" },
+      { name: "stores.export", description: "Exporter les données du magasin", module: "stores", action: "export" },
     ]
 
     const permissions = await Promise.all(
@@ -175,7 +220,7 @@ async function main() {
     // Manager : modules commerciaux sans delete
     const managerPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports"].includes(p.module) &&
+        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "stores"].includes(p.module) &&
         p.action !== "delete",
     )
     await Promise.all(
@@ -193,8 +238,8 @@ async function main() {
     // Commercial : permissions de base
     const commercialPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "tasks", "opportunities"].includes(p.module) &&
-        ["view", "create", "edit"].includes(p.action),
+        ["contacts", "products", "quotes", "tasks", "opportunities", "stores"].includes(p.module) &&
+        (["view", "create", "edit"].includes(p.action) || p.name === "stores.view_sales"),
     )
     await Promise.all(
       commercialPermissions.map((permission) =>

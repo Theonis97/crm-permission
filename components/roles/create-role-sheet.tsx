@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Save, Loader2 } from "lucide-react"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Save, Loader2, ShieldCheck, X } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
 
 interface Permission {
   id: string
@@ -145,6 +146,8 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       tasks: "✅",
       opportunities: "💼",
       reports: "📊",
+      warehouses: "🏭",
+      stores: "🏪",
     }
     return icons[module] || "⚙️"
   }
@@ -160,6 +163,8 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       tasks: "Tâches",
       opportunities: "Opportunités",
       reports: "Rapports",
+      warehouses: "Entrepôts",
+      stores: "Magasins",
     }
     return names[module] || module
   }
@@ -173,6 +178,12 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       assign: "Assigner",
       export: "Exporter",
       send: "Envoyer",
+      manage_stock: "Gérer stock",
+      transfer: "Transférer",
+      inventory: "Inventaire",
+      assign_manager: "Assigner gestionnaire",
+      manage_inventory: "Gérer inventaire",
+      view_sales: "Voir ventes",
     }
     return names[action] || action
   }
@@ -181,111 +192,189 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[800px] sm:max-w-[800px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center space-x-2">
-            <Plus className="w-5 h-5" />
-            <span>Créer un nouveau rôle</span>
-          </SheetTitle>
-          <SheetDescription>Définissez un nouveau rôle avec ses permissions</SheetDescription>
-        </SheetHeader>
+      <SheetContent className="w-full sm:max-w-[900px] p-0 flex flex-col h-full">
+        {/* Header */}
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-primary/5 to-primary/10 shrink-0">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-xl">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <ShieldCheck className="w-5 h-5 text-primary" />
+              </div>
+              <span>Créer un nouveau rôle</span>
+            </SheetTitle>
+            <SheetDescription className="text-sm mt-1">
+              Configurez les informations et les permissions du nouveau rôle
+            </SheetDescription>
+          </SheetHeader>
+        </div>
 
-        <div className="mt-6 space-y-6">
-          {/* Informations de base */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Informations de base</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nom du rôle *</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Gestionnaire commercial"
-                />
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto px-6">
+          <div className="py-6 space-y-6">
+            {/* Informations de base */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px flex-1 bg-border" />
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Informations générales
+                </h3>
+                <div className="h-px flex-1 bg-border" />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Description du rôle et de ses responsabilités"
-                  rows={3}
-                />
-              </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-medium">
+                    Nom du rôle <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Ex: Gestionnaire commercial"
+                    className="h-10"
+                  />
+                </div>
 
-          {/* Permissions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Permissions ({selectedPermissions.size} sélectionnées)</CardTitle>
-            </CardHeader>
-            <CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="description" className="text-sm font-medium">
+                    Description
+                  </Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Décrivez les responsabilités et le périmètre d'action de ce rôle..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Permissions */}
+            <div className="space-y-4 pb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Permissions
+                  </h3>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <Badge variant="secondary" className="ml-3">
+                  {selectedPermissions.size} sélectionnée{selectedPermissions.size !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center space-y-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                    <p className="text-sm text-muted-foreground">Chargement des permissions...</p>
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {Object.entries(allPermissions).map(([module, permissions]) => (
-                    <Card key={module} className="border-gray-200">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-lg">{getModuleIcon(module)}</span>
-                            <span className="text-base">{getModuleName(module)}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {permissions.length} permission{permissions.length !== 1 ? "s" : ""}
-                            </Badge>
-                          </div>
-                          <Checkbox
-                            checked={isModuleFullySelected(module)}
-                            onCheckedChange={(checked) => handleModuleToggle(module, checked as boolean)}
-                            className={isModulePartiallySelected(module) ? "data-[state=checked]:bg-orange-500" : ""}
-                          />
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-2 gap-3">
-                          {permissions.map((permission) => (
-                            <div key={permission.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={permission.id}
-                                checked={selectedPermissions.has(permission.id)}
-                                onCheckedChange={() => handlePermissionToggle(permission.id)}
-                              />
-                              <label
-                                htmlFor={permission.id}
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                              >
-                                {getActionName(permission.action)}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                <Accordion type="multiple" className="space-y-2">
+                  {Object.entries(allPermissions).map(([module, permissions]) => {
+                    const selectedCount = permissions.filter((p) => selectedPermissions.has(p.id)).length
+                    const isFullySelected = isModuleFullySelected(module)
+                    const isPartiallySelected = isModulePartiallySelected(module)
 
-          {/* Actions */}
-          <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSave} disabled={saving || !isFormValid}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Save className="mr-2 h-4 w-4" />
-              Créer le rôle
-            </Button>
+                    return (
+                      <AccordionItem
+                        key={module}
+                        value={module}
+                        className="border rounded-lg overflow-hidden bg-card"
+                      >
+                        <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50 transition-colors">
+                          <div className="flex items-center justify-between w-full pr-2">
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={isFullySelected}
+                                onCheckedChange={(checked) => handleModuleToggle(module, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                                className={
+                                  isPartiallySelected
+                                    ? "data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
+                                    : ""
+                                }
+                              />
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl">{getModuleIcon(module)}</span>
+                                <span className="font-semibold text-sm">{getModuleName(module)}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={selectedCount > 0 ? "default" : "outline"}
+                                className="text-xs font-normal"
+                              >
+                                {selectedCount}/{permissions.length}
+                              </Badge>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 pb-4 pt-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {permissions.map((permission) => (
+                              <div
+                                key={permission.id}
+                                className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors"
+                              >
+                                <Checkbox
+                                  id={permission.id}
+                                  checked={selectedPermissions.has(permission.id)}
+                                  onCheckedChange={() => handlePermissionToggle(permission.id)}
+                                />
+                                <label
+                                  htmlFor={permission.id}
+                                  className="text-sm font-medium leading-none cursor-pointer flex-1"
+                                >
+                                  {getActionName(permission.action)}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    )
+                  })}
+                </Accordion>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Fixed Footer - Toujours visible en bas */}
+        <div className="border-t bg-background shadow-lg shrink-0">
+          <div className="px-6 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="h-11"
+                disabled={saving}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Annuler
+              </Button>
+              <Button onClick={handleSave} disabled={saving || !isFormValid} className="h-11">
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Création...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Créer le rôle
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>

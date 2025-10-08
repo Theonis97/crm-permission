@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Users, Mail, Calendar } from "lucide-react"
+import { Users, Mail, Calendar, Loader2, ShieldCheck } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
 import type { RoleWithPermissions } from "@/types/auth"
 
 interface User {
@@ -72,65 +73,118 @@ export function RoleUsersSheet({ role, open, onOpenChange }: RoleUsersSheetProps
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[600px] sm:max-w-[600px]">
-        <SheetHeader>
-          <SheetTitle className="flex items-center space-x-2">
-            <Users className="w-5 h-5" />
-            <span>Utilisateurs du rôle "{role.name}"</span>
-          </SheetTitle>
-          <SheetDescription>
-            Liste des {role._count.userRoles} utilisateur{role._count.userRoles !== 1 ? "s" : ""} ayant ce rôle
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent className="w-full sm:max-w-[700px] p-0 flex flex-col h-full">
+        {/* Header */}
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-primary/5 to-primary/10 shrink-0">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-xl">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Users className="w-5 h-5 text-primary" />
+              </div>
+              <span>Utilisateurs du rôle "{role.name}"</span>
+            </SheetTitle>
+            <SheetDescription className="text-sm mt-1">
+              Liste des utilisateurs ayant ce rôle
+            </SheetDescription>
+          </SheetHeader>
+        </div>
 
-        <div className="mt-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            </div>
-          ) : users.length > 0 ? (
-            <div className="space-y-4">
-              {users.map((user) => (
-                <div key={user.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-gray-50">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src="/placeholder.svg" />
-                    <AvatarFallback className="bg-blue-100 text-blue-600 font-semibold">
-                      {getUserInitials(user)}
-                    </AvatarFallback>
-                  </Avatar>
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto px-6">
+          <div className="py-6 space-y-6">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center space-y-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                  <p className="text-sm text-muted-foreground">Chargement des utilisateurs...</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Stats */}
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                  <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Total utilisateurs</p>
+                    <p className="text-xs text-muted-foreground">
+                      {role._count.userRoles} utilisateur{role._count.userRoles !== 1 ? "s" : ""} possède{role._count.userRoles !== 1 ? "nt" : ""} ce rôle
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="text-base px-3">
+                    {role._count.userRoles}
+                  </Badge>
+                </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {user.firstName && user.lastName
-                          ? `${user.firstName} ${user.lastName}`
-                          : user.name || "Utilisateur"}
-                      </p>
-                      <Badge variant={user.status === "ACTIVE" ? "default" : "secondary"} className="text-xs">
-                        {user.status === "ACTIVE" ? "Actif" : user.status}
-                      </Badge>
+                <Separator />
+
+                {/* Liste des utilisateurs */}
+                {users.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Utilisateurs
+                      </h3>
+                      <div className="h-px flex-1 bg-border" />
                     </div>
 
-                    <div className="flex items-center space-x-4 text-xs text-gray-500">
-                      <div className="flex items-center space-x-1">
-                        <Mail className="w-3 h-3" />
-                        <span className="truncate">{user.email}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>Créé le {formatDate(user.createdAt)}</span>
-                      </div>
+                    <div className="space-y-2">
+                      {users.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                        >
+                          <Avatar className="h-12 w-12 shrink-0">
+                            <AvatarImage src="/placeholder.svg" />
+                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                              {getUserInitials(user)}
+                            </AvatarFallback>
+                          </Avatar>
+
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold truncate">
+                                {user.firstName && user.lastName
+                                  ? `${user.firstName} ${user.lastName}`
+                                  : user.name || "Utilisateur"}
+                              </p>
+                              <Badge
+                                variant={user.status === "ACTIVE" ? "default" : "secondary"}
+                                className="text-xs shrink-0"
+                              >
+                                {user.status === "ACTIVE" ? "Actif" : user.status}
+                              </Badge>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Mail className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{user.email}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Calendar className="w-3 h-3 shrink-0" />
+                                <span>Créé le {formatDate(user.createdAt)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Aucun utilisateur avec ce rôle</p>
-            </div>
-          )}
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="p-4 rounded-full bg-muted/50 mb-4">
+                      <Users className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-sm font-semibold mb-1">Aucun utilisateur</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Aucun utilisateur n'a encore ce rôle
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>

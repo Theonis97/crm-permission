@@ -41,43 +41,54 @@ async function checkPermissions() {
       }
     }
 
-    // Vérifier les permissions produits spécifiquement
-    console.log("\n🔍 Vérification des permissions produits...")
+    // Vérifier les permissions par module
+    const modules = [
+      { name: "produits", prefix: "products.", icon: "📦" },
+      { name: "entrepôts", prefix: "warehouses.", icon: "🏭" },
+      { name: "magasins", prefix: "stores.", icon: "🏪" },
+      { name: "ventes", prefix: "quotes.", icon: "💰" },
+      { name: "tâches", prefix: "tasks.", icon: "✅" },
+    ]
 
-    const productPermissions = await prisma.permission.findMany({
-      where: {
-        name: {
-          startsWith: "products.",
-        },
-      },
-    })
+    for (const module of modules) {
+      console.log(`\n${module.icon} Vérification des permissions ${module.name}...`)
 
-    console.log(`\n📦 Permissions produits trouvées: ${productPermissions.length}`)
-    productPermissions.forEach((perm) => {
-      console.log(`   - ${perm.name}: ${perm.description}`)
-    })
-
-    // Vérifier les rôles avec permissions produits
-    const rolesWithProductPermissions = await prisma.role.findMany({
-      include: {
-        rolePermissions: {
-          include: {
-            permission: true,
+      const modulePermissions = await prisma.permission.findMany({
+        where: {
+          name: {
+            startsWith: module.prefix,
           },
-          where: {
-            permission: {
-              name: {
-                startsWith: "products.",
+        },
+      })
+
+      console.log(`   Permissions trouvées: ${modulePermissions.length}`)
+      modulePermissions.forEach((perm) => {
+        console.log(`   - ${perm.name}: ${perm.description}`)
+      })
+
+      // Vérifier les rôles avec ces permissions
+      const rolesWithModulePermissions = await prisma.role.findMany({
+        include: {
+          rolePermissions: {
+            include: {
+              permission: true,
+            },
+            where: {
+              permission: {
+                name: {
+                  startsWith: module.prefix,
+                },
               },
             },
           },
         },
-      },
-    })
+      })
 
-    console.log(`\n🛡️ Rôles avec permissions produits: ${rolesWithProductPermissions.length}`)
-    for (const role of rolesWithProductPermissions) {
-      console.log(`   - ${role.name}: ${role.rolePermissions.length} permissions produits`)
+      const rolesWithPerms = rolesWithModulePermissions.filter((r) => r.rolePermissions.length > 0)
+      console.log(`   Rôles avec accès: ${rolesWithPerms.length}`)
+      for (const role of rolesWithPerms) {
+        console.log(`      - ${role.name}: ${role.rolePermissions.length} permissions`)
+      }
     }
   } catch (error) {
     console.error("❌ Erreur:", error)

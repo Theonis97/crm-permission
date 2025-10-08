@@ -13,7 +13,16 @@
     "db:reset": "prisma db push --force-reset && prisma db seed",
     "db:studio": "prisma studio",
     "db:verify": "node scripts/verify-database.js",
-    "setup": "npm install && npx prisma generate && npx prisma db push && npx prisma db seed && npm run db:verify"
+    "setup": "npm install && npx prisma generate && npx prisma db push && npx prisma db seed && npm run db:verify",
+    "permissions:add": "node scripts/add-all-missing-permissions.js",
+    "permissions:check": "node scripts/check-permissions.js",
+    "permissions:matrix": "node scripts/show-permissions-matrix.js",
+    "permissions:warehouse": "node scripts/add-warehouse-permissions.js",
+    "permissions:store": "node scripts/add-store-permissions.js",
+    "permissions:product": "node scripts/add-product-permissions.js",
+    "permissions:sales": "node scripts/add-sales-permissions.js",
+    "permissions:task": "node scripts/add-task-permissions.js",
+    "permissions:opportunity": "node scripts/add-opportunity-permissions.js"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
