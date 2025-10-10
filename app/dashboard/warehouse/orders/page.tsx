@@ -214,8 +214,9 @@ export default function OrdersPage() {
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
       year: "numeric",
     })
   }

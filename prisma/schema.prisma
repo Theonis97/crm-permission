@@ -97,6 +97,22 @@ model Contact {
   Opportunity Opportunity[]
 }
 
+model Store {
+  id          String   @id @default(cuid())
+  name        String
+  logo        String?
+  coverImage  String?  @map("cover_image")
+  address     String?
+  phone       String?
+  email       String?
+  whatsapp    String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("stores")
+}
+
 model ProductCategory {
   id             String             @id @default(cuid())
   name           String

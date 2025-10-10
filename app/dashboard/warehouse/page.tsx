@@ -11,7 +11,6 @@ import {
   Warehouse,
   Package,
   TrendingUp,
-  TrendingDown,
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
@@ -24,6 +23,18 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DashboardData, StockAlert } from "@/types/warehouse"
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts"
 
 // Données mockées pour le dashboard
 const mockDashboardData: DashboardData = {
@@ -163,6 +174,29 @@ const mockStockAlerts = [
   },
 ]
 
+// Données pour les graphiques - Métriques pertinentes pour la gestion d'entrepôt
+const monthlyFlowData = [
+  { date: "Jan", entrees: 5200, sorties: 4100 },
+  { date: "Fév", entrees: 6100, sorties: 4500 },
+  { date: "Mar", entrees: 7200, sorties: 4600 },
+  { date: "Avr", entrees: 5800, sorties: 5100 },
+  { date: "Mai", entrees: 6400, sorties: 5700 },
+  { date: "Juin", entrees: 6800, sorties: 5750 },
+  { date: "Juil", entrees: 7100, sorties: 6230 },
+  { date: "Août", entrees: 5900, sorties: 7200 },
+  { date: "Sep", entrees: 6700, sorties: 6300 },
+  { date: "Oct", entrees: 6500, sorties: 6470 },
+]
+
+const stockValueByCategoryData = [
+  { category: "Électronique", value: 850000 },
+  { category: "Accessoires", value: 420000 },
+  { category: "Logiciels", value: 580000 },
+  { category: "Périphériques", value: 380000 },
+  { category: "Câbles", value: 120000 },
+  { category: "Autres", value: 100000 },
+]
+
 export default function WarehouseDashboardPage() {
   const router = useRouter()
   const [data] = useState<DashboardData>(mockDashboardData)
@@ -221,9 +255,46 @@ export default function WarehouseDashboardPage() {
       
       <div className="py-8">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-6">
-        {/* Statistiques principales */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Commandes */}
+        {/* Indicateurs clés */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Références en stock */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Références (SKU)</CardTitle>
+              <Package className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{data.stockStats.totalProducts.toLocaleString()}</div>
+              <div className="mt-2 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs border-red-200 text-red-700">
+                  <XCircle className="h-3 w-3 mr-1" />
+                  {data.stockStats.productsOutOfStock} ruptures
+                </Badge>
+                <Badge variant="outline" className="text-xs border-amber-200 text-amber-700">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  {data.stockStats.productsLowStock} alertes
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Valeur du stock */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Valeur du stock</CardTitle>
+              <BarChart3 className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {((data.stockStats.totalValue || 0) / 1000000).toFixed(2)}M €
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Inventaire valorisé
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Commandes en cours */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Commandes en cours</CardTitle>
@@ -236,118 +307,76 @@ export default function WarehouseDashboardPage() {
                   <Clock className="h-3 w-3 mr-1" />
                   8 en attente
                 </Badge>
-                <Badge variant="outline" className="text-xs border-blue-200 text-blue-700">
-                  <Package className="h-3 w-3 mr-1" />
-                  12 en préparation
-                </Badge>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Produits en stock */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Produits en stock</CardTitle>
-              <Package className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{data.stockStats.totalProducts.toLocaleString()}</div>
-              <div className="mt-2 flex items-center gap-2">
-                <Badge variant="outline" className="text-xs border-green-200 text-green-700">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  {data.stockStats.productsOk}
-                </Badge>
-                <Badge variant="outline" className="text-xs border-amber-200 text-amber-700">
-                  <AlertTriangle className="h-3 w-3 mr-1" />
-                  {data.stockStats.productsLowStock}
-                </Badge>
-                <Badge variant="outline" className="text-xs border-red-200 text-red-700">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  {data.stockStats.productsOutOfStock}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Mouvements */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Mouvements ce mois</CardTitle>
-              <TrendingUp className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {data.movementStats.movementsThisMonth.toLocaleString()}
-              </div>
-              <div className="mt-2 flex items-center gap-4 text-sm">
-                <div className="flex items-center text-green-600">
-                  <ArrowDownRight className="h-4 w-4 mr-1" />
-                  <span className="font-medium">{data.movementStats.entriesThisMonth}</span>
-                </div>
-                <div className="flex items-center text-red-600">
-                  <ArrowUpRight className="h-4 w-4 mr-1" />
-                  <span className="font-medium">{data.movementStats.exitsThisMonth}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Valeur totale du stock */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Valeur du stock</CardTitle>
-              <BarChart3 className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {((data.stockStats.totalValue || 0) / 1000000).toFixed(2)}M €
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {data.stockStats.totalQuantity.toLocaleString()} unités
-              </p>
             </CardContent>
           </Card>
         </div>
 
+        {/* Graphiques décisionnels */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Valeur du stock par catégorie */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-amber-600" />
+                Valeur du stock par catégorie
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={stockValueByCategoryData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="category" stroke="#6b7280" fontSize={11} angle={-20} textAnchor="end" height={80} />
+                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                    formatter={(value: number) => `${(value / 1000).toFixed(0)}k €`}
+                  />
+                  <Bar dataKey="value" fill="#f59e0b" name="Valeur (€)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-
-        {/* Navigation rapide */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Button
-            variant="outline"
-            className="h-auto py-6 flex flex-col items-center gap-2 hover:bg-green-50 hover:border-green-300"
-            onClick={() => router.push("/dashboard/warehouse/products")}
-          >
-            <Package className="h-6 w-6 text-green-600" />
-            <div className="text-center">
-              <div className="font-semibold text-gray-900">Produits</div>
-              <div className="text-xs text-gray-500">Gérer le stock</div>
-            </div>
-          </Button>
-
-          <Button
-            variant="outline"
-            className="h-auto py-6 flex flex-col items-center gap-2 hover:bg-amber-50 hover:border-amber-300"
-            onClick={() => router.push("/dashboard/warehouse/movements")}
-          >
-            <TrendingUp className="h-6 w-6 text-amber-600" />
-            <div className="text-center">
-              <div className="font-semibold text-gray-900">Mouvements</div>
-              <div className="text-xs text-gray-500">Suivi des flux</div>
-            </div>
-          </Button>
-
-          <Button
-            variant="outline"
-            className="h-auto py-6 flex flex-col items-center gap-2 hover:bg-purple-50 hover:border-purple-300"
-            onClick={() => router.push("/dashboard/warehouse/categories")}
-          >
-            <FileText className="h-6 w-6 text-purple-600" />
-            <div className="text-center">
-              <div className="font-semibold text-gray-900">Catégories</div>
-              <div className="text-xs text-gray-500">Organiser les produits</div>
-            </div>
-          </Button>
+          {/* Mouvements entrées/sorties */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-green-600" />
+                Flux mensuels (Entrées vs Sorties)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={monthlyFlowData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                    formatter={(value: number) => value.toLocaleString()}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="entrees" 
+                    stroke="#10b981" 
+                    strokeWidth={2}
+                    name="Entrées"
+                    dot={{ fill: '#10b981' }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="sorties" 
+                    stroke="#ef4444" 
+                    strokeWidth={2}
+                    name="Sorties"
+                    dot={{ fill: '#ef4444' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

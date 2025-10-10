@@ -249,8 +249,9 @@ export default function MovementsPage() {
 
   const formatDateTime = (date: Date) => {
     return date.toLocaleString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
