@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import React from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -43,9 +43,9 @@ import { cn } from "@/lib/utils"
 
 interface StoreLayoutProps {
   children: React.ReactNode
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockStores = [
@@ -73,7 +73,8 @@ const catalogueItems = [
 export default function StoreLayout({ children, params }: StoreLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [currentStore, setCurrentStore] = useState(mockStores.find(s => s.id === params.id) || mockStores[0])
+  const { id } = use(params)
+  const [currentStore, setCurrentStore] = useState(mockStores.find(s => s.id === id) || mockStores[0])
   const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
@@ -86,7 +87,7 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
   }
 
   const isActive = (href: string) => {
-    const basePath = `/dashboard/stores/${params.id}`
+    const basePath = `/dashboard/stores/${id}`
     if (href === "") {
       return pathname === basePath
     }
@@ -192,7 +193,7 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
                     ? "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
                     : "text-gray-700 hover:bg-gray-100"
                 )}
-                onClick={() => router.push(`/dashboard/stores/${params.id}${item.href}`)}
+                onClick={() => router.push(`/dashboard/stores/${id}${item.href}`)}
                 title={sidebarCollapsed ? item.label : undefined}
               >
                 <Icon className="h-5 w-5" />
@@ -243,7 +244,7 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
                           ? "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
                           : "text-gray-600 hover:bg-gray-100"
                       )}
-                      onClick={() => router.push(`/dashboard/stores/${params.id}${item.href}`)}
+                      onClick={() => router.push(`/dashboard/stores/${id}${item.href}`)}
                     >
                       <Icon className="h-4 w-4" />
                       {item.label}

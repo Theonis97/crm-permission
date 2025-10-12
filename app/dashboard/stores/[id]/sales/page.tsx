@@ -46,9 +46,9 @@ import {
 import { cn } from "@/lib/utils"
 
 interface SalesPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Données mockées pour les commandes

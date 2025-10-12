@@ -51,9 +51,9 @@ import {
 import { cn } from "@/lib/utils"
 
 interface PosPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Données mockées pour les produits (style restaurant/café)

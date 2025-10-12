@@ -14,9 +14,9 @@ import {
 } from "lucide-react"
 
 interface ProductsPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockProducts = [

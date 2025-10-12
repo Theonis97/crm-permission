@@ -7,9 +7,9 @@ import { StorePageHeader } from "@/components/stores/store-page-header"
 import { Tag, Plus, Package, TrendingUp } from "lucide-react"
 
 interface BrandsPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockBrands = [

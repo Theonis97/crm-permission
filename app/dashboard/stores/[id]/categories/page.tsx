@@ -6,9 +6,9 @@ import { StorePageHeader } from "@/components/stores/store-page-header"
 import { FolderTree, Plus, Package } from "lucide-react"
 
 interface CategoriesPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockCategories = [

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, use } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StorePageHeader } from "@/components/stores/store-page-header"
@@ -24,9 +24,9 @@ import {
 } from "recharts"
 
 interface StorePageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Données mockées pour le magasin
@@ -156,7 +156,8 @@ const sessionsData = Array.from({ length: 15 }, (_, i) => ({
 }))
 
 export default function StorePage({ params }: StorePageProps) {
-  const storeData = mockStoreData[params.id as keyof typeof mockStoreData] || mockStoreData["1"]
+  const { id } = use(params)
+  const storeData = mockStoreData[id as keyof typeof mockStoreData] || mockStoreData["1"]
   const [selectedPeriod, setSelectedPeriod] = useState("Ce Mois")
 
   return (

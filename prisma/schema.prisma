@@ -91,10 +91,13 @@ model Contact {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
+  quotes         Quote[]
+  invoices       Invoice[]
+  opportunities  Opportunity[]
+  storeContacts  StoreContact[]
+  orders         Order[]
+
   @@map("contacts")
-    quotes   Quote[]
-  invoices Invoice[]
-  Opportunity Opportunity[]
 }
 
 model Store {
@@ -110,7 +113,31 @@ model Store {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  // Relations
+  products         StoreProduct[]
+  orders           Order[]
+  deliveryPersons  DeliveryPerson[]
+  deliveryZones    DeliveryZone[]
+  storeContacts    StoreContact[]
+  transfersFrom    Transfer[]       @relation("fromStore")
+  transfersTo      Transfer[]       @relation("toStore")
+
   @@map("stores")
+}
+
+model Brand {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  logo        String?
+  website     String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  products    Product[]
+
+  @@map("brands")
 }
 
 model ProductCategory {
@@ -133,24 +160,78 @@ model ProductCategory {
 model Product {
   id           String           @id @default(cuid())
   name         String
+  sku          String?          @unique // Code produit
   description  String?
-  photos       String[]         // tableau d’URLs
+  photos       String[]         // tableau d'URLs
   prixVente    Float            @map("prix_vente")
   prixAchat    Float            @map("prix_achat")
-  tva          Float
-  stock        Int              @default(0) // <--- Nouveau champ
-  categoryId   String?          @map("category_id")
-  category     ProductCategory? @relation(fields: [categoryId], references: [id])
+  tva          Float            @default(0)
+  stock        Int              @default(0)
+  minStock     Int              @default(0) @map("min_stock") // Seuil d'alerte stock
+  maxStock     Int?             @map("max_stock") // Stock maximum
+  
+  // Relations obligatoires et optionnelles
+  categoryId   String           @map("category_id") // Obligatoire
+  category     ProductCategory  @relation(fields: [categoryId], references: [id])
+  
+  brandId      String?          @map("brand_id") // Optionnel
+  brand        Brand?           @relation(fields: [brandId], references: [id])
 
-  quoteItems   QuoteItem[]
-  invoiceItems InvoiceItem[]
+  quoteItems       QuoteItem[]
+  invoiceItems     InvoiceItem[]
+  stockMovements   StockMovement[]
+  storeProducts    StoreProduct[]
+  orderItems       OrderItem[]
+  warehouseStocks  WarehouseStock[]
+  lots             Lot[]
+  transferItems    TransferItem[]
+  variants         ProductVariant[]
 
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
   @@map("products")
-  StockMovement StockMovement[]
 }
+
+// Variantes de produits (ex: iPhone 14 Pro - 128GB - Noir)
+model ProductVariant {
+  id              String   @id @default(cuid())
+  productId       String   @map("product_id")
+  sku             String   @unique // SKU spécifique à la variante
+  name            String?  // Nom de la variante (ex: "iPhone 14 Pro 128GB Noir")
+  
+  // Prix spécifiques à la variante (peut différer du produit parent)
+  prixVente       Float?   @map("prix_vente")
+  prixAchat       Float?   @map("prix_achat")
+  
+  // Stock spécifique à la variante
+  stock           Int      @default(0)
+  minStock        Int      @default(0) @map("min_stock")
+  
+  // Attributs de la variante (ex: {color: "Noir", size: "128GB"})
+  attributes      Json     // {attributeName: attributeValue}
+  
+  // Images spécifiques à la variante
+  images          String[] @default([])
+  
+  // Poids et dimensions (optionnel)
+  weight          Float?   // en kg
+  length          Float?   // en cm
+  width           Float?   // en cm
+  height          Float?   // en cm
+  
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+
+  @@map("product_variants")
+  @@index([productId])
+  @@index([sku])
+}
+
 
 model StockMovement {
   id          String   @id @default(cuid())
@@ -159,10 +240,12 @@ model StockMovement {
   type        StockType
   note        String?
   userId      String   @map("user_id")
+  lotId       String?  @map("lot_id") // Traçabilité par lot
   createdAt   DateTime @default(now()) @map("created_at")
 
   product     Product  @relation(fields: [productId], references: [id])
   user        User     @relation(fields: [userId], references: [id])
+  lot         Lot?     @relation(fields: [lotId], references: [id])
   
   @@map("stock_movements")
 }
@@ -173,6 +256,192 @@ enum StockType {
   ADJUSTMENT
   SALE
   RETURN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERING
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderPriority {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryPersonStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+// Relation produit-magasin (stock par magasin)
+model StoreProduct {
+  id          String   @id @default(cuid())
+  storeId     String   @map("store_id")
+  productId   String   @map("product_id")
+  stock       Int      @default(0)
+  minStock    Int      @default(0) @map("min_stock")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, productId])
+  @@map("store_products")
+}
+
+// Relation contact-magasin (clients du magasin)
+model StoreContact {
+  id          String   @id @default(cuid())
+  storeId     String   @map("store_id")
+  contactId   String   @map("contact_id")
+  totalOrders Int      @default(0) @map("total_orders")
+  totalSpent  Float    @default(0) @map("total_spent")
+  lastOrderAt DateTime? @map("last_order_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, contactId])
+  @@map("store_contacts")
+}
+
+// Commandes magasin
+model Order {
+  id                  String        @id @default(cuid())
+  number              String        @unique
+  storeId             String        @map("store_id")
+  contactId           String?       @map("contact_id") // Peut être null pour client walk-in
+  customerName        String        @map("customer_name")
+  customerPhone       String        @map("customer_phone")
+  customerEmail       String?       @map("customer_email")
+  deliveryAddress     String?       @map("delivery_address")
+  
+  status              OrderStatus   @default(PENDING)
+  priority            OrderPriority @default(NORMAL)
+  
+  subtotal            Float         @default(0)
+  totalDiscount       Float         @default(0) @map("total_discount")
+  totalTax            Float         @default(0) @map("total_tax")
+  deliveryFee         Float         @default(0) @map("delivery_fee")
+  total               Float         @default(0)
+  
+  paymentMethod       PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus       PaymentStatus @default(PENDING) @map("payment_status")
+  paidAt              DateTime?     @map("paid_at")
+  
+  deliveryPersonId    String?       @map("delivery_person_id")
+  deliveryZoneId      String?       @map("delivery_zone_id")
+  estimatedDelivery   DateTime?     @map("estimated_delivery")
+  deliveredAt         DateTime?     @map("delivered_at")
+  
+  notes               String?
+  cancelReason        String?       @map("cancel_reason")
+  
+  createdById         String        @map("created_by_id")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  store               Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  contact             Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deliveryPerson      DeliveryPerson?    @relation(fields: [deliveryPersonId], references: [id], onDelete: SetNull)
+  deliveryZone        DeliveryZone?      @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
+  createdBy           User               @relation(fields: [createdById], references: [id])
+  
+  items               OrderItem[]
+  whatsappMessages    WhatsAppMessage[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String   @map("order_id")
+  productId       String   @map("product_id")
+  variantId       String?  @map("variant_id") // Si commande d'une variante spécifique
+  name            String   // Snapshot du nom au moment de la commande
+  sku             String?  // Snapshot du SKU
+  variantName     String?  @map("variant_name") // Snapshot du nom de la variante
+  variantAttributes Json? @map("variant_attributes") // Snapshot des attributs (couleur, taille, etc.)
+  quantity        Int
+  unitPrice       Float    @map("unit_price")
+  discount        Float    @default(0)
+  taxRate         Float    @default(0) @map("tax_rate")
+  total           Float
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id])
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@map("order_items")
+}
+
+// Livreurs
+model DeliveryPerson {
+  id              String               @id @default(cuid())
+  storeId         String               @map("store_id")
+  name            String
+  phone           String
+  email           String?
+  avatar          String?
+  vehicle         String?              // Type de véhicule
+  plateNumber     String?              @map("plate_number") // Plaque d'immatriculation
+  status          DeliveryPersonStatus @default(AVAILABLE)
+  rating          Float?               // Note moyenne
+  totalDeliveries Int                  @default(0) @map("total_deliveries")
+  isActive        Boolean              @default(true) @map("is_active")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  store           Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  wallet          CourierWallet?
+
+  @@map("delivery_persons")
+}
+
+// Zones de livraison
+model DeliveryZone {
+  id          String   @id @default(cuid())
+  storeId     String   @map("store_id")
+  name        String
+  color       String   @default("#3B82F6") // Couleur pour la carte
+  coverage    String?  // Description de la couverture
+  latitude    Float?   // Centre de la zone
+  longitude   Float?
+  deliveryFee Float    @default(0) @map("delivery_fee")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders      Order[]
+
+  @@map("delivery_zones")
 }
 
 model Quote {
@@ -395,20 +664,22 @@ model User {
   quotes   Quote[]
   invoices Invoice[]
 
-  assignedRoles UserRole[] @relation("AssignedBy")
+  assignedRoles              UserRole[]                 @relation("AssignedBy")
+  tasks                      Task[]
+  opportunityParticipants    OpportunityParticipant[]
+  opportunities              Opportunity[]
+  auditLogs                  AuditLog[]
+  contacts                   Contact[]
+  stockMovements             StockMovement[]
+  orders                     Order[]
+  managedWarehouses          Warehouse[]
 
   @@map("users")
-  Task Task[]
-  OpportunityParticipant OpportunityParticipant[]
-  Opportunity Opportunity[]
-  AuditLog AuditLog[]
-  Contact Contact[]
-  StockMovement StockMovement[]
 }
 
 model VerificationToken {
   identifier String
-  token      String   @unique
+   token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
@@ -467,4 +738,219 @@ model RolePermission {
 
   @@unique([roleId, permissionId])
   @@map("role_permissions")
+}
+
+// ============================================================================
+// LOGISTIQUE & ENTREPÔTS
+// ============================================================================
+
+// Entrepôt central
+model Warehouse {
+  id         String    @id @default(cuid())
+  name       String
+  code       String    @unique
+  address    String?
+  phone      String?
+  managerId  String?   @map("manager_id")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  manager        User?            @relation(fields: [managerId], references: [id])
+  stocks         WarehouseStock[]
+  transfersFrom  Transfer[]       @relation("fromWarehouse")
+  transfersTo    Transfer[]       @relation("toWarehouse")
+
+  @@map("warehouses")
+}
+
+// Stock par entrepôt
+model WarehouseStock {
+  id          String    @id @default(cuid())
+  warehouseId String    @map("warehouse_id")
+  productId   String    @map("product_id")
+  quantity    Int       @default(0)
+  reserved    Int       @default(0) // Quantité réservée pour commandes en cours
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, productId])
+  @@map("warehouse_stocks")
+}
+
+// Statuts des transferts
+enum TransferStatus {
+  PENDING      // En attente
+  IN_PROGRESS  // En cours
+  COMPLETED    // Terminé
+  CANCELLED    // Annulé
+}
+
+// Transferts entre entrepôts ou magasins
+model Transfer {
+  id              String         @id @default(cuid())
+  code            String         @unique
+  fromWarehouseId String?        @map("from_warehouse_id")
+  toWarehouseId   String?        @map("to_warehouse_id")
+  fromStoreId     String?        @map("from_store_id")
+  toStoreId       String?        @map("to_store_id")
+  status          TransferStatus @default(PENDING)
+  scheduledAt     DateTime?      @map("scheduled_at")
+  completedAt     DateTime?      @map("completed_at")
+  notes           String?
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  items         TransferItem[]
+  fromWarehouse Warehouse?     @relation("fromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse?     @relation("toWarehouse", fields: [toWarehouseId], references: [id])
+  fromStore     Store?         @relation("fromStore", fields: [fromStoreId], references: [id])
+  toStore       Store?         @relation("toStore", fields: [toStoreId], references: [id])
+
+  @@map("transfers")
+}
+
+// Articles dans un transfert
+model TransferItem {
+  id           String   @id @default(cuid())
+  transferId   String   @map("transfer_id")
+  productId    String   @map("product_id")
+  quantity     Int
+  quantityReceived Int? @map("quantity_received") // Quantité réellement reçue
+
+  transfer     Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id])
+
+  @@map("transfer_items")
+}
+
+// Lots et dates de péremption
+model Lot {
+  id            String    @id @default(cuid())
+  lotNumber     String    @unique
+  productId     String    @map("product_id")
+  quantityTotal Int       @map("quantity_total")
+  expiryDate    DateTime? @map("expiry_date")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
+
+  @@map("lots")
+}
+
+// ============================================================================
+// GESTION LIVREURS & PORTEFEUILLE
+// ============================================================================
+
+// Portefeuille du livreur
+model CourierWallet {
+  id            String     @id @default(cuid())
+  courierId     String     @unique @map("courier_id")
+  balance       Float      @default(0)
+  currency      String     @default("XAF") // FCFA
+  lastUpdatedAt DateTime   @updatedAt @map("last_updated_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  courier       DeliveryPerson      @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  transactions  CourierTransaction[]
+
+  @@map("courier_wallets")
+}
+
+// Type de transaction livreur
+enum TransactionType {
+  CREDIT   // Crédit (paiement reçu)
+  DEBIT    // Débit (retrait, commission)
+}
+
+// Transactions du portefeuille livreur
+model CourierTransaction {
+  id          String          @id @default(cuid())
+  walletId    String          @map("wallet_id")
+  type        TransactionType
+  amount      Float
+  description String?
+  reference   String?         // Référence de la commande ou transaction
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  wallet      CourierWallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("courier_transactions")
+}
+
+// ============================================================================
+// INTÉGRATION WHATSAPP
+// ============================================================================
+
+// Statuts des messages WhatsApp
+enum WhatsAppMessageStatus {
+  NEW         // Nouveau
+  PROCESSING  // En traitement
+  PROCESSED   // Traité
+  REPLIED     // Répondu
+  FAILED      // Échoué
+  IGNORED     // Ignoré
+}
+
+// Messages WhatsApp reçus/envoyés
+model WhatsAppMessage {
+  id            String                @id @default(cuid())
+  waId          String                @unique @map("wa_id") // WhatsApp message ID
+  fromPhone     String                @map("from_phone")
+  toPhone       String?               @map("to_phone")
+  content       String                @db.Text
+  messageType   String                @default("text") @map("message_type") // text, image, audio, etc.
+  status        WhatsAppMessageStatus @default(NEW)
+  orderId       String?               @map("order_id")
+  processedAt   DateTime?             @map("processed_at")
+  errorMessage  String?               @map("error_message") @db.Text
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  order         Order?                @relation(fields: [orderId], references: [id])
+
+  @@index([fromPhone])
+  @@index([status])
+  @@map("whatsapp_messages")
+}
+
+// ============================================================================
+// RAPPORTS & ANALYTICS
+// ============================================================================
+
+// Type de rapport
+enum ReportType {
+  SALES          // Rapport de ventes
+  INVENTORY      // Rapport d'inventaire
+  DELIVERIES     // Rapport de livraisons
+  FINANCIAL      // Rapport financier
+  CUSTOM         // Rapport personnalisé
+}
+
+// Statut du rapport
+enum ReportStatus {
+  PENDING     // En attente
+  GENERATING  // En génération
+  COMPLETED   // Terminé
+  FAILED      // Échoué
+}
+
+// Rapports générés
+model Report {
+  id          String       @id @default(cuid())
+  name        String
+  type        ReportType
+  status      ReportStatus @default(PENDING)
+  parameters  Json?        // Paramètres du rapport (période, filtres, etc.)
+  result      Json?        // Résultat du rapport
+  fileUrl     String?      @map("file_url") // URL du fichier PDF/Excel généré
+  generatedBy String?      @map("generated_by")
+  generatedAt DateTime?    @map("generated_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([status])
+  @@map("reports")
 }

@@ -23,9 +23,9 @@ import {
 } from "lucide-react"
 
 interface MovementsPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockMovements = [

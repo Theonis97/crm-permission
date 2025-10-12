@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, use } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -37,9 +37,9 @@ import {
 } from "@/components/ui/select"
 
 interface DriversPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mockDrivers = [
@@ -125,7 +125,7 @@ const mockDrivers = [
 
 export default function DriversPage({ params }: DriversPageProps) {
   const router = useRouter()
-  const storeId = params.id
+  const { id: storeId } = use(params)
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")

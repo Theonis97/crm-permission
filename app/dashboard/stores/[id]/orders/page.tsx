@@ -57,9 +57,9 @@ import {
 import { cn } from "@/lib/utils"
 
 interface OrdersPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Données mockées pour les commandes (volume élevé)
