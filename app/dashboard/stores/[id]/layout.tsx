@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import React from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -14,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Store,
   Home,
   ShoppingBag,
   Users,
@@ -22,17 +22,22 @@ import {
   FolderTree,
   Tag,
   TrendingUp,
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Grid3x3,
-  LogOut,
-  Settings,
-  User,
   Truck,
+  Settings,
+  HelpCircle,
+  LogOut,
+  ChevronDown,
+  Plus,
   LayoutGrid,
   Menu,
   X,
+  ChevronRightIcon,
+  ChevronLeft,
+  Calculator,
+  ChevronRight,
+  Grid3x3,
+  User,
+  Map,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -51,9 +56,11 @@ const mockStores = [
 
 const menuItems = [
   { icon: Home, label: "Vue d'ensemble", href: "" },
-  { icon: ShoppingBag, label: "Ventes", href: "/sales" },
+  { icon: Package, label: "Commandes", href: "/orders" },
+  { icon: Calculator, label: "Caisse", href: "/pos" },
   { icon: Users, label: "Contacts", href: "/contacts" },
   { icon: Truck, label: "Livreurs", href: "/drivers" },
+  { icon: Map, label: "Zones", href: "/zones" },
   { icon: TrendingUp, label: "Mouvements", href: "/movements" },
 ]
 
@@ -95,23 +102,11 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
         "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
         sidebarCollapsed ? "w-16" : "w-64"
       )}>
-        {/* Collapse Button */}
-        <div className="p-3 border-b border-gray-200 flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="h-8 w-8 p-0"
-          >
-            {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
-          </Button>
-        </div>
-
-        {/* Store Selector */}
-        <div className={cn("p-4 border-b border-gray-200", sidebarCollapsed && "hidden")}>
+        {/* Store Selector with Collapse Button */}
+        <div className={cn("px-4 py-2 border-b border-gray-200 relative", sidebarCollapsed && "hidden")}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+              <Button variant="ghost" className="w-full justify-between p-2 h-auto bg-gray-100">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={currentStore.logo} alt={currentStore.name} />
@@ -120,11 +115,11 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-left">
-                    <p className="font-semibold text-sm text-gray-900">{currentStore.name}</p>
+                    <p className="font-semibold text-sm">{currentStore.name}</p>
                     <p className="text-xs text-gray-500">Magasin</p>
                   </div>
                 </div>
-                <ChevronDown className="h-4 w-4 text-gray-400" />
+                
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
@@ -155,7 +150,31 @@ export default function StoreLayout({ children, params }: StoreLayoutProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          
+          {/* Collapse Button - Positioned absolutely on the right */}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="absolute top-6 -right-3 h-5 w-5 p-0 hover:bg-gray-100"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </Button>
         </div>
+        
+        {/* Collapsed State - Show only collapse button */}
+        {sidebarCollapsed && (
+          <div className="p-3 border-b border-gray-200 flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="h-8 w-8 p-0 hover:bg-gray-100"
+            >
+              <ChevronRightIcon className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Navigation Menu */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">

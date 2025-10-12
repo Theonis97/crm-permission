@@ -21,9 +21,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
 } from "recharts"
 
 interface StorePageProps {
@@ -117,14 +114,24 @@ const mockStoreData = {
   },
 }
 
-// Données pour les graphiques
+// Fonction pour formater les prix en FCFA
+const formatFCFA = (amount: number) => {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'XAF',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount).replace('XAF', 'FCFA')
+}
+
+// Données pour les graphiques (en FCFA)
 const revenueData = [
-  { name: 'Jan', thisMonth: 65000, lastMonth: 58000 },
-  { name: 'Fév', thisMonth: 72000, lastMonth: 62000 },
-  { name: 'Mar', thisMonth: 68000, lastMonth: 65000 },
-  { name: 'Avr', thisMonth: 78000, lastMonth: 70000 },
-  { name: 'Mai', thisMonth: 85000, lastMonth: 75000 },
-  { name: 'Jun', thisMonth: 94127, lastMonth: 82000 },
+  { name: 'Jan', thisMonth: 39000000, lastMonth: 34800000 },
+  { name: 'Fév', thisMonth: 43200000, lastMonth: 37200000 },
+  { name: 'Mar', thisMonth: 40800000, lastMonth: 39000000 },
+  { name: 'Avr', thisMonth: 46800000, lastMonth: 42000000 },
+  { name: 'Mai', thisMonth: 51000000, lastMonth: 45000000 },
+  { name: 'Jun', thisMonth: 56476200, lastMonth: 49200000 },
 ]
 
 const salesData = [
@@ -139,7 +146,7 @@ const salesData = [
 
 const orderValueData = Array.from({ length: 28 }, (_, i) => ({
   day: i + 1,
-  value: Math.floor(Math.random() * 500) + 800
+  value: Math.floor(Math.random() * 300000) + 480000 // 800-1300 USD = 480k-780k FCFA
 }))
 
 const sessionsData = Array.from({ length: 15 }, (_, i) => ({
@@ -163,8 +170,8 @@ export default function StorePage({ params }: StorePageProps) {
         {/* Header avec salutation et période */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Hey, Fikri 👋</h2>
-            <p className="text-gray-600">Lundi, 24 Février 2024</p>
+            <h2 className="text-2xl font-bold text-gray-900">Hey, Admin 👋</h2>
+            <p className="text-gray-600">Lundi, 24 Février 2025</p>
           </div>
           <div className="flex items-center gap-2">
             <Button 
@@ -200,7 +207,7 @@ export default function StorePage({ params }: StorePageProps) {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-gray-900">$23,127</div>
+              <div className="text-3xl font-bold text-gray-900">13 876 200 FCFA</div>
               <div className="flex items-center gap-1 text-sm mt-2">
                 <span className="text-green-600 font-medium">↗ 12%</span>
                 <span className="text-gray-500">vs mois dernier</span>
@@ -234,7 +241,7 @@ export default function StorePage({ params }: StorePageProps) {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-gray-900">$15,239</div>
+              <div className="text-3xl font-bold text-gray-900">9 143 400 FCFA</div>
               <div className="flex items-center gap-1 text-sm mt-2">
                 <span className="text-green-600 font-medium">↗ 8%</span>
                 <span className="text-gray-500">vs mois dernier</span>
@@ -273,7 +280,7 @@ export default function StorePage({ params }: StorePageProps) {
                     <ExternalLink className="h-3 w-3" />
                   </Button>
                 </div>
-                <div className="text-3xl font-bold text-gray-900">$94,127</div>
+                <div className="text-3xl font-bold text-gray-900">56 476 200 FCFA</div>
                 <div className="flex items-center gap-1 text-sm mt-1">
                   <span className="text-green-600 font-medium">↗ 9%</span>
                   <span className="text-gray-500">vs mois dernier</span>
@@ -312,10 +319,10 @@ export default function StorePage({ params }: StorePageProps) {
                       axisLine={false}
                       tickLine={false}
                       tick={{ fontSize: 12, fill: '#6b7280' }}
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                      tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M FCFA`}
                     />
                     <Tooltip 
-                      formatter={(value: any) => [`$${value.toLocaleString()}`, '']}
+                      formatter={(value: any) => [`${formatFCFA(value)}`, '']}
                       labelStyle={{ color: '#374151' }}
                       contentStyle={{ 
                         backgroundColor: 'white', 
@@ -414,7 +421,7 @@ export default function StorePage({ params }: StorePageProps) {
                     <ExternalLink className="h-3 w-3" />
                   </Button>
                 </div>
-                <div className="text-3xl font-bold text-gray-900">$992</div>
+                <div className="text-3xl font-bold text-gray-900">595 200 FCFA</div>
                 <div className="flex items-center gap-1 text-sm mt-1">
                   <span className="text-green-600 font-medium">↗ 2.4%</span>
                   <span className="text-gray-500">vs mois dernier</span>
@@ -437,7 +444,7 @@ export default function StorePage({ params }: StorePageProps) {
                     />
                     <YAxis hide />
                     <Tooltip 
-                      formatter={(value: any) => [`$${value}`, 'Valeur']}
+                      formatter={(value: any) => [`${formatFCFA(value)}`, 'Valeur']}
                       labelFormatter={(label) => `Jour ${label}`}
                       contentStyle={{ 
                         backgroundColor: 'white', 

@@ -189,416 +189,459 @@ export default function ContactsPage() {
   }
 
   const renderGridView = () => (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {filteredContacts.map((contact) => (
-        <Card
+        <div
           key={contact.id}
-          className="hover:shadow-md transition-shadow cursor-pointer"
+          className="group relative bg-white rounded-2xl border border-gray-200/50 hover:border-blue-300/50 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden"
           onClick={() => handleViewContact(contact)}
         >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Avatar>
-                  <AvatarImage src={contact.photo || "/placeholder.svg"} />
-                  <AvatarFallback>{getContactInitials(contact)}</AvatarFallback>
-                </Avatar>
+          {/* Gradient d'arrière-plan au hover */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/0 via-purple-50/0 to-pink-50/0 group-hover:from-blue-50/50 group-hover:via-purple-50/30 group-hover:to-pink-50/20 transition-all duration-500" />
+          
+          {/* Barre colorée en haut */}
+          <div className={`h-1.5 ${
+            contact.status === 'CLIENT' ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
+            contact.status === 'PROSPECT' ? 'bg-gradient-to-r from-blue-400 to-cyan-500' :
+            contact.status === 'LEAD' ? 'bg-gradient-to-r from-yellow-400 to-orange-500' :
+            'bg-gradient-to-r from-gray-400 to-gray-500'
+          }`} />
+
+          <div className="relative p-6">
+            {/* Header avec avatar */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Avatar className="h-14 w-14 border-2 border-white shadow-lg ring-2 ring-gray-100 group-hover:ring-blue-200 transition-all duration-300">
+                    <AvatarImage src={contact.photo || "/placeholder.svg"} />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold text-lg">
+                      {getContactInitials(contact)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                    contact.status === 'CLIENT' ? 'bg-green-500' : 
+                    contact.status === 'PROSPECT' ? 'bg-blue-500' : 
+                    'bg-yellow-500'
+                  }`} />
+                </div>
                 <div>
-                  <h3 className="font-semibold">{getContactName(contact)}</h3>
-                  {contact.job && <p className="text-sm text-muted-foreground">{contact.job}</p>}
+                  <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                    {getContactName(contact)}
+                  </h3>
+                  {contact.job && (
+                    <p className="text-sm text-gray-600 line-clamp-1">{contact.job}</p>
+                  )}
                 </div>
               </div>
+              
               <PermissionGuard permission="contacts.edit">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleViewContact(contact)
-                      }}
-                    >
-                      <Eye className="mr-2 h-4 w-4" />
-                      Voir le détail
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewContact(contact) }}>
+                      <Eye className="mr-2 h-4 w-4" /> Voir le détail
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEditContact(contact)
-                      }}
-                    >
-                      <Edit className="mr-2 h-4 w-4" />
-                      Modifier
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditContact(contact) }}>
+                      <Edit className="mr-2 h-4 w-4" /> Modifier
                     </DropdownMenuItem>
                     <PermissionGuard permission="contacts.delete">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteContact(contact)
-                        }}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Supprimer
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDeleteContact(contact) }} className="text-red-600">
+                        <Trash2 className="mr-2 h-4 w-4" /> Supprimer
                       </DropdownMenuItem>
                     </PermissionGuard>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </PermissionGuard>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <Badge className={getStatusColor(contact.status)}>{contact.status}</Badge>
-              <Badge className={getTypeColor(contact.type)}>{contact.type}</Badge>
+
+            {/* Badges */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge className={`${getStatusColor(contact.status)} font-medium px-3 py-1 rounded-full`}>
+                {contact.status}
+              </Badge>
+              <Badge className={`${getTypeColor(contact.type)} font-medium px-3 py-1 rounded-full`}>
+                {contact.type}
+              </Badge>
             </div>
 
-            {contact.email && (
-              <div className="flex items-center text-sm text-muted-foreground">
-                <Mail className="mr-2 h-4 w-4" />
-                <span className="truncate">{contact.email}</span>
-              </div>
-            )}
+            {/* Informations de contact */}
+            <div className="space-y-2.5">
+              {contact.email && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 group/item hover:text-blue-600 transition-colors">
+                  <div className="p-1.5 bg-blue-50 rounded-lg group-hover/item:bg-blue-100 transition-colors">
+                    <Mail className="h-3.5 w-3.5 text-blue-600" />
+                  </div>
+                  <span className="truncate">{contact.email}</span>
+                </div>
+              )}
 
-            {contact.phone && (
-              <div className="flex items-center text-sm text-muted-foreground">
-                <Phone className="mr-2 h-4 w-4" />
-                <span>{contact.phone}</span>
-              </div>
-            )}
+              {contact.phone && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 group/item hover:text-green-600 transition-colors">
+                  <div className="p-1.5 bg-green-50 rounded-lg group-hover/item:bg-green-100 transition-colors">
+                    <Phone className="h-3.5 w-3.5 text-green-600" />
+                  </div>
+                  <span>{contact.phone}</span>
+                </div>
+              )}
+            </div>
 
+            {/* Tags */}
             {contact.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {contact.tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-                {contact.tags.length > 3 && (
-                  <Badge variant="outline" className="text-xs">
-                    +{contact.tags.length - 3}
-                  </Badge>
-                )}
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="flex flex-wrap gap-1.5">
+                  {contact.tags.slice(0, 3).map((tag) => (
+                    <span key={tag} className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+                      #{tag}
+                    </span>
+                  ))}
+                  {contact.tags.length > 3 && (
+                    <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+                      +{contact.tags.length - 3}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
+            {/* Assigné à */}
             {contact.assignedUser && (
-              <div className="text-xs text-muted-foreground">
-                Assigné à {contact.assignedUser.firstName} {contact.assignedUser.lastName}
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                    {contact.assignedUser.firstName?.charAt(0)}
+                  </div>
+                  <span className="text-xs text-gray-600">
+                    {contact.assignedUser.firstName} {contact.assignedUser.lastName}
+                  </span>
+                </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ))}
     </div>
   )
 
   const renderTableView = () => (
-    <Card>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Contact</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Statut</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Téléphone</TableHead>
-            <TableHead>Assigné à</TableHead>
-            <TableHead>Créé le</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredContacts.map((contact) => (
-            <TableRow
-              key={contact.id}
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleViewContact(contact)}
-            >
-              <TableCell>
-                <div className="flex items-center space-x-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={contact.photo || "/placeholder.svg"} />
-                    <AvatarFallback className="text-xs">{getContactInitials(contact)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-medium">{getContactName(contact)}</div>
-                    {contact.job && <div className="text-sm text-muted-foreground">{contact.job}</div>}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge className={getTypeColor(contact.type)}>{contact.type}</Badge>
-              </TableCell>
-              <TableCell>
-                <Badge className={getStatusColor(contact.status)}>{contact.status}</Badge>
-              </TableCell>
-              <TableCell>
-                {contact.email && (
-                  <a
-                    href={`mailto:${contact.email}`}
-                    className="text-blue-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {contact.email}
-                  </a>
-                )}
-              </TableCell>
-              <TableCell>
-                {contact.phone && (
-                  <a
-                    href={`tel:${contact.phone}`}
-                    className="text-blue-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {contact.phone}
-                  </a>
-                )}
-              </TableCell>
-              <TableCell>
-                {contact.assignedUser && (
-                  <div className="text-sm">
-                    {contact.assignedUser.firstName} {contact.assignedUser.lastName}
-                  </div>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="text-sm text-muted-foreground">
-                  {format(new Date(contact.createdAt), "dd/MM/yyyy", { locale: fr })}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                <PermissionGuard permission="contacts.edit">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleViewContact(contact)
-                        }}
-                      >
-                        <Eye className="mr-2 h-4 w-4" />
-                        Voir le détail
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleEditContact(contact)
-                        }}
-                      >
-                        <Edit className="mr-2 h-4 w-4" />
-                        Modifier
-                      </DropdownMenuItem>
-                      <PermissionGuard permission="contacts.delete">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteContact(contact)
-                          }}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </PermissionGuard>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </PermissionGuard>
-              </TableCell>
+    <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100/50 border-b-2 border-gray-200">
+              <TableHead className="font-bold text-gray-900">Contact</TableHead>
+              <TableHead className="font-bold text-gray-900">Type</TableHead>
+              <TableHead className="font-bold text-gray-900">Statut</TableHead>
+              <TableHead className="font-bold text-gray-900">Email</TableHead>
+              <TableHead className="font-bold text-gray-900">Téléphone</TableHead>
+              <TableHead className="font-bold text-gray-900">Assigné à</TableHead>
+              <TableHead className="font-bold text-gray-900">Créé le</TableHead>
+              <TableHead className="text-right font-bold text-gray-900">Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Card>
+          </TableHeader>
+          <TableBody>
+            {filteredContacts.map((contact, index) => (
+              <TableRow
+                key={contact.id}
+                className="group cursor-pointer hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-purple-50/30 transition-all duration-200 border-b border-gray-100"
+                onClick={() => handleViewContact(contact)}
+              >
+                <TableCell className="py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Avatar className="h-10 w-10 border-2 border-white shadow-md ring-1 ring-gray-200 group-hover:ring-blue-300 transition-all duration-300">
+                        <AvatarImage src={contact.photo || "/placeholder.svg"} />
+                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold">
+                          {getContactInitials(contact)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                        contact.status === 'CLIENT' ? 'bg-green-500' : 
+                        contact.status === 'PROSPECT' ? 'bg-blue-500' : 
+                        'bg-yellow-500'
+                      }`} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        {getContactName(contact)}
+                      </div>
+                      {contact.job && (
+                        <div className="text-sm text-gray-600">{contact.job}</div>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge className={`${getTypeColor(contact.type)} font-medium px-3 py-1 rounded-full`}>
+                    {contact.type === 'PERSONNE' ? '👤 ' : '🏢 '}{contact.type}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge className={`${getStatusColor(contact.status)} font-medium px-3 py-1 rounded-full`}>
+                    {contact.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {contact.email && (
+                    <a
+                      href={`mailto:${contact.email}`}
+                      className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors group/email"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="p-1.5 bg-blue-50 rounded-lg group-hover/email:bg-blue-100 transition-colors">
+                        <Mail className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                      <span className="text-sm">{contact.email}</span>
+                    </a>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {contact.phone && (
+                    <a
+                      href={`tel:${contact.phone}`}
+                      className="flex items-center gap-2 text-gray-700 hover:text-green-600 transition-colors group/phone"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="p-1.5 bg-green-50 rounded-lg group-hover/phone:bg-green-100 transition-colors">
+                        <Phone className="h-3.5 w-3.5 text-green-600" />
+                      </div>
+                      <span className="text-sm">{contact.phone}</span>
+                    </a>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {contact.assignedUser && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        {contact.assignedUser.firstName?.charAt(0)}
+                      </div>
+                      <span className="text-sm text-gray-700">
+                        {contact.assignedUser.firstName} {contact.assignedUser.lastName}
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm text-gray-600">
+                    {format(new Date(contact.createdAt), "dd/MM/yyyy", { locale: fr })}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <PermissionGuard permission="contacts.edit">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewContact(contact) }}>
+                          <Eye className="mr-2 h-4 w-4" /> Voir le détail
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditContact(contact) }}>
+                          <Edit className="mr-2 h-4 w-4" /> Modifier
+                        </DropdownMenuItem>
+                        <PermissionGuard permission="contacts.delete">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDeleteContact(contact) }} className="text-red-600">
+                            <Trash2 className="mr-2 h-4 w-4" /> Supprimer
+                          </DropdownMenuItem>
+                        </PermissionGuard>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </PermissionGuard>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
   )
 
   return (
     <PermissionGuard permission="contacts.view">
-      <div className="min-h-screen bg-gray-50">
-        <ModuleNavbar
-          title="Contacts"
-          description="Gérez votre base de données clients et prospects"
-          icon={Users}
-          primaryAction={{
-            label: "Nouveau contact",
-            onClick: handleCreateContact,
-            icon: Plus,
-          }}
-          secondaryActions={
-            <div className="flex items-center gap-2">
-              <div className="flex items-center border rounded-md">
-                <Button
-                  variant={viewMode === "grid" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("grid")}
-                  className="rounded-r-none"
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "table" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("table")}
-                  className="rounded-l-none"
-                >
-                  <List className="h-4 w-4" />
-                </Button>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+        {/* Header Moderne et Sticky */}
+        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-lg border-b border-gray-200/50 shadow-sm">
+          <div className="mx-auto max-w-7xl px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                    Contacts
+                  </h1>
+                  <p className="text-sm text-gray-600">
+                    {filteredContacts.length} contact{filteredContacts.length > 1 ? 's' : ''} au total
+                  </p>
+                </div>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <MoreHorizontal className="h-4 w-4" />
+
+              <div className="flex items-center gap-3">
+                {/* Toggle Vue */}
+                <div className="flex items-center bg-gray-100/80 rounded-full p-1">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`px-4 py-2 rounded-full transition-all duration-300 ${
+                      viewMode === "grid"
+                        ? "bg-white shadow-md text-blue-600"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("table")}
+                    className={`px-4 py-2 rounded-full transition-all duration-300 ${
+                      viewMode === "table"
+                        ? "bg-white shadow-md text-blue-600"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <PermissionGuard permission="contacts.create">
+                  <Button 
+                    onClick={handleCreateContact}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-full px-6"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Créer un contact
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleImport}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Importer des contacts
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Exporter la liste
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                </PermissionGuard>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="rounded-full">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleImport}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importer des contacts
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExport}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Exporter la liste
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-          }
-        />
+          </div>
+        </div>
 
         <main className="py-8">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {/* Statistiques */}
-            <div className="grid gap-4 md:grid-cols-4 mb-8">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{contacts.length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Prospects</CardTitle>
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{contacts.filter((c) => c.status === "PROSPECT").length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Clients</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{contacts.filter((c) => c.status === "CLIENT").length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Entreprises</CardTitle>
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{contacts.filter((c) => c.type === "ENTREPRISE").length}</div>
-                </CardContent>
-              </Card>
-            </div>
+          <div className="mx-auto max-w-7xl px-6">
 
-            {/* Filtres et recherche */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-8">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Rechercher un contact..."
-                  value={filters.search || ""}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                  className="pl-10"
-                />
+            {/* Filtres Modernes */}
+            <div className="mb-8 bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-sm p-6">
+              <div className="flex flex-col lg:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                  <Input
+                    placeholder="Rechercher par nom, email, poste..."
+                    value={filters.search || ""}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                    className="pl-12 h-12 bg-white border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  />
+                </div>
+                
+                <div className="flex gap-3">
+                  <Select
+                    value={filters.type || "all"}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        type: value === "all" ? undefined : (value as ContactType),
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-[180px] h-12 rounded-xl border-gray-200 bg-white">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les types</SelectItem>
+                      <SelectItem value="PERSONNE">👤 Personne</SelectItem>
+                      <SelectItem value="ENTREPRISE">🏢 Entreprise</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={filters.status || "all"}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        status: value === "all" ? undefined : (value as ContactStatus),
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-[180px] h-12 rounded-xl border-gray-200 bg-white">
+                      <SelectValue placeholder="Statut" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les statuts</SelectItem>
+                      <SelectItem value="PROSPECT">🎯 Prospect</SelectItem>
+                      <SelectItem value="CLIENT">✅ Client</SelectItem>
+                      <SelectItem value="LEAD">💡 Lead</SelectItem>
+                      <SelectItem value="ARCHIVE">📦 Archivé</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <Select
-                value={filters.type || "all"}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    type: value === "all" ? undefined : (value as ContactType),
-                  }))
-                }
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les types</SelectItem>
-                  <SelectItem value="PERSONNE">Personne</SelectItem>
-                  <SelectItem value="ENTREPRISE">Entreprise</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={filters.status || "all"}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    status: value === "all" ? undefined : (value as ContactStatus),
-                  }))
-                }
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  <SelectItem value="PROSPECT">Prospect</SelectItem>
-                  <SelectItem value="CLIENT">Client</SelectItem>
-                  <SelectItem value="LEAD">Lead</SelectItem>
-                  <SelectItem value="ARCHIVE">Archivé</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Contenu principal */}
             {loading ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Card key={i} className="p-6">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <Skeleton className="h-12 w-12 rounded-full" />
-                      <div className="flex-1">
-                        <Skeleton className="h-5 w-32 mb-2" />
-                        <Skeleton className="h-4 w-24" />
+                  <div key={i} className="bg-white rounded-2xl border border-gray-200/50 shadow-sm overflow-hidden">
+                    <div className="h-1.5 bg-gradient-to-r from-gray-200 to-gray-300 animate-pulse" />
+                    <div className="p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Skeleton className="h-14 w-14 rounded-full" />
+                        <div className="flex-1">
+                          <Skeleton className="h-5 w-32 mb-2" />
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Skeleton className="h-6 w-20 rounded-full" />
+                          <Skeleton className="h-6 w-24 rounded-full" />
+                        </div>
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-3/4" />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-3/4" />
-                    </div>
-                  </Card>
+                  </div>
                 ))}
               </div>
             ) : filteredContacts.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="mx-auto h-12 w-12 text-muted-foreground" />
-                <h3 className="mt-4 text-lg font-semibold">Aucun contact trouvé</h3>
-                <p className="text-muted-foreground">
+              <div className="text-center py-20">
+                <div className="inline-block p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-full mb-6">
+                  <Users className="h-16 w-16 text-blue-500" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Aucun contact trouvé</h3>
+                <p className="text-gray-600 mb-6 max-w-md mx-auto">
                   {filters.search || filters.type || filters.status
-                    ? "Aucun contact ne correspond à vos critères de recherche."
-                    : "Commencez par créer votre premier contact."}
+                    ? "Aucun contact ne correspond à vos critères de recherche. Essayez de modifier vos filtres."
+                    : "Commencez par créer votre premier contact pour développer votre réseau."}
                 </p>
                 {!filters.search && !filters.type && !filters.status && (
-                  <Button onClick={handleCreateContact} className="mt-4">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Créer un contact
+                  <Button 
+                    onClick={handleCreateContact}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-full px-8"
+                  >
+                    <Plus className="mr-2 h-5 w-5" />
+                    Créer votre premier contact
                   </Button>
                 )}
               </div>
