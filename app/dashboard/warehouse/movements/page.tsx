@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import { toast } from "sonner"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -168,40 +169,86 @@ export default function MovementsPage() {
   const searchParams = useSearchParams()
   const typeParam = searchParams.get("type")
 
-  const [movements] = useState(mockMovements)
+  const [movements, setMovements] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>(typeParam || "all")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [userFilter, setUserFilter] = useState<string>("all")
   const [productFilter, setProductFilter] = useState<string>("all")
   const [createSheetOpen, setCreateSheetOpen] = useState(false)
   const [createType, setCreateType] = useState<"IN" | "OUT" | "TRANSFER" | "ADJUSTMENT">("IN")
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const itemsPerPage = 20
+
+  useEffect(() => {
+    loadMovements()
+  }, [typeFilter, productFilter])
+
+  const loadMovements = async () => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      
+      if (typeFilter !== "all") {
+        params.append("type", typeFilter)
+      }
+      
+      if (productFilter !== "all") {
+        params.append("productId", productFilter)
+      }
+      
+      params.append("page", "1")
+      params.append("limit", "100")
+
+      const response = await fetch(`/api/stock-movements?${params}`)
+      
+      if (!response.ok) {
+        throw new Error("Erreur lors du chargement")
+      }
+
+      const data = await response.json()
+      setMovements(data.movements || [])
+      
+      // Extraire les produits et utilisateurs uniques pour les filtres
+      const uniqueProducts = Array.from(
+        new Map(data.movements.map((m: any) => [m.product.id, m.product])).values()
+      )
+      setProducts(uniqueProducts as any[])
+      
+      const uniqueUsers = Array.from(
+        new Map(data.movements.map((m: any) => [m.user.id, m.user])).values()
+      )
+      setUsers(uniqueUsers as any[])
+    } catch (error) {
+      console.error("Error loading movements:", error)
+      toast.error("Erreur lors du chargement des mouvements")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredMovements = movements.filter((movement) => {
     const matchesSearch =
-      movement.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.documentNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.reason.toLowerCase().includes(searchTerm.toLowerCase())
+      movement.product?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.product?.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.note?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesType = typeFilter === "all" || movement.type === typeFilter
-    const matchesStatus = statusFilter === "all" || movement.status === statusFilter
-    const matchesUser = userFilter === "all" || movement.userId === userFilter
-    const matchesProduct = productFilter === "all" || movement.sku === productFilter
+    const matchesProduct = productFilter === "all" || movement.product.id === productFilter
 
-    return matchesSearch && matchesType && matchesStatus && matchesUser && matchesProduct
+    return matchesSearch && matchesProduct
   })
 
   const getMovementIcon = (type: string) => {
     switch (type) {
-      case "IN":
+      case "ENTRY":
+      case "RETURN":
         return ArrowDownRight
-      case "OUT":
+      case "SALE":
+      case "EXIT":
         return ArrowUpRight
-      case "TRANSFER":
-        return ArrowRightLeft
+      case "ADJUSTMENT":
+        return Edit2
       default:
         return Edit2
     }
@@ -209,42 +256,34 @@ export default function MovementsPage() {
 
   const getMovementColor = (type: string) => {
     switch (type) {
-      case "IN":
+      case "ENTRY":
+      case "RETURN":
         return "text-green-600 bg-green-50 border-green-200"
-      case "OUT":
+      case "SALE":
+      case "EXIT":
         return "text-red-600 bg-red-50 border-red-200"
-      case "TRANSFER":
-        return "text-blue-600 bg-blue-50 border-blue-200"
-      default:
+      case "ADJUSTMENT":
         return "text-amber-600 bg-amber-50 border-amber-200"
+      default:
+        return "text-gray-600 bg-gray-50 border-gray-200"
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const config = {
-      PENDING: {
-        icon: Clock,
-        className: "border-amber-200 text-amber-700 bg-amber-50",
-        label: "En attente",
-      },
-      VALIDATED: {
-        icon: CheckCircle2,
-        className: "border-green-200 text-green-700 bg-green-50",
-        label: "Validé",
-      },
-      CANCELLED: {
-        icon: XCircle,
-        className: "border-red-200 text-red-700 bg-red-50",
-        label: "Annulé",
-      },
+  const getMovementLabel = (type: string) => {
+    switch (type) {
+      case "ENTRY":
+        return "Entrée"
+      case "EXIT":
+        return "Sortie"
+      case "SALE":
+        return "Vente"
+      case "RETURN":
+        return "Retour"
+      case "ADJUSTMENT":
+        return "Ajustement"
+      default:
+        return type
     }
-    const { icon: Icon, className, label } = config[status as keyof typeof config]
-    return (
-      <Badge variant="outline" className={cn("text-xs", className)}>
-        <Icon className="h-3 w-3 mr-1" />
-        {label}
-      </Badge>
-    )
   }
 
   const formatDateTime = (date: Date) => {
@@ -265,12 +304,11 @@ export default function MovementsPage() {
 
   const handleResetFilters = () => {
     setTypeFilter("all")
-    setStatusFilter("all")
-    setUserFilter("all")
     setProductFilter("all")
+    setSearchTerm("")
   }
 
-  const hasActiveFilters = typeFilter !== "all" || statusFilter !== "all" || userFilter !== "all" || productFilter !== "all"
+  const hasActiveFilters = typeFilter !== "all" || productFilter !== "all" || searchTerm !== ""
 
   // Pagination
   const totalPages = Math.ceil(filteredMovements.length / itemsPerPage)
@@ -364,51 +402,26 @@ export default function MovementsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les types</SelectItem>
-                    <SelectItem value="IN">Entrées</SelectItem>
-                    <SelectItem value="OUT">Sorties</SelectItem>
-                    <SelectItem value="TRANSFER">Transferts</SelectItem>
+                    <SelectItem value="ENTRY">Entrées</SelectItem>
+                    <SelectItem value="EXIT">Sorties</SelectItem>
+                    <SelectItem value="SALE">Ventes</SelectItem>
+                    <SelectItem value="RETURN">Retours</SelectItem>
                     <SelectItem value="ADJUSTMENT">Ajustements</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); handleFilterChange(); }}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous les statuts</SelectItem>
-                    <SelectItem value="PENDING">En attente</SelectItem>
-                    <SelectItem value="VALIDATED">Validés</SelectItem>
-                    <SelectItem value="CANCELLED">Annulés</SelectItem>
                   </SelectContent>
                 </Select>
 
 
               </div>
               <div className="flex items-center gap-3">
-                <Select value={userFilter} onValueChange={(value) => { setUserFilter(value); handleFilterChange(); }}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Utilisateur" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous les utilisateurs</SelectItem>
-                    {mockUsers.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
                 <Select value={productFilter} onValueChange={(value) => { setProductFilter(value); handleFilterChange(); }}>
-                  <SelectTrigger className="w-[220px]">
+                  <SelectTrigger className="w-[280px]">
                     <SelectValue placeholder="Produit" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les produits</SelectItem>
-                    {mockProducts.map((product) => (
-                      <SelectItem key={product.sku} value={product.sku}>
-                        {product.name}
+                    {products.map((product: any) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.sku ? `${product.sku} - ` : ""}{product.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -423,7 +436,12 @@ export default function MovementsPage() {
             </div>
 
             <CardContent className="p-0 gap-0">
-              {filteredMovements.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+                  <p className="text-gray-500 mt-4">Chargement des mouvements...</p>
+                </div>
+              ) : filteredMovements.length === 0 ? (
                 <div className="text-center py-12">
                   <History className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-4 text-lg font-semibold text-gray-900">Aucun mouvement trouvé</h3>
@@ -438,11 +456,10 @@ export default function MovementsPage() {
                         <TableHead>Produit</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-center">Quantité</TableHead>
-                        <TableHead>Emplacement</TableHead>
-                        <TableHead>Statut</TableHead>
+                        <TableHead>Catégorie</TableHead>
                         <TableHead>Utilisateur</TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead>Document</TableHead>
+                        <TableHead>Note</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -455,40 +472,43 @@ export default function MovementsPage() {
                             <TableCell>
                               <div className={cn("inline-flex items-center gap-2 px-2.5 py-1 rounded-md border", typeColor)}>
                                 <Icon className="h-4 w-4" />
-                                <span className="text-xs font-medium">{movement.subtypeLabel}</span>
+                                <span className="text-xs font-medium">{getMovementLabel(movement.type)}</span>
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium">{movement.productName}</TableCell>
+                            <TableCell className="font-medium">{movement.product?.name}</TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="text-xs">{movement.sku}</Badge>
+                              {movement.product?.sku && (
+                                <Badge variant="outline" className="text-xs">{movement.product.sku}</Badge>
+                              )}
                             </TableCell>
                             <TableCell className="text-center">
                               <span
                                 className={cn(
                                   "font-bold text-lg",
-                                  movement.type === "IN"
+                                  movement.quantity > 0
                                     ? "text-green-600"
-                                    : movement.type === "OUT"
+                                    : movement.quantity < 0
                                       ? "text-red-600"
-                                      : "text-blue-600"
+                                      : "text-amber-600"
                                 )}
                               >
-                                {movement.type === "OUT" ? "-" : movement.type === "IN" ? "+" : ""}
+                                {movement.quantity > 0 ? "+" : ""}
                                 {movement.quantity}
                               </span>
                             </TableCell>
-                            <TableCell className="text-sm text-gray-600">{movement.location}</TableCell>
-                            <TableCell>{getStatusBadge(movement.status)}</TableCell>
-                            <TableCell className="text-sm text-gray-600">{movement.user}</TableCell>
                             <TableCell className="text-sm text-gray-600">
-                              {formatDateTime(movement.createdAt)}
+                              {movement.product?.category?.name || ""}
                             </TableCell>
-                            <TableCell>
-                              {movement.documentNumber && (
-                                <Badge variant="outline" className="text-xs">
-                                  {movement.documentNumber}
-                                </Badge>
-                              )}
+                            <TableCell className="text-sm text-gray-600">
+                              {movement.user?.firstName && movement.user?.lastName
+                                ? `${movement.user.firstName} ${movement.user.lastName}`
+                                : movement.user?.email}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-600">
+                              {formatDateTime(new Date(movement.createdAt))}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-600 max-w-xs truncate">
+                              {movement.note || "-"}
                             </TableCell>
                           </TableRow>
                         )
@@ -565,6 +585,7 @@ export default function MovementsPage() {
         open={createSheetOpen}
         onOpenChange={setCreateSheetOpen}
         defaultType={createType}
+        onMovementCreated={loadMovements}
       />
     </>
   )

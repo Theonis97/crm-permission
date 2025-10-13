@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -37,46 +38,93 @@ export function CreateMovementSheet({
   defaultType = "IN",
 }: CreateMovementSheetProps) {
   const [loading, setLoading] = useState(false)
+  const [products, setProducts] = useState<any[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(true)
   const [formData, setFormData] = useState({
     type: defaultType,
-    subtype: "PURCHASE",
+    subtype: "ENTRY",
     productId: "",
     quantity: "",
-    fromWarehouseId: "",
-    toWarehouseId: "",
-    reason: "",
-    notes: "",
-    documentNumber: "",
+    note: "",
   })
+
+  useEffect(() => {
+    if (open) {
+      loadProducts()
+      // Reset form when opening
+      setFormData({
+        type: defaultType,
+        subtype: getInitialSubtype(defaultType),
+        productId: "",
+        quantity: "",
+        note: "",
+      })
+    }
+  }, [open, defaultType])
+
+  const getInitialSubtype = (type: string) => {
+    switch (type) {
+      case "IN":
+        return "ENTRY"
+      case "OUT":
+        return "EXIT"
+      case "TRANSFER":
+        return "ENTRY"
+      default:
+        return "ADJUSTMENT"
+    }
+  }
+
+  const loadProducts = async () => {
+    try {
+      setLoadingProducts(true)
+      const response = await fetch("/api/products")
+      if (!response.ok) throw new Error("Erreur lors du chargement")
+      const data = await response.json()
+      setProducts(data)
+    } catch (error) {
+      console.error("Error loading products:", error)
+      toast.error("Erreur lors du chargement des produits")
+    } finally {
+      setLoadingProducts(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!formData.productId || !formData.quantity) {
+      toast.error("Veuillez remplir tous les champs requis")
+      return
+    }
+
     setLoading(true)
 
     try {
-      // TODO: Appel API pour créer le mouvement
-      console.log("Create movement:", formData)
-      
-      // Simulation
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch("/api/stock-movements", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          productId: formData.productId,
+          quantity: parseInt(formData.quantity),
+          type: formData.subtype,
+          note: formData.note || null,
+        }),
+      })
 
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur lors de la création")
+      }
+
+      toast.success("Mouvement créé avec succès")
       onMovementCreated?.()
       onOpenChange(false)
-      
-      // Reset form
-      setFormData({
-        type: "IN",
-        subtype: "PURCHASE",
-        productId: "",
-        quantity: "",
-        fromWarehouseId: "",
-        toWarehouseId: "",
-        reason: "",
-        notes: "",
-        documentNumber: "",
-      })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating movement:", error)
+      toast.error(error.message || "Erreur lors de la création du mouvement")
     } finally {
       setLoading(false)
     }
@@ -86,24 +134,22 @@ export function CreateMovementSheet({
     switch (formData.type) {
       case "IN":
         return [
-          { value: "PURCHASE", label: "Achat fournisseur" },
-          { value: "RETURN_CLIENT", label: "Retour client" },
-          { value: "ADJUSTMENT_POSITIVE", label: "Ajustement positif" },
-          { value: "PRODUCTION", label: "Production" },
+          { value: "ENTRY", label: "Entrée (Achat, réception)" },
+          { value: "RETURN", label: "Retour client" },
         ]
       case "OUT":
         return [
           { value: "SALE", label: "Vente" },
-          { value: "LOSS", label: "Perte" },
-          { value: "DAMAGE", label: "Casse" },
-          { value: "THEFT", label: "Vol" },
-          { value: "ADJUSTMENT_NEGATIVE", label: "Ajustement négatif" },
-          { value: "CONSUMPTION", label: "Consommation" },
+          { value: "EXIT", label: "Sortie (Livraison, perte)" },
         ]
-      case "TRANSFER":
-        return [{ value: "TRANSFER", label: "Transfert inter-entrepôts" }]
+      case "ADJUSTMENT":
+        return [
+          { value: "ADJUSTMENT", label: "Ajustement inventaire" },
+        ]
       default:
-        return []
+        return [
+          { value: "ENTRY", label: "Entrée" },
+        ]
     }
   }
 
@@ -157,7 +203,7 @@ export function CreateMovementSheet({
               <button
                 type="button"
                 onClick={() => {
-                  setFormData({ ...formData, type: "IN", subtype: "PURCHASE" })
+                  setFormData({ ...formData, type: "IN", subtype: "ENTRY" })
                 }}
                 className={cn(
                   "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all",
@@ -193,18 +239,18 @@ export function CreateMovementSheet({
               <button
                 type="button"
                 onClick={() => {
-                  setFormData({ ...formData, type: "TRANSFER", subtype: "TRANSFER" })
+                  setFormData({ ...formData, type: "ADJUSTMENT", subtype: "ADJUSTMENT" })
                 }}
                 className={cn(
                   "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all",
-                  formData.type === "TRANSFER"
-                    ? "border-blue-600 bg-blue-50"
+                  formData.type === "ADJUSTMENT"
+                    ? "border-amber-600 bg-amber-50"
                     : "border-gray-200 hover:border-gray-300"
                 )}
               >
-                <ArrowRightLeft className={cn("h-6 w-6", formData.type === "TRANSFER" ? "text-blue-600" : "text-gray-400")} />
-                <span className={cn("text-sm font-medium", formData.type === "TRANSFER" ? "text-blue-900" : "text-gray-600")}>
-                  Transfert
+                <TrendingUp className={cn("h-6 w-6", formData.type === "ADJUSTMENT" ? "text-amber-600" : "text-gray-400")} />
+                <span className={cn("text-sm font-medium", formData.type === "ADJUSTMENT" ? "text-amber-900" : "text-gray-600")}>
+                  Ajustement
                 </span>
               </button>
             </div>
@@ -243,9 +289,21 @@ export function CreateMovementSheet({
                   <SelectValue placeholder="Sélectionner un produit" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">LAP-DELL-001 - Laptop Dell XPS 15</SelectItem>
-                  <SelectItem value="2">MOU-LOG-003 - Souris Logitech MX Master 3</SelectItem>
-                  <SelectItem value="3">ECR-SAM-002 - Écran Samsung 27" 4K</SelectItem>
+                  {loadingProducts ? (
+                    <SelectItem value="loading" disabled>
+                      Chargement...
+                    </SelectItem>
+                  ) : products.length === 0 ? (
+                    <SelectItem value="empty" disabled>
+                      Aucun produit
+                    </SelectItem>
+                  ) : (
+                    products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.sku ? `${product.sku} - ` : ""}{product.name} (Stock: {product.stock})
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -264,118 +322,18 @@ export function CreateMovementSheet({
             </div>
           </div>
 
-          {/* Entrepôts */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900">Entrepôts</h3>
-            
-            {formData.type === "OUT" && (
-              <div className="space-y-2">
-                <Label htmlFor="fromWarehouseId">Entrepôt source *</Label>
-                <Select
-                  value={formData.fromWarehouseId}
-                  onValueChange={(value) => setFormData({ ...formData, fromWarehouseId: value })}
-                >
-                  <SelectTrigger id="fromWarehouseId">
-                    <SelectValue placeholder="Sélectionner un entrepôt" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Entrepôt Principal</SelectItem>
-                    <SelectItem value="2">Entrepôt Lyon</SelectItem>
-                    <SelectItem value="3">Entrepôt Marseille</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.type === "IN" && (
-              <div className="space-y-2">
-                <Label htmlFor="toWarehouseId">Entrepôt destination *</Label>
-                <Select
-                  value={formData.toWarehouseId}
-                  onValueChange={(value) => setFormData({ ...formData, toWarehouseId: value })}
-                >
-                  <SelectTrigger id="toWarehouseId">
-                    <SelectValue placeholder="Sélectionner un entrepôt" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Entrepôt Principal</SelectItem>
-                    <SelectItem value="2">Entrepôt Lyon</SelectItem>
-                    <SelectItem value="3">Entrepôt Marseille</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.type === "TRANSFER" && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="fromWarehouseId">Entrepôt source *</Label>
-                  <Select
-                    value={formData.fromWarehouseId}
-                    onValueChange={(value) => setFormData({ ...formData, fromWarehouseId: value })}
-                  >
-                    <SelectTrigger id="fromWarehouseId">
-                      <SelectValue placeholder="Source" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Entrepôt Principal</SelectItem>
-                      <SelectItem value="2">Entrepôt Lyon</SelectItem>
-                      <SelectItem value="3">Entrepôt Marseille</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="toWarehouseId">Entrepôt destination *</Label>
-                  <Select
-                    value={formData.toWarehouseId}
-                    onValueChange={(value) => setFormData({ ...formData, toWarehouseId: value })}
-                  >
-                    <SelectTrigger id="toWarehouseId">
-                      <SelectValue placeholder="Destination" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Entrepôt Principal</SelectItem>
-                      <SelectItem value="2">Entrepôt Lyon</SelectItem>
-                      <SelectItem value="3">Entrepôt Marseille</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Informations complémentaires */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-gray-900">Informations complémentaires</h3>
             
             <div className="space-y-2">
-              <Label htmlFor="reason">Motif *</Label>
-              <Input
-                id="reason"
-                value={formData.reason}
-                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                placeholder="Réapprovisionnement fournisseur"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="documentNumber">N° de document</Label>
-              <Input
-                id="documentNumber"
-                value={formData.documentNumber}
-                onChange={(e) => setFormData({ ...formData, documentNumber: e.target.value })}
-                placeholder="BR-2025-001234"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="note">Note</Label>
               <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Informations complémentaires..."
+                id="note"
+                value={formData.note}
+                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                placeholder="Raison du mouvement, observations..."
                 rows={3}
               />
             </div>

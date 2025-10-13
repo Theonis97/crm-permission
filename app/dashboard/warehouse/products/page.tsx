@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,244 +32,146 @@ import {
   CheckCircle2,
   XCircle,
   TrendingUp,
-  MapPin,
-  Calendar,
   Download,
   Upload,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { StockProduct, StockStatus, ProductCategory } from "@/types/warehouse"
+import { ProductFormDialog } from "@/components/products/product-form-dialog"
+import { ProductDetailsSheet } from "@/components/warehouse/product-details-sheet"
+import { toast } from "sonner"
 
-// Données mockées
-const mockBrands = [
-  { id: "1", name: "Dell" },
-  { id: "2", name: "Logitech" },
-  { id: "3", name: "Samsung" },
-  { id: "4", name: "HP" },
-  { id: "5", name: "Apple" },
-  { id: "6", name: "Lenovo" },
-  { id: "7", name: "Microsoft" },
-  { id: "8", name: "Sony" },
-]
+interface Product {
+  id: string
+  name: string
+  sku: string | null
+  description: string | null
+  photos: string[]
+  prixVente: number
+  prixAchat: number
+  tva: number
+  stock: number
+  minStock: number
+  maxStock: number | null
+  categoryId: string
+  brandId: string | null
+  category: {
+    id: string
+    name: string
+  }
+  brand?: {
+    id: string
+    name: string
+  } | null
+  createdAt: string
+  updatedAt: string
+}
 
-const mockCategories = [
-  { id: "1", name: "Informatique" },
-  { id: "2", name: "Audio & Vidéo" },
-  { id: "3", name: "Téléphonie" },
-  { id: "4", name: "Réseau" },
-  { id: "5", name: "Bureautique" },
-  { id: "6", name: "Consommables" },
-  { id: "7", name: "Accessoires" },
-  { id: "8", name: "Gaming" },
-]
+interface Category {
+  id: string
+  name: string
+}
 
-const mockProducts: StockProduct[] = [
-  {
-    id: "1",
-    sku: "LAP-DELL-001",
-    name: "Laptop Dell XPS 15",
-    description: "Ordinateur portable haute performance",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "1",
-    warehouse: { id: "1", name: "Entrepôt Principal", code: "WH-001" },
-    zoneId: "z2",
-    zone: { id: "z2", name: "Zone Stockage A", code: "STO-A" },
-    locationId: "l1",
-    location: { id: "l1", code: "A-12-3" },
-    quantityAvailable: 145,
-    quantityReserved: 23,
-    quantityTotal: 168,
-    quantityMin: 50,
-    quantityMax: 300,
-    status: "OK",
-    lastMovementDate: new Date("2025-10-07"),
-    rotationRate: 45,
-    createdAt: new Date("2024-01-15"),
-    updatedAt: new Date("2025-10-07"),
-  },
-  {
-    id: "2",
-    sku: "MOU-LOG-003",
-    name: "Souris Logitech MX Master 3",
-    description: "Souris ergonomique sans fil",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "1",
-    warehouse: { id: "1", name: "Entrepôt Principal", code: "WH-001" },
-    zoneId: "z2",
-    zone: { id: "z2", name: "Zone Stockage A", code: "STO-A" },
-    quantityAvailable: 234,
-    quantityReserved: 45,
-    quantityTotal: 279,
-    quantityMin: 100,
-    quantityMax: 500,
-    status: "OK",
-    lastMovementDate: new Date("2025-10-08"),
-    rotationRate: 67,
-    createdAt: new Date("2024-02-10"),
-    updatedAt: new Date("2025-10-08"),
-  },
-  {
-    id: "3",
-    sku: "ECR-SAM-002",
-    name: "Écran Samsung 27\" 4K",
-    description: "Moniteur professionnel UHD",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "2",
-    warehouse: { id: "2", name: "Entrepôt Lyon", code: "WH-002" },
-    zoneId: "z5",
-    zone: { id: "z5", name: "Zone Stockage", code: "STO" },
-    quantityAvailable: 78,
-    quantityReserved: 12,
-    quantityTotal: 90,
-    quantityMin: 30,
-    quantityMax: 150,
-    status: "OK",
-    lastMovementDate: new Date("2025-10-06"),
-    rotationRate: 23,
-    createdAt: new Date("2024-03-15"),
-    updatedAt: new Date("2025-10-06"),
-  },
-  {
-    id: "4",
-    sku: "BAT-EXT-004",
-    name: "Batterie externe 20000mAh",
-    description: "Power bank USB-C",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "2",
-    warehouse: { id: "2", name: "Entrepôt Lyon", code: "WH-002" },
-    quantityAvailable: 0,
-    quantityReserved: 0,
-    quantityTotal: 0,
-    quantityMin: 50,
-    quantityMax: 200,
-    status: "OUT_OF_STOCK",
-    lastMovementDate: new Date("2025-10-05"),
-    rotationRate: 89,
-    createdAt: new Date("2024-04-20"),
-    updatedAt: new Date("2025-10-05"),
-  },
-  {
-    id: "5",
-    sku: "ADP-USC-002",
-    name: "Adaptateur USB-C vers HDMI",
-    description: "Convertisseur 4K@60Hz",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "1",
-    warehouse: { id: "1", name: "Entrepôt Principal", code: "WH-001" },
-    quantityAvailable: 12,
-    quantityReserved: 3,
-    quantityTotal: 15,
-    quantityMin: 50,
-    quantityMax: 200,
-    status: "LOW_STOCK",
-    lastMovementDate: new Date("2025-10-07"),
-    rotationRate: 45,
-    createdAt: new Date("2024-05-10"),
-    updatedAt: new Date("2025-10-07"),
-  },
-  {
-    id: "6",
-    sku: "LIC-OFF-001",
-    name: "Licence Office 365",
-    description: "Abonnement annuel",
-    category: "CONSUMABLE",
-    unit: "PIECE",
-    warehouseId: "1",
-    warehouse: { id: "1", name: "Entrepôt Principal", code: "WH-001" },
-    quantityAvailable: 45,
-    quantityReserved: 8,
-    quantityTotal: 53,
-    quantityMin: 20,
-    quantityMax: 100,
-    expirationDate: new Date("2025-10-15"),
-    status: "EXPIRED",
-    lastMovementDate: new Date("2025-09-30"),
-    rotationRate: 12,
-    createdAt: new Date("2024-06-01"),
-    updatedAt: new Date("2025-09-30"),
-  },
-  {
-    id: "7",
-    sku: "TAP-SOU-001",
-    name: "Tapis de souris",
-    description: "Tapis gaming RGB",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "3",
-    warehouse: { id: "3", name: "Entrepôt Marseille", code: "WH-003" },
-    quantityAvailable: 350,
-    quantityReserved: 15,
-    quantityTotal: 365,
-    quantityMin: 50,
-    quantityMax: 200,
-    status: "OVERSTOCKED",
-    lastMovementDate: new Date("2025-09-20"),
-    rotationRate: 8,
-    createdAt: new Date("2024-07-12"),
-    updatedAt: new Date("2025-09-20"),
-  },
-  {
-    id: "8",
-    sku: "CLV-MEC-005",
-    name: "Clavier mécanique RGB",
-    description: "Switches Cherry MX Red",
-    category: "FINISHED_PRODUCT",
-    unit: "PIECE",
-    warehouseId: "3",
-    warehouse: { id: "3", name: "Entrepôt Marseille", code: "WH-003" },
-    quantityAvailable: 89,
-    quantityReserved: 11,
-    quantityTotal: 100,
-    quantityMin: 40,
-    quantityMax: 180,
-    status: "OK",
-    lastMovementDate: new Date("2025-10-08"),
-    rotationRate: 34,
-    createdAt: new Date("2024-08-05"),
-    updatedAt: new Date("2025-10-08"),
-  },
-]
+interface Brand {
+  id: string
+  name: string
+}
 
 export default function ProductsPage() {
   const router = useRouter()
-  const [products] = useState<StockProduct[]>(mockProducts)
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [brands, setBrands] = useState<Brand[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [brandFilter, setBrandFilter] = useState<string>("all")
+  const [stockFilter, setStockFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const itemsPerPage = 10
+
+  useEffect(() => {
+    loadProducts()
+    loadFilters()
+  }, [])
+
+  const loadProducts = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/products")
+      if (response.ok) {
+        const data = await response.json()
+        setProducts(data)
+      } else {
+        toast.error("Erreur lors du chargement des produits")
+      }
+    } catch (error) {
+      console.error("Error loading products:", error)
+      toast.error("Erreur lors du chargement")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadFilters = async () => {
+    try {
+      const [categoriesRes, brandsRes] = await Promise.all([
+        fetch("/api/categories"),
+        fetch("/api/brands"),
+      ])
+      
+      if (categoriesRes.ok) {
+        const categoriesData = await categoriesRes.json()
+        setCategories(categoriesData)
+      }
+      
+      if (brandsRes.ok) {
+        const brandsData = await brandsRes.json()
+        setBrands(brandsData)
+      }
+    } catch (error) {
+      console.error("Error loading filters:", error)
+    }
+  }
+
+  const getStockStatus = (product: Product) => {
+    if (product.stock === 0) return "out"
+    if (product.stock <= product.minStock) return "low"
+    if (product.maxStock && product.stock >= product.maxStock) return "high"
+    return "ok"
+  }
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase())
+      (product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
 
-    const matchesStatus = statusFilter === "all" || product.status === statusFilter
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter
-    const matchesBrand = brandFilter === "all" || true // TODO: ajouter brandId dans les produits mockés
+    const matchesCategory = categoryFilter === "all" || product.categoryId === categoryFilter
+    const matchesBrand = brandFilter === "all" || product.brandId === brandFilter
+    
+    const status = getStockStatus(product)
+    const matchesStock = stockFilter === "all" || status === stockFilter
 
-    return matchesSearch && matchesStatus && matchesCategory && matchesBrand
+    return matchesSearch && matchesCategory && matchesBrand && matchesStock
   })
+
+  const hasActiveFilters = categoryFilter !== "all" || brandFilter !== "all" || stockFilter !== "all"
+
+  const handleResetFilters = () => {
+    setCategoryFilter("all")
+    setBrandFilter("all")
+    setStockFilter("all")
+  }
 
   const handleFilterChange = () => {
     setCurrentPage(1)
   }
-
-  const handleResetFilters = () => {
-    setStatusFilter("all")
-    setCategoryFilter("all")
-    setBrandFilter("all")
-  }
-
-  const hasActiveFilters = statusFilter !== "all" || categoryFilter !== "all" || brandFilter !== "all"
 
   // Pagination
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
@@ -277,13 +179,13 @@ export default function ProductsPage() {
   const endIndex = startIndex + itemsPerPage
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
 
-  const getStatusBadge = (status: StockStatus) => {
+  const getStatusBadge = (product: Product) => {
+    const status = getStockStatus(product)
     const config = {
-      OK: { icon: CheckCircle2, className: "border-green-200 text-green-700 bg-green-50", label: "Stock OK" },
-      LOW_STOCK: { icon: AlertTriangle, className: "border-amber-200 text-amber-700 bg-amber-50", label: "Stock faible" },
-      OUT_OF_STOCK: { icon: XCircle, className: "border-red-200 text-red-700 bg-red-50", label: "Rupture" },
-      OVERSTOCKED: { icon: TrendingUp, className: "border-blue-200 text-blue-700 bg-blue-50", label: "Surstock" },
-      EXPIRED: { icon: Calendar, className: "border-red-200 text-red-700 bg-red-50", label: "Expiré" },
+      ok: { icon: CheckCircle2, className: "border-green-200 text-green-700 bg-green-50", label: "Stock OK" },
+      low: { icon: AlertTriangle, className: "border-amber-200 text-amber-700 bg-amber-50", label: "Stock faible" },
+      out: { icon: XCircle, className: "border-red-200 text-red-700 bg-red-50", label: "Rupture" },
+      high: { icon: TrendingUp, className: "border-blue-200 text-blue-700 bg-blue-50", label: "Surstock" },
     }
     const { icon: Icon, className, label } = config[status]
     return (
@@ -294,19 +196,44 @@ export default function ProductsPage() {
     )
   }
 
-  const getCategoryLabel = (category: ProductCategory) => {
-    const labels = {
-      RAW_MATERIAL: "Matière première",
-      FINISHED_PRODUCT: "Produit fini",
-      SEMI_FINISHED: "Semi-fini",
-      CONSUMABLE: "Consommable",
-      PACKAGING: "Emballage",
-    }
-    return labels[category]
+  const handleViewProduct = (id: string) => {
+    setSelectedProductId(id)
+    setDetailsOpen(true)
   }
 
-  const handleViewProduct = (id: string) => {
-    router.push(`/dashboard/warehouse/products/${id}`)
+  const handleCreateProduct = () => {
+    setEditingProduct(null)
+    setDialogOpen(true)
+  }
+
+  const handleEditProduct = async (product: Product) => {
+    setEditingProduct(product)
+    setDialogOpen(true)
+  }
+
+  const handleDeleteProduct = async (product: Product) => {
+    if (!confirm(`Voulez-vous vraiment supprimer "${product.name}" ?`)) return
+
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) throw new Error("Erreur lors de la suppression")
+
+      toast.success("Produit supprimé avec succès")
+      loadProducts()
+    } catch (error) {
+      console.error("Error deleting product:", error)
+      toast.error("Erreur lors de la suppression")
+    }
+  }
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "XAF",
+    }).format(price)
   }
 
   const renderTableView = () => (
@@ -330,16 +257,16 @@ export default function ProductsPage() {
         
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); handleFilterChange(); }}>
+            <Select value={stockFilter} onValueChange={(value) => { setStockFilter(value); handleFilterChange(); }}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="OK">Stock OK</SelectItem>
-                <SelectItem value="LOW_STOCK">Stock faible</SelectItem>
-                <SelectItem value="OUT_OF_STOCK">Rupture</SelectItem>
-                <SelectItem value="OVERSTOCKED">Surstock</SelectItem>
+                <SelectItem value="ok">Stock OK</SelectItem>
+                <SelectItem value="low">Stock faible</SelectItem>
+                <SelectItem value="out">Rupture</SelectItem>
+                <SelectItem value="high">Surstock</SelectItem>
               </SelectContent>
             </Select>
 
@@ -349,7 +276,7 @@ export default function ProductsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les catégories</SelectItem>
-                {mockCategories.map((category) => (
+                {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}
                   </SelectItem>
@@ -363,7 +290,7 @@ export default function ProductsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les marques</SelectItem>
-                {mockBrands.map((brand) => (
+                {brands.map((brand) => (
                   <SelectItem key={brand.id} value={brand.id}>
                     {brand.name}
                   </SelectItem>
@@ -391,16 +318,13 @@ export default function ProductsPage() {
                 Catégorie
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                Entrepôt
+                Marque
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
-                Disponible
+                Prix vente
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
-                Réservé
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
-                Total
+                Stock
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                 Statut
@@ -424,27 +348,24 @@ export default function ProductsPage() {
                     </div>
                     <div>
                       <div className="font-medium text-gray-900">{product.name}</div>
-                      <div className="text-sm text-gray-500">{product.sku}</div>
+                      {product.sku && <div className="text-sm text-gray-500">{product.sku}</div>}
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-gray-700">{getCategoryLabel(product.category)}</span>
+                  <span className="text-sm text-gray-700">{product.category.name}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="text-sm text-gray-900">{product.warehouse?.name}</div>
-                  {product.location && <div className="text-xs text-gray-500">{product.location.code}</div>}
+                  <span className="text-sm text-gray-700">{product.brand?.name || "-"}</span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <span className="font-semibold text-gray-900">{product.quantityAvailable}</span>
+                  <span className="font-semibold text-gray-900">{formatPrice(product.prixVente)}</span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <span className="font-medium text-amber-600">{product.quantityReserved}</span>
+                  <span className="font-semibold text-gray-900">{product.stock}</span>
+                  <span className="text-xs text-gray-500 ml-1">/ {product.minStock} min</span>
                 </td>
-                <td className="px-6 py-4 text-right">
-                  <span className="font-bold text-gray-900">{product.quantityTotal}</span>
-                </td>
-                <td className="px-6 py-4">{getStatusBadge(product.status)}</td>
+                <td className="px-6 py-4">{getStatusBadge(product)}</td>
                 <td className="px-6 py-4 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -453,15 +374,18 @@ export default function ProductsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewProduct(product.id); }}>
                         <Eye className="mr-2 h-4 w-4" />
                         Voir les détails
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }}>
                         <Edit className="mr-2 h-4 w-4" />
                         Modifier
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => e.stopPropagation()} className="text-red-600">
+                      <DropdownMenuItem 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product); }} 
+                        className="text-red-600"
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Supprimer
                       </DropdownMenuItem>
@@ -534,15 +458,22 @@ export default function ProductsPage() {
     </Card>
   )
 
+  // Calcul des stats
+  const totalProducts = products.length
+  const stockOk = products.filter(p => getStockStatus(p) === "ok").length
+  const stockLow = products.filter(p => getStockStatus(p) === "low").length
+  const stockOut = products.filter(p => getStockStatus(p) === "out").length
+  const stockHigh = products.filter(p => getStockStatus(p) === "high").length
+
   return (
     <>
       <ModuleNavbar
-        title="Produits en stock"
-        description="Gestion de l'inventaire des produits"
+        title="Produits"
+        description="Gestion du catalogue de produits"
         icon={Package}
         primaryAction={{
           label: "Nouveau produit",
-          onClick: () => console.log("Create product"),
+          onClick: handleCreateProduct,
           icon: Plus,
         }}
         secondaryActions={
@@ -569,7 +500,7 @@ export default function ProductsPage() {
                 <Package className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{products.length}</div>
+                <div className="text-2xl font-bold text-gray-900">{totalProducts}</div>
               </CardContent>
             </Card>
 
@@ -579,9 +510,7 @@ export default function ProductsPage() {
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {products.filter((p) => p.status === "OK").length}
-                </div>
+                <div className="text-2xl font-bold text-green-600">{stockOk}</div>
               </CardContent>
             </Card>
 
@@ -591,9 +520,7 @@ export default function ProductsPage() {
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-amber-600">
-                  {products.filter((p) => p.status === "LOW_STOCK").length}
-                </div>
+                <div className="text-2xl font-bold text-amber-600">{stockLow}</div>
               </CardContent>
             </Card>
 
@@ -603,9 +530,7 @@ export default function ProductsPage() {
                 <XCircle className="h-4 w-4 text-red-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-600">
-                  {products.filter((p) => p.status === "OUT_OF_STOCK").length}
-                </div>
+                <div className="text-2xl font-bold text-red-600">{stockOut}</div>
               </CardContent>
             </Card>
 
@@ -615,21 +540,37 @@ export default function ProductsPage() {
                 <TrendingUp className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">
-                  {products.filter((p) => p.status === "OVERSTOCKED").length}
-                </div>
+                <div className="text-2xl font-bold text-blue-600">{stockHigh}</div>
               </CardContent>
             </Card>
           </div>
 
           {/* Tableau */}
-          {filteredProducts.length === 0 ? (
+          {loading ? (
+            <Card className="py-12">
+              <CardContent className="flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </CardContent>
+            </Card>
+          ) : filteredProducts.length === 0 ? (
             <Card className="py-0">
               <CardContent className="py-12">
                 <div className="text-center">
                   <Package className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-4 text-lg font-semibold text-gray-900">Aucun produit trouvé</h3>
-                  <p className="text-gray-500 mt-2">Aucun produit ne correspond à vos critères.</p>
+                  <h3 className="mt-4 text-lg font-semibold text-gray-900">
+                    {products.length === 0 ? "Aucun produit" : "Aucun produit trouvé"}
+                  </h3>
+                  <p className="text-gray-500 mt-2">
+                    {products.length === 0
+                      ? "Commencez par créer votre premier produit"
+                      : "Aucun produit ne correspond à vos critères."}
+                  </p>
+                  {products.length === 0 && (
+                    <Button onClick={handleCreateProduct} className="mt-4">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Créer un produit
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -638,6 +579,20 @@ export default function ProductsPage() {
           )}
         </div>
       </main>
+
+      <ProductFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={loadProducts}
+        product={editingProduct}
+      />
+
+      <ProductDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        productId={selectedProductId}
+        onUpdated={loadProducts}
+      />
     </>
   )
 }

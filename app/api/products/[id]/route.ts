@@ -22,7 +22,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: id },
       include: {
         category: true,
-        StockMovement: {
+        brand: true,
+        stockMovements: {
           include: {
             user: {
               select: {
@@ -65,10 +66,27 @@ export async function PUT(request: NextRequest, { params }: { params:Promise<{ i
 
 
     const data = await request.json()
-    const { name, description, photos, prixVente, prixAchat, tva, stock, categoryId } = data
+    const { 
+      name, 
+      sku,
+      description, 
+      photos, 
+      prixVente, 
+      prixAchat, 
+      tva, 
+      stock,
+      minStock,
+      maxStock,
+      categoryId,
+      brandId 
+    } = data
 
     if (!name || prixVente === undefined || prixAchat === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    if (!categoryId) {
+      return NextResponse.json({ error: "Category is required" }, { status: 400 })
     }
 
     // Récupérer l'ancien stock pour calculer la différence
@@ -84,16 +102,21 @@ export async function PUT(request: NextRequest, { params }: { params:Promise<{ i
       where: { id: id },
       data: {
         name,
-        description,
+        sku: sku || null,
+        description: description || null,
         photos: photos || [],
         prixVente: Number(prixVente),
         prixAchat: Number(prixAchat),
         tva: Number(tva) || 20,
         stock: Number(stock),
-        categoryId: categoryId || null,
+        minStock: Number(minStock) || 0,
+        maxStock: maxStock ? Number(maxStock) : null,
+        categoryId,
+        brandId: brandId || null,
       },
       include: {
         category: true,
+        brand: true,
       },
     })
 

@@ -28,6 +28,7 @@ import {
   Settings,
   LogOut,
   ShoppingCart,
+  Store,
 } from "lucide-react"
 
 interface MenuItem {
@@ -74,6 +75,12 @@ const menuItems: MenuItem[] = [
     label: "Marques",
     icon: Bookmark,
     href: "/dashboard/warehouse/brands",
+  },
+  {
+    id: "stores",
+    label: "Magasins",
+    icon: Store,
+    href: "/dashboard/warehouse/stores",
   },
 ]
 

@@ -32,36 +32,51 @@ export function isValidSession(session: any): session is { user: { id: string; e
 
 /**
  * Vérifie si un utilisateur a une permission spécifique
+ * Accepte soit un ID utilisateur (string), soit un objet utilisateur complet avec userRoles
  */
-export async function hasPermission(userId: string, permission: string): Promise<boolean> {
+export async function hasPermission(userOrId: string | any, permission: string): Promise<boolean> {
   try {
-    console.log(`Checking permission "${permission}" for user ${userId}`)
+    let userWithRoles: any
 
-    const userWithRoles = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        userRoles: {
-          include: {
-            role: {
-              include: {
-                rolePermissions: {
-                  include: {
-                    permission: true,
+    // Si c'est une string, c'est un ID - faire la requête
+    if (typeof userOrId === 'string') {
+      console.log(`Checking permission "${permission}" for user ID ${userOrId}`)
+      
+      userWithRoles = await prisma.user.findUnique({
+        where: { id: userOrId },
+        include: {
+          userRoles: {
+            include: {
+              role: {
+                include: {
+                  rolePermissions: {
+                    include: {
+                      permission: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    })
+      })
 
-    if (!userWithRoles) {
-      console.log(`User ${userId} not found`)
+      if (!userWithRoles) {
+        console.log(`User ${userOrId} not found`)
+        return false
+      }
+    } else {
+      // C'est déjà un objet utilisateur avec les rôles chargés
+      userWithRoles = userOrId
+      console.log(`Checking permission "${permission}" for user object ${userWithRoles.id || 'unknown'}`)
+    }
+
+    if (!userWithRoles || !userWithRoles.userRoles) {
+      console.log(`User has no roles`)
       return false
     }
 
-    console.log(`User ${userId} has ${userWithRoles.userRoles.length} roles`)
+    console.log(`User has ${userWithRoles.userRoles.length} roles`)
 
     // Vérifier si l'utilisateur a la permission
     for (const userRole of userWithRoles.userRoles) {
@@ -69,13 +84,13 @@ export async function hasPermission(userId: string, permission: string): Promise
       for (const rolePermission of userRole.role.rolePermissions) {
         console.log(`  - Permission: ${rolePermission.permission.name}`)
         if (rolePermission.permission.name === permission) {
-          console.log(`✅ Permission "${permission}" found for user ${userId}`)
+          console.log(`✅ Permission "${permission}" found`)
           return true
         }
       }
     }
 
-    console.log(`❌ Permission "${permission}" NOT found for user ${userId}`)
+    console.log(`❌ Permission "${permission}" NOT found`)
     return false
   } catch (error) {
     console.error("Error checking permission:", error)
@@ -86,9 +101,9 @@ export async function hasPermission(userId: string, permission: string): Promise
 /**
  * Vérifie si un utilisateur a au moins une des permissions spécifiées
  */
-export async function hasAnyPermission(userId: string, permissions: string[]): Promise<boolean> {
+export async function hasAnyPermission(userOrId: string | any, permissions: string[]): Promise<boolean> {
   for (const permission of permissions) {
-    if (await hasPermission(userId, permission)) {
+    if (await hasPermission(userOrId, permission)) {
       return true
     }
   }
@@ -98,9 +113,9 @@ export async function hasAnyPermission(userId: string, permissions: string[]): P
 /**
  * Vérifie si un utilisateur a toutes les permissions spécifiées
  */
-export async function hasAllPermissions(userId: string, permissions: string[]): Promise<boolean> {
+export async function hasAllPermissions(userOrId: string | any, permissions: string[]): Promise<boolean> {
   for (const permission of permissions) {
-    if (!(await hasPermission(userId, permission))) {
+    if (!(await hasPermission(userOrId, permission))) {
       return false
     }
   }

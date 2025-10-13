@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { usePermissions } from "@/hooks/use-permissions"
+import { StoreDetailsSheet } from "@/components/warehouse/store-details-sheet"
 import { toast } from "sonner"
 
 interface StoreData {
@@ -48,70 +49,12 @@ interface StoreDataExtended extends StoreData {
   revenue?: number
 }
 
-// Données mockées pour les magasins
-const mockStores: StoreDataExtended[] = [
-  {
-    id: "1",
-    name: "Magasin Centre-Ville",
-    logo: "https://images.unsplash.com/photo-1555421689-d68471e189f2?w=200&h=200&fit=crop",
-    coverImage: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop",
-    address: "123 Rue Principale, Douala, Cameroun",
-    phone: "+237 6XX XXX 001",
-    email: "centre@magasin.cm",
-    whatsapp: "+237 6XX XXX 001",
-    isActive: true,
-    revenue: 1245000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    name: "Magasin Akwa",
-    logo: "https://images.unsplash.com/photo-1556742044-3c52d6e88c62?w=200&h=200&fit=crop",
-    coverImage: "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=800&h=400&fit=crop",
-    address: "45 Avenue Akwa, Douala, Cameroun",
-    phone: "+237 6XX XXX 002",
-    email: "akwa@magasin.cm",
-    whatsapp: "+237 6XX XXX 002",
-    isActive: true,
-    revenue: 890000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "3",
-    name: "Magasin Bonanjo",
-    logo: "https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=200&h=200&fit=crop",
-    coverImage: "https://images.unsplash.com/photo-1601924994987-69e26d50dc26?w=800&h=400&fit=crop",
-    address: "78 Rue Bonanjo, Douala, Cameroun",
-    phone: "+237 6XX XXX 003",
-    email: "bonanjo@magasin.cm",
-    whatsapp: "+237 6XX XXX 003",
-    isActive: true,
-    revenue: 1580000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "4",
-    name: "Magasin Bépanda",
-    logo: "https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?w=200&h=200&fit=crop",
-    coverImage: "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=800&h=400&fit=crop",
-    address: "90 Rue Bépanda, Douala, Cameroun",
-    phone: "+237 6XX XXX 004",
-    email: "bepanda@magasin.cm",
-    whatsapp: "+237 6XX XXX 004",
-    isActive: true,
-    revenue: 1120000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-]
-
-export default function StoresPage() {
+export default function WarehouseStoresPage() {
   const router = useRouter()
   const [stores, setStores] = useState<StoreDataExtended[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const { hasPermission } = usePermissions()
 
   useEffect(() => {
@@ -208,7 +151,10 @@ export default function StoresPage() {
                 <Card 
                   key={store.id} 
                   className="overflow-hidden pt-0 hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => router.push(`/dashboard/stores/${store.id}`)}
+                  onClick={() => {
+                    setSelectedStoreId(store.id)
+                    setDetailsOpen(true)
+                  }}
                 >
                   {/* Cover Image */}
                   <div className="h-32 bg-gradient-to-br from-blue-500 to-blue-600 relative">
@@ -305,6 +251,12 @@ export default function StoresPage() {
           )}
         </div>
       </div>
+
+      <StoreDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        storeId={selectedStoreId}
+      />
     </PermissionGuard>
   )
 }

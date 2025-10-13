@@ -120,3 +120,50 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Styles d'impression */
+@media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Masquer les éléments non nécessaires à l'impression */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Afficher les éléments uniquement pour l'impression */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Éviter les sauts de page dans les éléments */
+  .print\:avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Optimisation des tableaux pour l'impression */
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}

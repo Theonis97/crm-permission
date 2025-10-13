@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   ShoppingCart,
   Search,
@@ -34,8 +36,13 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  X,
+  FileDown,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { OrderDetailsSheet } from "@/components/warehouse/order-details-sheet"
+import { OrderFormDialog } from "@/components/warehouse/order-form-dialog"
 
 interface Order {
   id: string
@@ -127,25 +134,81 @@ const mockStores = [
   { id: "store-005", name: "Magasin Bordeaux" },
 ]
 
-export default function OrdersPage() {
-  const [orders] = useState<Order[]>(mockOrders)
+export default function WarehouseOrdersPage() {
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stores, setStores] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [storeFilter, setStoreFilter] = useState<string>("all")
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([])
+  const itemsPerPage = 20
+
+  useEffect(() => {
+    loadOrders()
+    setSelectedOrders([]) // Réinitialiser la sélection lors du changement de filtres
+  }, [statusFilter, storeFilter, priorityFilter])
+
+  useEffect(() => {
+    setSelectedOrders([]) // Réinitialiser la sélection lors du changement de page
+  }, [currentPage])
+
+  const loadOrders = async () => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      
+      if (statusFilter !== "all") {
+        params.append("status", statusFilter)
+      }
+      
+      if (storeFilter !== "all") {
+        params.append("storeId", storeFilter)
+      }
+      
+      if (priorityFilter !== "all") {
+        params.append("priority", priorityFilter)
+      }
+      
+      params.append("page", "1")
+      params.append("limit", "100")
+
+      const response = await fetch(`/api/warehouse-orders?${params}`)
+      
+      if (!response.ok) {
+        throw new Error("Erreur lors du chargement")
+      }
+
+      const data = await response.json()
+      setOrders(data.orders || [])
+      
+      // Extraire les magasins uniques pour les filtres
+      const uniqueStores = Array.from(
+        new Map(data.orders.map((o: any) => [o.store.id, o.store])).values()
+      )
+      setStores(uniqueStores as any[])
+    } catch (error) {
+      console.error("Error loading orders:", error)
+      toast.error("Erreur lors du chargement des commandes")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.storeName.toLowerCase().includes(searchTerm.toLowerCase())
+      order.number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.store?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter
-    const matchesStore = storeFilter === "all" || order.storeId === storeFilter
-    const matchesPriority = priorityFilter === "all" || order.priority === priorityFilter
+    const matchesStore = storeFilter === "all" || order.store.id === storeFilter
 
-    return matchesSearch && matchesStatus && matchesStore && matchesPriority
+    return matchesSearch && matchesStore
   })
 
   const handleFilterChange = () => {
@@ -156,22 +219,97 @@ export default function OrdersPage() {
     setStatusFilter("all")
     setStoreFilter("all")
     setPriorityFilter("all")
+    setSearchTerm("")
   }
 
-  const hasActiveFilters = statusFilter !== "all" || storeFilter !== "all" || priorityFilter !== "all"
+  const handleViewOrder = (orderId: string) => {
+    setSelectedOrderId(orderId)
+    setDetailsOpen(true)
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedOrders(paginatedOrders.map(order => order.id))
+    } else {
+      setSelectedOrders([])
+    }
+  }
+
+  const handleSelectOrder = (orderId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedOrders([...selectedOrders, orderId])
+    } else {
+      setSelectedOrders(selectedOrders.filter(id => id !== orderId))
+    }
+  }
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedOrders.length === 0) return
+    
+    if (!confirm(`Changer le statut de ${selectedOrders.length} commande(s) ?`)) return
+
+    try {
+      const promises = selectedOrders.map(orderId =>
+        fetch(`/api/warehouse-orders/${orderId}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        })
+      )
+
+      await Promise.all(promises)
+      toast.success(`${selectedOrders.length} commande(s) mise(s) à jour`)
+      setSelectedOrders([])
+      loadOrders()
+    } catch (error) {
+      toast.error("Erreur lors de la mise à jour")
+    }
+  }
+
+  const handleBulkExport = () => {
+    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
+    const csv = [
+      ["N° Commande", "Magasin", "Statut", "Priorité", "Total", "Date de création"].join(","),
+      ...selectedOrdersData.map(order => [
+        order.number,
+        order.store?.name,
+        order.status,
+        order.priority,
+        order.total,
+        new Date(order.createdAt).toLocaleDateString("fr-FR")
+      ].join(","))
+    ].join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `commandes_${new Date().toISOString().split("T")[0]}.csv`
+    a.click()
+    toast.success(`${selectedOrders.length} commande(s) exportée(s)`)
+  }
+
+  const hasActiveFilters = statusFilter !== "all" || storeFilter !== "all" || priorityFilter !== "all" || searchTerm !== ""
 
   // Pagination
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const paginatedOrders = filteredOrders.slice(startIndex, endIndex)
+  
+  const isAllSelected = paginatedOrders.length > 0 && selectedOrders.length === paginatedOrders.length
 
-  const getStatusConfig = (status: Order["status"]) => {
-    const config = {
+  const getStatusConfig = (status: string) => {
+    const config: Record<string, any> = {
       PENDING: {
         icon: Clock,
         className: "border-amber-200 text-amber-700 bg-amber-50",
         label: "En attente",
+      },
+      CONFIRMED: {
+        icon: CheckCircle2,
+        className: "border-blue-200 text-blue-700 bg-blue-50",
+        label: "Confirmée",
       },
       PREPARING: {
         icon: Package,
@@ -199,17 +337,36 @@ export default function OrdersPage() {
         label: "Annulée",
       },
     }
-    return config[status]
+    return config[status] || config.PENDING
   }
 
-  const getPriorityConfig = (priority: Order["priority"]) => {
-    const config = {
+  const getPriorityConfig = (priority: string) => {
+    const config: Record<string, any> = {
       LOW: { className: "border-gray-200 text-gray-700 bg-gray-50", label: "Basse" },
       NORMAL: { className: "border-blue-200 text-blue-700 bg-blue-50", label: "Normale" },
       HIGH: { className: "border-orange-200 text-orange-700 bg-orange-50", label: "Haute" },
       URGENT: { className: "border-red-200 text-red-700 bg-red-50", label: "Urgente" },
     }
-    return config[priority]
+    return config[priority] || config.NORMAL
+  }
+
+  const getStatusBadge = (status: any) => {
+    const statusConfig = getStatusConfig(status)
+    return (
+      <Badge variant="outline" className={cn("text-xs", statusConfig.className)}>
+        <statusConfig.icon className="h-3 w-3 mr-1" />
+        {statusConfig.label}
+      </Badge>
+    )
+  }
+
+  const getPriorityBadge = (priority: any) => {
+    const priorityConfig = getPriorityConfig(priority)
+    return (
+      <Badge variant="outline" className={cn("text-xs", priorityConfig.className)}>
+        {priorityConfig.label}
+      </Badge>
+    )
   }
 
   const formatDate = (date: Date) => {
@@ -218,6 +375,17 @@ export default function OrdersPage() {
       day: "numeric",
       month: "short",
       year: "numeric",
+    })
+  }
+
+  const formatDateTime = (date: Date) => {
+    return date.toLocaleString("fr-FR", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     })
   }
 
@@ -236,7 +404,7 @@ export default function OrdersPage() {
         icon={ShoppingCart}
         primaryAction={{
           label: "Nouvelle commande",
-          onClick: () => console.log("Create order"),
+          onClick: () => setCreateOpen(true),
           icon: Plus,
         }}
         secondaryActions={
@@ -314,9 +482,10 @@ export default function OrdersPage() {
                     <SelectContent>
                       <SelectItem value="all">Tous les statuts</SelectItem>
                       <SelectItem value="PENDING">En attente</SelectItem>
+                      <SelectItem value="CONFIRMED">Confirmées</SelectItem>
                       <SelectItem value="PREPARING">En préparation</SelectItem>
                       <SelectItem value="READY">Prêtes</SelectItem>
-                      <SelectItem value="SHIPPED">Expédiées</SelectItem>
+                      <SelectItem value="DELIVERING">En livraison</SelectItem>
                       <SelectItem value="DELIVERED">Livrées</SelectItem>
                       <SelectItem value="CANCELLED">Annulées</SelectItem>
                     </SelectContent>
@@ -358,8 +527,60 @@ export default function OrdersPage() {
               </div>
             </div>
 
+            {/* Barre d'actions groupées */}
+            {selectedOrders.length > 0 && (
+              <div className="bg-blue-50 border-y border-blue-200 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-blue-900">
+                      {selectedOrders.length} commande(s) sélectionnée(s)
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedOrders([])}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Désélectionner tout
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select onValueChange={handleBulkStatusChange}>
+                      <SelectTrigger className="w-[200px] bg-white">
+                        <SelectValue placeholder="Changer le statut" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PENDING">En attente</SelectItem>
+                        <SelectItem value="CONFIRMED">Confirmée</SelectItem>
+                        <SelectItem value="PREPARING">En préparation</SelectItem>
+                        <SelectItem value="READY">Prête</SelectItem>
+                        <SelectItem value="DELIVERING">En livraison</SelectItem>
+                        <SelectItem value="DELIVERED">Livrée</SelectItem>
+                        <SelectItem value="CANCELLED">Annulée</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkExport}
+                      className="bg-white"
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exporter
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <CardContent className="p-0 gap-0">
-              {filteredOrders.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+                  <p className="text-gray-500 mt-4">Chargement des commandes...</p>
+                </div>
+              ) : filteredOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingCart className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-4 text-lg font-semibold text-gray-900">Aucune commande trouvée</h3>
@@ -370,46 +591,67 @@ export default function OrdersPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={isAllSelected}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </TableHead>
                         <TableHead>N° Commande</TableHead>
                         <TableHead>Magasin</TableHead>
-                        <TableHead className="text-center">Produits</TableHead>
-                        <TableHead className="text-center">Quantité</TableHead>
+                        <TableHead className="text-center">Articles</TableHead>
+                        <TableHead className="text-right">Montant</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead>Priorité</TableHead>
-                        <TableHead>Date demandée</TableHead>
-                        <TableHead>Créée par</TableHead>
+                        <TableHead>Créée le</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paginatedOrders.map((order) => {
-                        const statusConfig = getStatusConfig(order.status)
-                        const priorityConfig = getPriorityConfig(order.priority)
-                        const StatusIcon = statusConfig.icon
-
+                        const totalItems = order.items?.length || 0
+                        const isSelected = selectedOrders.includes(order.id)
                         return (
-                          <TableRow key={order.id} className="hover:bg-gray-50">
-                            <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                            <TableCell>{order.storeName}</TableCell>
-                            <TableCell className="text-center">{order.products}</TableCell>
-                            <TableCell className="text-center font-semibold">{order.totalQuantity}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={cn("text-xs", statusConfig.className)}>
-                                <StatusIcon className="h-3 w-3 mr-1" />
-                                {statusConfig.label}
-                              </Badge>
+                          <TableRow 
+                            key={order.id} 
+                            className={cn(
+                              "hover:bg-gray-50",
+                              isSelected && "bg-blue-50"
+                            )}
+                          >
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleSelectOrder(order.id, checked as boolean)}
+                              />
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={cn("text-xs", priorityConfig.className)}>
-                                {priorityConfig.label}
-                              </Badge>
+                            <TableCell 
+                              className="cursor-pointer"
+                              onClick={() => handleViewOrder(order.id)}
+                            >
+                              <span className="font-mono text-sm font-medium">{order.number}</span>
                             </TableCell>
+                            <TableCell className="font-medium">{order.store?.name}</TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Package className="h-4 w-4 text-gray-400" />
+                                <span className="text-sm font-medium">{totalItems}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {order.total?.toLocaleString("fr-FR")} XAF
+                            </TableCell>
+                            <TableCell>{getStatusBadge(order.status)}</TableCell>
+                            <TableCell>{getPriorityBadge(order.priority)}</TableCell>
                             <TableCell className="text-sm text-gray-600">
-                              {formatDate(order.requestedDate)}
+                              {formatDateTime(new Date(order.createdAt))}
                             </TableCell>
-                            <TableCell className="text-sm text-gray-600">{order.createdBy}</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm">
+                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleViewOrder(order.id)}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </TableCell>
@@ -482,6 +724,19 @@ export default function OrdersPage() {
           </Card>
         </div>
       </div>
+
+      <OrderDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        orderId={selectedOrderId}
+        onUpdated={loadOrders}
+      />
+
+      <OrderFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onSuccess={loadOrders}
+      />
     </>
   )
 }

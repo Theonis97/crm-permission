@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         category: true,
+        brand: true,
       },
       orderBy: { createdAt: "desc" },
     })
@@ -74,25 +75,47 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
-    const { name, description, photos, prixVente, prixAchat, tva, stock, categoryId } = data
+    const { 
+      name, 
+      sku,
+      description, 
+      photos, 
+      prixVente, 
+      prixAchat, 
+      tva, 
+      stock, 
+      minStock,
+      maxStock,
+      categoryId,
+      brandId 
+    } = data
 
     if (!name || prixVente === undefined || prixAchat === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    if (!categoryId) {
+      return NextResponse.json({ error: "Category is required" }, { status: 400 })
+    }
+
     const product = await prisma.product.create({
       data: {
         name,
-        description,
+        sku: sku || null,
+        description: description || null,
         photos: photos || [],
         prixVente: Number(prixVente),
         prixAchat: Number(prixAchat),
         tva: Number(tva) || 20,
         stock: Number(stock) || 0,
-        categoryId: categoryId || null,
+        minStock: Number(minStock) || 0,
+        maxStock: maxStock ? Number(maxStock) : null,
+        categoryId,
+        brandId: brandId || null,
       },
       include: {
         category: true,
+        brand: true,
       },
     })
 
@@ -110,8 +133,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(product, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating product:", error)
+    if (error.code === "P2002") {
+      return NextResponse.json({ error: "SKU already exists" }, { status: 400 })
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

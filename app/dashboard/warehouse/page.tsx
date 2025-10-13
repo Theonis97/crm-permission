@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,9 +20,12 @@ import {
   XCircle,
   BarChart3,
   ShoppingCart,
+  DollarSign,
+  Trophy,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { DashboardData, StockAlert } from "@/types/warehouse"
+import { toast } from "sonner"
 import {
   LineChart,
   Line,
@@ -36,170 +39,109 @@ import {
   ResponsiveContainer,
 } from "recharts"
 
-// Données mockées pour le dashboard
-const mockDashboardData: DashboardData = {
-  warehouseStats: {
-    totalWarehouses: 1,
-    activeWarehouses: 1,
-    totalCapacity: 5000,
-    totalOccupation: 3500,
-    occupationRate: 70,
-  },
-  stockStats: {
-    totalProducts: 1247,
-    totalQuantity: 45230,
-    productsOk: 1089,
-    productsLowStock: 124,
-    productsOutOfStock: 18,
-    productsOverstocked: 16,
-    productsExpiringSoon: 23,
-    totalValue: 2450000,
-  },
-  movementStats: {
-    totalMovements: 3456,
-    movementsToday: 45,
-    movementsThisWeek: 287,
-    movementsThisMonth: 1234,
-    entriesThisMonth: 678,
-    exitsThisMonth: 556,
-    pendingMovements: 12,
-  },
-  inventoryStats: {
-    totalInventories: 48,
-    plannedInventories: 3,
-    inProgressInventories: 1,
-    completedInventories: 44,
-    lastInventoryDate: new Date("2025-10-05"),
-    averageAccuracy: 98.5,
-  },
-  recentMovements: [],
-  stockAlerts: [],
-  upcomingInventories: [],
+// Types pour les données du dashboard
+interface StockStats {
+  totalProducts: number
+  totalQuantity: number
+  productsOk: number
+  productsLowStock: number
+  productsOutOfStock: number
+  productsOverstocked: number
+  totalValue: number
 }
 
-const mockRecentMovements = [
-  {
-    id: "1",
-    type: "IN" as const,
-    subtype: "PURCHASE" as const,
-    productName: "Laptop Dell XPS 15",
-    sku: "LAP-DELL-001",
-    quantity: 25,
-    user: "Jean Dupont",
-    time: "Il y a 5 min",
-    status: "VALIDATED" as const,
-  },
-  {
-    id: "2",
-    type: "OUT" as const,
-    subtype: "SALE" as const,
-    productName: "Souris Logitech MX Master",
-    sku: "MOU-LOG-003",
-    quantity: 15,
-    user: "Marie Martin",
-    time: "Il y a 15 min",
-    status: "VALIDATED" as const,
-  },
-  {
-    id: "3",
-    type: "IN" as const,
-    subtype: "RETURN_CLIENT" as const,
-    productName: "Clavier mécanique",
-    sku: "CLV-MEC-005",
-    quantity: 3,
-    user: "Sophie Laurent",
-    time: "Il y a 2h",
-    status: "VALIDATED" as const,
-  },
-  {
-    id: "4",
-    type: "ADJUSTMENT" as const,
-    subtype: "ADJUSTMENT_NEGATIVE" as const,
-    productName: "Cable HDMI 2m",
-    sku: "CAB-HDM-001",
-    quantity: 5,
-    user: "Thomas Petit",
-    time: "Il y a 3h",
-    status: "VALIDATED" as const,
-  },
-  {
-    id: "5",
-    type: "OUT" as const,
-    subtype: "SALE" as const,
-    productName: "Écran Samsung 27\"",
-    sku: "ECR-SAM-002",
-    quantity: 8,
-    user: "Pierre Dubois",
-    time: "Il y a 4h",
-    status: "VALIDATED" as const,
-  },
-]
+interface MovementStats {
+  totalMovements: number
+  movementsToday: number
+  movementsThisWeek: number
+  movementsThisMonth: number
+  entriesThisMonth: number
+  exitsThisMonth: number
+}
 
-const mockStockAlerts = [
-  {
-    id: "1",
-    type: "OUT_OF_STOCK" as const,
-    severity: "CRITICAL" as const,
-    productName: "Batterie externe 20000mAh",
-    sku: "BAT-EXT-004",
-    currentStock: 0,
-    minStock: 50,
-  },
-  {
-    id: "2",
-    type: "LOW_STOCK" as const,
-    severity: "WARNING" as const,
-    productName: "Adaptateur USB-C vers HDMI",
-    sku: "ADP-USC-002",
-    currentStock: 12,
-    minStock: 50,
-  },
-  {
-    id: "3",
-    type: "EXPIRING_SOON" as const,
-    severity: "WARNING" as const,
-    productName: "Licence Office 365",
-    sku: "LIC-OFF-001",
-    currentStock: 45,
-    expiryDate: "15/10/2025",
-  },
-  {
-    id: "4",
-    type: "OVERSTOCKED" as const,
-    severity: "INFO" as const,
-    productName: "Tapis de souris",
-    sku: "TAP-SOU-001",
-    currentStock: 350,
-    maxStock: 200,
-  },
-]
+interface OrderStats {
+  ordersInProgress: number
+  ordersPending: number
+}
 
-// Données pour les graphiques - Métriques pertinentes pour la gestion d'entrepôt
-const monthlyFlowData = [
-  { date: "Jan", entrees: 5200, sorties: 4100 },
-  { date: "Fév", entrees: 6100, sorties: 4500 },
-  { date: "Mar", entrees: 7200, sorties: 4600 },
-  { date: "Avr", entrees: 5800, sorties: 5100 },
-  { date: "Mai", entrees: 6400, sorties: 5700 },
-  { date: "Juin", entrees: 6800, sorties: 5750 },
-  { date: "Juil", entrees: 7100, sorties: 6230 },
-  { date: "Août", entrees: 5900, sorties: 7200 },
-  { date: "Sep", entrees: 6700, sorties: 6300 },
-  { date: "Oct", entrees: 6500, sorties: 6470 },
-]
+interface StockAlert {
+  id: string
+  productName: string
+  sku: string | null
+  currentStock: number
+  minStock: number
+  type: string
+  severity: string
+}
 
-const stockValueByCategoryData = [
-  { category: "Électronique", value: 850000 },
-  { category: "Accessoires", value: 420000 },
-  { category: "Logiciels", value: 580000 },
-  { category: "Périphériques", value: 380000 },
-  { category: "Câbles", value: 120000 },
-  { category: "Autres", value: 100000 },
-]
+interface RecentMovement {
+  id: string
+  type: string
+  productName: string
+  sku: string | null
+  quantity: number
+  user: string
+  time: string
+  note: string | null
+}
 
 export default function WarehouseDashboardPage() {
   const router = useRouter()
-  const [data] = useState<DashboardData>(mockDashboardData)
+  const [loading, setLoading] = useState(true)
+  const [stockStats, setStockStats] = useState<StockStats | null>(null)
+  const [movementStats, setMovementStats] = useState<MovementStats | null>(null)
+  const [orderStats, setOrderStats] = useState<OrderStats | null>(null)
+  const [stockValueByCategory, setStockValueByCategory] = useState<any[]>([])
+  const [movementsByMonth, setMovementsByMonth] = useState<any[]>([])
+  const [recentMovements, setRecentMovements] = useState<RecentMovement[]>([])
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([])
+  const [topProducts, setTopProducts] = useState<any[]>([])
+  const [topProductsLoading, setTopProductsLoading] = useState(true)
+  const [topProductsSortBy, setTopProductsSortBy] = useState<"quantity" | "revenue">("quantity")
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  useEffect(() => {
+    loadTopProducts()
+  }, [topProductsSortBy])
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/warehouse/dashboard")
+      if (!response.ok) throw new Error("Erreur")
+      const data = await response.json()
+      
+      setStockStats(data.stockStats)
+      setMovementStats(data.movementStats)
+      setOrderStats(data.orderStats)
+      setStockValueByCategory(data.stockValueByCategory || [])
+      setMovementsByMonth(data.movementsByMonth || [])
+      setRecentMovements(data.recentMovements || [])
+      setStockAlerts(data.stockAlerts || [])
+    } catch (error) {
+      console.error("Error loading dashboard data:", error)
+      toast.error("Erreur lors du chargement des données")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadTopProducts = async () => {
+    try {
+      setTopProductsLoading(true)
+      const response = await fetch(`/api/products/top-sales?sortBy=${topProductsSortBy}&limit=10`)
+      if (!response.ok) throw new Error("Erreur")
+      const data = await response.json()
+      setTopProducts(data.products || [])
+    } catch (error) {
+      console.error("Error loading top products:", error)
+    } finally {
+      setTopProductsLoading(false)
+    }
+  }
 
   const getMovementIcon = (type: string) => {
     switch (type) {
@@ -255,6 +197,12 @@ export default function WarehouseDashboardPage() {
       
       <div className="py-8">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-6">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          <>
         {/* Indicateurs clés */}
         <div className="grid gap-4 md:grid-cols-3">
           {/* Références en stock */}
@@ -264,15 +212,15 @@ export default function WarehouseDashboardPage() {
               <Package className="h-4 w-4 text-gray-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{data.stockStats.totalProducts.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-gray-900">{stockStats?.totalProducts.toLocaleString() || 0}</div>
               <div className="mt-2 flex items-center gap-2">
                 <Badge variant="outline" className="text-xs border-red-200 text-red-700">
                   <XCircle className="h-3 w-3 mr-1" />
-                  {data.stockStats.productsOutOfStock} ruptures
+                  {stockStats?.productsOutOfStock || 0} ruptures
                 </Badge>
                 <Badge variant="outline" className="text-xs border-amber-200 text-amber-700">
                   <AlertTriangle className="h-3 w-3 mr-1" />
-                  {data.stockStats.productsLowStock} alertes
+                  {stockStats?.productsLowStock || 0} alertes
                 </Badge>
               </div>
             </CardContent>
@@ -286,7 +234,7 @@ export default function WarehouseDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">
-                {((data.stockStats.totalValue || 0) / 1000000).toFixed(2)}M €
+                {((stockStats?.totalValue || 0) / 1000000).toFixed(2)}M XAF
               </div>
               <p className="text-xs text-gray-500 mt-2">
                 Inventaire valorisé
@@ -301,11 +249,11 @@ export default function WarehouseDashboardPage() {
               <ShoppingCart className="h-4 w-4 text-gray-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">24</div>
+              <div className="text-2xl font-bold text-gray-900">{orderStats?.ordersInProgress || 0}</div>
               <div className="mt-2 flex items-center gap-2">
                 <Badge variant="outline" className="text-xs border-amber-200 text-amber-700">
                   <Clock className="h-3 w-3 mr-1" />
-                  8 en attente
+                  {orderStats?.ordersPending || 0} en attente
                 </Badge>
               </div>
             </CardContent>
@@ -324,15 +272,15 @@ export default function WarehouseDashboardPage() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={stockValueByCategoryData}>
+                <BarChart data={stockValueByCategory}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="category" stroke="#6b7280" fontSize={11} angle={-20} textAnchor="end" height={80} />
+                  <XAxis dataKey="name" stroke="#6b7280" fontSize={11} angle={-20} textAnchor="end" height={80} />
                   <YAxis stroke="#6b7280" fontSize={12} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                    formatter={(value: number) => `${(value / 1000).toFixed(0)}k €`}
+                    formatter={(value: number) => `${(value / 1000).toFixed(0)}k XAF`}
                   />
-                  <Bar dataKey="value" fill="#f59e0b" name="Valeur (€)" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="value" fill="#f59e0b" name="Valeur (XAF)" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -348,9 +296,9 @@ export default function WarehouseDashboardPage() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyFlowData}>
+                <LineChart data={movementsByMonth}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
                   <YAxis stroke="#6b7280" fontSize={12} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
@@ -359,7 +307,7 @@ export default function WarehouseDashboardPage() {
                   <Legend />
                   <Line 
                     type="monotone" 
-                    dataKey="entrees" 
+                    dataKey="entries" 
                     stroke="#10b981" 
                     strokeWidth={2}
                     name="Entrées"
@@ -367,7 +315,7 @@ export default function WarehouseDashboardPage() {
                   />
                   <Line 
                     type="monotone" 
-                    dataKey="sorties" 
+                    dataKey="exits" 
                     stroke="#ef4444" 
                     strokeWidth={2}
                     name="Sorties"
@@ -378,6 +326,107 @@ export default function WarehouseDashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Top produits du mois */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-amber-600" />
+                Top 10 produits du mois
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={topProductsSortBy === "quantity" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTopProductsSortBy("quantity")}
+                >
+                  Par ventes
+                </Button>
+                <Button
+                  variant={topProductsSortBy === "revenue" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTopProductsSortBy("revenue")}
+                >
+                  Par CA
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {topProductsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : topProducts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                Aucune vente enregistrée ce mois-ci
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topProducts.map((product, index) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => router.push(`/dashboard/warehouse/products`)}
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 text-amber-700 font-bold text-sm shrink-0">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-gray-900 truncate">{product.name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {product.sku && (
+                              <Badge variant="outline" className="text-xs">
+                                {product.sku}
+                              </Badge>
+                            )}
+                            {product.categoryName && (
+                              <span className="text-xs text-gray-500">{product.categoryName}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {topProductsSortBy === "quantity" ? (
+                            <div>
+                              <p className="font-bold text-sm text-blue-600">
+                                {product.totalQuantity} unités
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {product.totalRevenue.toLocaleString("fr-FR")} XAF
+                              </p>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="font-bold text-sm text-green-600">
+                                {product.totalRevenue.toLocaleString("fr-FR")} XAF
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {product.totalQuantity} unités
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Package className="h-3 w-3" />
+                          Stock: {product.stock}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          {product.prixVente.toLocaleString("fr-FR")} XAF
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Alertes de stock */}
@@ -393,7 +442,12 @@ export default function WarehouseDashboardPage() {
             </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {mockStockAlerts.map((alert) => (
+                  {stockAlerts.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-gray-500">
+                      Aucune alerte de stock
+                    </div>
+                  ) : (
+                    stockAlerts.map((alert) => (
                     <div key={alert.id} className={cn("flex items-start gap-3 p-3 rounded-lg border", getAlertBgColor(alert.severity))}>
                       {getAlertIcon(alert.severity)}
                       <div className="flex-1 min-w-0">
@@ -409,7 +463,8 @@ export default function WarehouseDashboardPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -427,7 +482,12 @@ export default function WarehouseDashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {mockRecentMovements.map((movement) => (
+                  {recentMovements.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-gray-500">
+                      Aucun mouvement récent
+                    </div>
+                  ) : (
+                    recentMovements.map((movement) => (
                     <div key={movement.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
                       <div className={cn("flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100", getMovementColor(movement.type))}>
                         {getMovementIcon(movement.type)}
@@ -454,11 +514,14 @@ export default function WarehouseDashboardPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
+        </>
+        )}
         </div>
       </div>
     </>

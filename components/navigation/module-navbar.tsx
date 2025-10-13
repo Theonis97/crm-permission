@@ -60,7 +60,7 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
 
             {/* Bouton d'action principal */}
             {primaryAction && (
-              <Button onClick={primaryAction.onClick} size="sm">
+              <Button onClick={primaryAction.onClick} size="sm" className="rounded-full">
                 {primaryAction.icon && <primaryAction.icon className="mr-2 h-4 w-4" />}
                 {primaryAction.label}
               </Button>
