@@ -94,7 +94,7 @@ model Contact {
   invoices      Invoice[]
   opportunities Opportunity[]
   storeContacts StoreContact[]
-  orders        Order[]
+  storeOrders   StoreOrder[]
 
   @@map("contacts")
 }
@@ -109,18 +109,20 @@ model Store {
   email      String?
   whatsapp   String?
   isActive   Boolean  @default(true) @map("is_active")
+  managerId  String?  @map("manager_id") // Manager de la boutique (optionnel)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Relations
-  products         StoreProduct[]
-  orders           Order[]
-  deliveryPersons  DeliveryPerson[]
-  deliveryZones    DeliveryZone[]
-  storeContacts    StoreContact[]
-  transfersFrom    Transfer[]        @relation("fromStore")
-  transfersTo      Transfer[]        @relation("toStore")
-  restockingOrders RestockingOrder[]
+  manager         User?            @relation("StoreManager", fields: [managerId], references: [id], onDelete: SetNull)
+  products        StoreProduct[]
+  storeOrders     StoreOrder[]
+  orders          Order[] // Commandes d'approvisionnement
+  deliveryPersons DeliveryPerson[]
+  deliveryZones   DeliveryZone[]
+  storeContacts   StoreContact[]
+  transfersFrom   Transfer[] @relation("fromStore")
+  transfersTo     Transfer[] @relation("toStore")
 
   @@map("stores")
 }
@@ -177,16 +179,16 @@ model Product {
   brandId String? @map("brand_id") // Optionnel
   brand   Brand?  @relation(fields: [brandId], references: [id])
 
-  quoteItems           QuoteItem[]
-  invoiceItems         InvoiceItem[]
-  stockMovements       StockMovement[]
-  storeProducts        StoreProduct[]
-  orderItems           OrderItem[]
-  warehouseStocks      WarehouseStock[]
-  lots                 Lot[]
-  transferItems        TransferItem[]
-  variants             ProductVariant[]
-  restockingOrderItems RestockingOrderItem[]
+  quoteItems      QuoteItem[]
+  invoiceItems    InvoiceItem[]
+  stockMovements  StockMovement[]
+  storeProducts   StoreProduct[]
+  warehouseStocks WarehouseStock[]
+  lots            Lot[]
+  transferItems   TransferItem[]
+  variants        ProductVariant[]
+  storeOrderItems StoreOrderItem[] // Items des commandes clients
+  orderItems      OrderItem[] // Items des commandes d'approvisionnement
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -225,8 +227,8 @@ model ProductVariant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
+  product         Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storeOrderItems StoreOrderItem[]
 
   @@index([productId])
   @@index([sku])
@@ -296,14 +298,17 @@ enum DeliveryPersonStatus {
 
 // Relation produit-magasin (stock par magasin)
 model StoreProduct {
-  id        String   @id @default(cuid())
-  storeId   String   @map("store_id")
-  productId String   @map("product_id")
-  stock     Int      @default(0)
-  minStock  Int      @default(0) @map("min_stock")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  storeId    String   @map("store_id")
+  productId  String   @map("product_id")
+  stock      Int      @default(0)
+  minStock   Int      @default(0) @map("min_stock")
+  maxStock   Int?     @map("max_stock") // Seuil max optionnel
+  prixVente  Float?   @map("prix_vente") // Prix de vente spécifique au magasin
+  prixAchat  Float?   @map("prix_achat") // Prix d'achat spécifique (optionnel)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -329,8 +334,8 @@ model StoreContact {
   @@map("store_contacts")
 }
 
-// Commandes magasin
-model Order {
+// Commandes clients du magasin
+model StoreOrder {
   id              String  @id @default(cuid())
   number          String  @unique
   storeId         String  @map("store_id")
@@ -373,15 +378,15 @@ model Order {
   deliveryZone   DeliveryZone?   @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
   createdBy      User            @relation(fields: [createdById], references: [id])
 
-  items            OrderItem[]
+  items            StoreOrderItem[]
   whatsappMessages WhatsAppMessage[]
 
-  @@map("orders")
+  @@map("store_orders")
 }
 
-model OrderItem {
+model StoreOrderItem {
   id                String   @id @default(cuid())
-  orderId           String   @map("order_id")
+  storeOrderId      String   @map("store_order_id")
   productId         String   @map("product_id")
   variantId         String?  @map("variant_id") // Si commande d'une variante spécifique
   name              String // Snapshot du nom au moment de la commande
@@ -395,11 +400,11 @@ model OrderItem {
   total             Float
   createdAt         DateTime @default(now()) @map("created_at")
 
-  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product         @relation(fields: [productId], references: [id])
-  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  storeOrder StoreOrder      @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
+  product    Product         @relation(fields: [productId], references: [id])
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-  @@map("order_items")
+  @@map("store_order_items")
 }
 
 // Livreurs
@@ -420,7 +425,7 @@ model DeliveryPerson {
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
   store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders        Order[]
+  storeOrders   StoreOrder[]
   wallet        CourierWallet?
   deliveryZones DeliveryZone[] // Zones assignées au livreur
 
@@ -446,7 +451,7 @@ model DeliveryZone {
 
   store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   deliveryPerson DeliveryPerson? @relation(fields: [deliveryPersonId], references: [id], onDelete: SetNull)
-  orders         Order[]
+  storeOrders    StoreOrder[]
 
   @@map("delivery_zones")
 }
@@ -675,13 +680,14 @@ model User {
   tasks                     Task[]
   opportunityParticipants   OpportunityParticipant[]
   opportunities             Opportunity[]
-  auditLogs                 AuditLog[]
-  contacts                  Contact[]
-  stockMovements            StockMovement[]
-  orders                    Order[]
-  managedWarehouses         Warehouse[]
-  requestedRestockingOrders RestockingOrder[]        @relation("RestockingOrderRequester")
-  approvedRestockingOrders  RestockingOrder[]        @relation("RestockingOrderApprover")
+  auditLogs         AuditLog[]
+  contacts          Contact[]
+  stockMovements    StockMovement[]
+  storeOrders       StoreOrder[]
+  managedStores     Store[]                          @relation("StoreManager")
+  managedWarehouses Warehouse[]
+  requestedOrders   Order[] @relation("OrderRequester")
+  approvedOrders    Order[] @relation("OrderApprover")
 
   @@map("users")
 }
@@ -913,12 +919,12 @@ model WhatsAppMessage {
   content      String                @db.Text
   messageType  String                @default("text") @map("message_type") // text, image, audio, etc.
   status       WhatsAppMessageStatus @default(NEW)
-  orderId      String?               @map("order_id")
+  storeOrderId String?               @map("store_order_id")
   processedAt  DateTime?             @map("processed_at")
   errorMessage String?               @map("error_message") @db.Text
   createdAt    DateTime              @default(now()) @map("created_at")
 
-  order Order? @relation(fields: [orderId], references: [id])
+  storeOrder StoreOrder? @relation(fields: [storeOrderId], references: [id])
 
   @@index([fromPhone])
   @@index([status])
@@ -940,8 +946,8 @@ enum RestockingOrderStatus {
   REJECTED // Rejetée
 }
 
-// Commandes d'approvisionnement d'une boutique vers l'entrepôt
-model RestockingOrder {
+// Commandes d'approvisionnement (store vers entrepôt)
+model Order {
   id       String                @id @default(cuid())
   number   String                @unique
   storeId  String                @map("store_id")
@@ -962,20 +968,20 @@ model RestockingOrder {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   store     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  requester User  @relation("RestockingOrderRequester", fields: [requestedBy], references: [id])
-  approver  User? @relation("RestockingOrderApprover", fields: [approvedBy], references: [id])
+  requester User  @relation("OrderRequester", fields: [requestedBy], references: [id])
+  approver  User? @relation("OrderApprover", fields: [approvedBy], references: [id])
 
-  items RestockingOrderItem[]
+  items OrderItem[]
 
   @@index([storeId])
   @@index([status])
-  @@map("restocking_orders")
+  @@map("orders")
 }
 
 // Articles d'une commande d'approvisionnement
-model RestockingOrderItem {
+model OrderItem {
   id                String   @id @default(cuid())
-  restockingOrderId String   @map("restocking_order_id")
+  orderId           String   @map("order_id")
   productId         String   @map("product_id")
   name              String // Snapshot du nom
   sku               String? // Snapshot du SKU
@@ -985,10 +991,10 @@ model RestockingOrderItem {
   total             Float
   createdAt         DateTime @default(now()) @map("created_at")
 
-  restockingOrder RestockingOrder @relation(fields: [restockingOrderId], references: [id], onDelete: Cascade)
-  product         Product         @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 
-  @@map("restocking_order_items")
+  @@map("order_items")
 }
 
 // ============================================================================

@@ -76,10 +76,9 @@ export async function GET(request: NextRequest) {
                   brand: true,
                 },
               },
-              variant: true,
             },
           },
-          createdBy: {
+          requester: {
             select: {
               id: true,
               firstName: true,
@@ -226,22 +225,19 @@ export async function POST(request: NextRequest) {
       data: {
         number: orderNumber,
         storeId,
-        customerName: store.name,
-        customerPhone: store.phone || "",
         status: "PENDING",
         priority: priority || "NORMAL",
-        subtotal,
-        totalTax,
-        total,
+        totalCost: total,
+        totalQuantity: items.reduce((sum: number, item: any) => sum + item.quantity, 0),
         notes,
-        createdById: user.id,
+        requestedBy: user.id,
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
             name: item.name,
             sku: item.sku,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
+            requestedQuantity: item.quantity,
+            unitCost: item.unitPrice,
             total: item.quantity * item.unitPrice,
           })),
         },
@@ -253,7 +249,7 @@ export async function POST(request: NextRequest) {
             product: true,
           },
         },
-        createdBy: {
+        requester: {
           select: {
             id: true,
             firstName: true,

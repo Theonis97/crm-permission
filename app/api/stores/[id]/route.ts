@@ -18,6 +18,17 @@ export async function GET(
 
     const store = await prisma.store.findUnique({
       where: { id },
+      include: {
+        manager: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+          },
+        },
+      },
     })
 
     if (!store) {
@@ -45,12 +56,7 @@ export async function PUT(
     }
 
     const body = await req.json()
-    const { name, logo, coverImage, address, phone, email, whatsapp, isActive } = body
-
-    // Validation
-    if (!name || name.trim() === "") {
-      return NextResponse.json({ message: "Le nom du magasin est requis" }, { status: 400 })
-    }
+    const { name, logo, coverImage, address, phone, email, whatsapp, isActive, managerId } = body
 
     // Vérifier si le magasin existe
     const existingStore = await prisma.store.findUnique({
@@ -61,18 +67,38 @@ export async function PUT(
       return NextResponse.json({ message: "Magasin introuvable" }, { status: 404 })
     }
 
+    // Validation du nom seulement s'il est fourni
+    if (name !== undefined && (!name || name.trim() === "")) {
+      return NextResponse.json({ message: "Le nom du magasin est requis" }, { status: 400 })
+    }
+
+    // Préparer les données à mettre à jour (seulement les champs fournis)
+    const updateData: any = {}
+    
+    if (name !== undefined) updateData.name = name.trim()
+    if (logo !== undefined) updateData.logo = logo?.trim() || null
+    if (coverImage !== undefined) updateData.coverImage = coverImage?.trim() || null
+    if (address !== undefined) updateData.address = address?.trim() || null
+    if (phone !== undefined) updateData.phone = phone?.trim() || null
+    if (email !== undefined) updateData.email = email?.trim() || null
+    if (whatsapp !== undefined) updateData.whatsapp = whatsapp?.trim() || null
+    if (isActive !== undefined) updateData.isActive = isActive
+    if (managerId !== undefined) updateData.managerId = managerId
+
     // Mettre à jour le magasin
     const updatedStore = await prisma.store.update({
       where: { id },
-      data: {
-        name: name.trim(),
-        logo: logo?.trim() || null,
-        coverImage: coverImage?.trim() || null,
-        address: address?.trim() || null,
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        whatsapp: whatsapp?.trim() || null,
-        isActive: isActive ?? existingStore.isActive,
+      data: updateData,
+      include: {
+        manager: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+          },
+        },
       },
     })
 

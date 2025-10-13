@@ -25,7 +25,7 @@ export async function GET(
     endOfDay.setHours(23, 59, 59, 999)
 
     // Récupérer toutes les commandes du livreur pour aujourd'hui
-    const todayOrders = await prisma.order.findMany({
+    const todayOrders = await prisma.storeOrder.findMany({
       where: {
         deliveryPersonId,
         createdAt: {
@@ -62,7 +62,7 @@ export async function GET(
     const todayDeliveryFees = deliveredOrders.reduce((sum, order) => sum + order.deliveryFee, 0)
 
     // Statistiques globales (tous les temps)
-    const allTimeStats = await prisma.order.groupBy({
+    const allTimeStats = await prisma.storeOrder.groupBy({
       by: ["status"],
       where: {
         deliveryPersonId,

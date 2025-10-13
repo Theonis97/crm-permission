@@ -83,7 +83,7 @@ export async function PUT(
         },
         _count: {
           select: {
-            orders: true,
+            storeOrders: true,
           },
         },
       },

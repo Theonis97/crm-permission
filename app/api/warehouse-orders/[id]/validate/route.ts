@@ -50,7 +50,6 @@ export async function POST(
         items: {
           include: {
             product: true,
-            variant: true,
           },
         },
         store: true,
@@ -65,7 +64,7 @@ export async function POST(
     }
 
     // Vérifier que la commande n'est pas déjà validée
-    if (order.status === "CONFIRMED" || order.status === "PREPARING" || order.status === "READY") {
+    if (order.status === "APPROVED" || order.status === "PREPARING" || order.status === "SHIPPED" || order.status === "DELIVERED") {
       return NextResponse.json(
         { error: "Cette commande est déjà validée" },
         { status: 400 }
@@ -80,10 +79,11 @@ export async function POST(
     }> = []
 
     for (const item of order.items) {
-      if (item.product.stock < item.quantity) {
+      const requestedQty = item.requestedQuantity || 0
+      if (item.product.stock < requestedQty) {
         insufficientStock.push({
           productName: item.product.name,
-          requested: item.quantity,
+          requested: requestedQty,
           available: item.product.stock,
         })
       }
@@ -105,9 +105,9 @@ export async function POST(
       const updatedOrder = await tx.order.update({
         where: { id },
         data: {
-          status: "CONFIRMED",
-          paymentStatus: "PAID",
-          paidAt: new Date(),
+          status: "APPROVED",
+          approvedBy: user.id,
+          approvedAt: new Date(),
         },
         include: {
           store: true,
@@ -119,10 +119,9 @@ export async function POST(
                   brand: true,
                 },
               },
-              variant: true,
             },
           },
-          createdBy: {
+          requester: {
             select: {
               id: true,
               firstName: true,
@@ -136,11 +135,12 @@ export async function POST(
       // 2. Créer les mouvements de sortie de stock pour chaque produit
       const movements = []
       for (const item of order.items) {
+        const requestedQty = item.requestedQuantity || 0
         // Créer le mouvement de sortie (quantité négative pour sortie)
         const movement = await tx.stockMovement.create({
           data: {
             productId: item.productId,
-            quantity: -item.quantity, // Négatif pour sortie
+            quantity: -requestedQty, // Négatif pour sortie
             type: "EXIT", // Sortie vers magasin (transfert)
             note: `Commande ${order.number} - Transfert vers ${order.store.name}`,
             userId: user.id,
@@ -154,7 +154,7 @@ export async function POST(
           where: { id: item.productId },
           data: {
             stock: {
-              decrement: item.quantity,
+              decrement: requestedQty,
             },
           },
         })

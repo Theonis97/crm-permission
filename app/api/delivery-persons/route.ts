@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import bcrypt from "bcryptjs"
 
 // GET - Récupérer tous les livreurs
 export async function GET(request: NextRequest) {
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         },
         _count: {
           select: {
-            orders: true,
+            storeOrders: true,
           },
         },
       },
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     const deliveryPersonsWithStats = await Promise.all(
       deliveryPersons.map(async (person) => {
         // Commandes du jour
-        const todayOrders = await prisma.order.findMany({
+        const todayOrders = await prisma.storeOrder.findMany({
           where: {
             deliveryPersonId: person.id,
             createdAt: {
@@ -65,7 +66,6 @@ export async function GET(request: NextRequest) {
           select: {
             status: true,
             total: true,
-            deliveryFee: true,
           },
         })
 
@@ -157,6 +157,69 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Si l'email est fourni, créer un utilisateur
+    let createdUser = null
+    if (email) {
+      // Vérifier si l'email existe déjà
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      })
+
+      if (existingUser) {
+        return NextResponse.json(
+          { error: "Un utilisateur avec cet email existe déjà." },
+          { status: 400 }
+        )
+      }
+
+      // Hasher le mot de passe par défaut "innotech"
+      const hashedPassword = await bcrypt.hash("innotech", 12)
+
+      // Extraire firstName et lastName du nom complet
+      const nameParts = name.split(" ")
+      const firstName = nameParts[0]
+      const lastName = nameParts.slice(1).join(" ") || ""
+
+      // Chercher le rôle "Livreur" ou "Utilisateur"
+      let deliveryRole = await prisma.role.findFirst({
+        where: {
+          name: {
+            in: ["Livreur", "Delivery", "Courier"],
+          },
+        },
+      })
+
+      // Si aucun rôle livreur n'existe, utiliser le rôle "Utilisateur"
+      if (!deliveryRole) {
+        deliveryRole = await prisma.role.findFirst({
+          where: { name: "Utilisateur" },
+        })
+      }
+
+      // Créer l'utilisateur
+      createdUser = await prisma.user.create({
+        data: {
+          email,
+          name,
+          firstName,
+          lastName,
+          password: hashedPassword,
+          status: "ACTIVE",
+        },
+      })
+
+      // Assigner le rôle si trouvé
+      if (deliveryRole) {
+        await prisma.userRole.create({
+          data: {
+            userId: createdUser.id,
+            roleId: deliveryRole.id,
+          },
+        })
+      }
+    }
+
+    // Créer le livreur
     const deliveryPerson = await prisma.deliveryPerson.create({
       data: {
         storeId,
@@ -185,7 +248,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(deliveryPerson, { status: 201 })
+    return NextResponse.json({
+      deliveryPerson,
+      userCreated: !!createdUser,
+      userEmail: createdUser?.email,
+      defaultPassword: createdUser ? "innotech" : null,
+    }, { status: 201 })
   } catch (error: any) {
     console.error("Error creating delivery person:", error)
     return NextResponse.json(

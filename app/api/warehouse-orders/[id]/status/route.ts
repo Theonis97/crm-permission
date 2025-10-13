@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/auth-helpers"
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -41,12 +41,12 @@ export async function PATCH(
       )
     }
 
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     const { status } = body
 
     // Validation du statut
-    const validStatuses = ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED", "CANCELLED"]
+    const validStatuses = ["PENDING", "APPROVED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REJECTED"]
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
         { error: "Statut invalide" },
@@ -98,7 +98,7 @@ export async function PATCH(
             product: true,
           },
         },
-        createdBy: {
+        requester: {
           select: {
             id: true,
             firstName: true,
@@ -109,14 +109,15 @@ export async function PATCH(
       },
     })
 
-    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est confirmée ou livrée
-    if (status === "CONFIRMED" || status === "DELIVERED") {
+    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est approuvée ou livrée
+    if (status === "APPROVED" || status === "DELIVERED") {
       console.log("🚀 Début création StoreProduct pour la commande:", order.id)
       console.log("📦 Magasin ID:", order.storeId)
       console.log("📋 Nombre d'items:", order.items.length)
       
       for (const item of order.items) {
-        console.log(`  ➡️ Traitement produit: ${item.name} (${item.productId}) - Quantité: ${item.quantity}`)
+        const requestedQty = item.requestedQuantity || 0
+        console.log(`  ➡️ Traitement produit: ${item.name} (${item.productId}) - Quantité: ${requestedQty}`)
         
         // Vérifier si le produit existe déjà dans le magasin
         const existingStoreProduct = await prisma.storeProduct.findFirst({
@@ -132,10 +133,10 @@ export async function PATCH(
           await prisma.storeProduct.update({
             where: { id: existingStoreProduct.id },
             data: {
-              stock: existingStoreProduct.stock + item.quantity,
+              stock: existingStoreProduct.stock + requestedQty,
             },
           })
-          console.log(`    📈 Stock mis à jour: ${existingStoreProduct.stock} → ${existingStoreProduct.stock + item.quantity}`)
+          console.log(`    📈 Stock mis à jour: ${existingStoreProduct.stock} → ${existingStoreProduct.stock + requestedQty}`)
         } else {
           console.log(`    🆕 Création nouveau StoreProduct`)
           // Créer un nouveau StoreProduct pour ce magasin
@@ -143,7 +144,7 @@ export async function PATCH(
             data: {
               storeId: order.storeId,
               productId: item.productId,
-              stock: item.quantity,
+              stock: requestedQty,
               minStock: 10, // Valeur par défaut
             },
           })

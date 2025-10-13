@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet"
 import { Store, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { ManagerSelector } from "@/components/stores/manager-selector"
 
 interface CreateStoreSheetProps {
   open: boolean
@@ -32,6 +33,7 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
     phone: "",
     email: "",
     whatsapp: "",
+    managerId: null as string | null,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,16 +41,24 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
     setLoading(true)
 
     try {
-      // Simuler la création avec un ID mocké
-      // Dans une vraie app, on ferait un fetch vers l'API
-      const newStoreId = Math.floor(Math.random() * 1000).toString()
-      
-      // Simuler un délai
-      await new Promise(resolve => setTimeout(resolve, 500))
+      const response = await fetch("/api/stores", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || "Erreur lors de la création")
+      }
+
+      const newStore = await response.json()
 
       toast({
         title: "Magasin créé",
-        description: "Le magasin a été créé avec succès",
+        description: `${newStore.name} a été créé avec succès`,
       })
       
       setFormData({
@@ -59,15 +69,16 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
         phone: "",
         email: "",
         whatsapp: "",
+        managerId: null,
       })
       
       // Rediriger vers la page du magasin avec l'ID
-      onSuccess(newStoreId)
+      onSuccess(newStore.id)
     } catch (error) {
       console.error("Error creating store:", error)
       toast({
         title: "Erreur",
-        description: "Une erreur est survenue lors de la création",
+        description: error instanceof Error ? error.message : "Une erreur est survenue lors de la création",
         variant: "destructive",
       })
     } finally {
@@ -183,6 +194,13 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
             />
             <p className="text-xs text-gray-500">Numéro WhatsApp pour le contact client</p>
           </div>
+
+          {/* Manager */}
+          <ManagerSelector
+            value={formData.managerId}
+            onChange={(managerId) => setFormData((prev) => ({ ...prev, managerId }))}
+            disabled={loading}
+          />
 
           {/* Actions */}
           <div className="flex gap-3 pt-4">

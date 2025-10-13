@@ -458,8 +458,8 @@ export default function WarehouseDashboardPage() {
                         <div className="mt-1 text-xs text-gray-600">
                           {alert.type === "OUT_OF_STOCK" && "Rupture de stock"}
                           {alert.type === "LOW_STOCK" && `Stock faible: ${alert.currentStock} / ${alert.minStock} min`}
-                          {alert.type === "EXPIRING_SOON" && `Expire le ${alert.expiryDate}`}
-                          {alert.type === "OVERSTOCKED" && `Surstock: ${alert.currentStock} / ${alert.maxStock} max`}
+                          {alert.type === "EXPIRING_SOON" && "Expire bientôt"}
+                          {alert.type === "OVERSTOCKED" && `Surstock: ${alert.currentStock}`}
                         </div>
                       </div>
                     </div>

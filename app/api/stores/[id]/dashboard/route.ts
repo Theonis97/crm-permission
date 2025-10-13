@@ -77,7 +77,7 @@ export async function GET(
       where: {
         storeId,
         status: {
-          in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING"],
+          in: ["PENDING", "APPROVED", "PREPARING", "SHIPPED"],
         },
       },
       include: {
@@ -125,7 +125,7 @@ export async function GET(
       },
     })
 
-    const monthlyRevenue = deliveredOrders.reduce((sum, order) => sum + order.total, 0)
+    const monthlyRevenue = deliveredOrders.reduce((sum, order) => sum + order.totalCost, 0)
 
     // Top produits vendus ce mois pour ce magasin
     // On récupère les mouvements de sortie (EXIT) liés aux commandes de ce magasin
@@ -212,7 +212,7 @@ export async function GET(
         id: order.id,
         number: order.number,
         status: order.status,
-        total: order.total,
+        total: order.totalCost,
         priority: order.priority,
         itemsCount: order.items.length,
         createdAt: order.createdAt,

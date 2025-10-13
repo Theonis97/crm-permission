@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Générer un numéro de commande unique
-    const count = await prisma.restockingOrder.count()
+    const count = await prisma.order.count()
     const number = `RST-${String(count + 1).padStart(5, "0")}`
 
     // Calculer les totaux
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const totalCost = items.reduce((sum: number, item: any) => sum + item.total, 0)
 
     // Créer la commande d'approvisionnement
-    const restockingOrder = await prisma.restockingOrder.create({
+    const restockingOrder = await prisma.order.create({
       data: {
         number,
         storeId,
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
       where.status = status
     }
 
-    const orders = await prisma.restockingOrder.findMany({
+    const orders = await prisma.order.findMany({
       where,
       include: {
         items: {

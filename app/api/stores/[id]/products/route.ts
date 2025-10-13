@@ -72,12 +72,21 @@ export async function GET(
       sku: sp.product.sku,
       description: sp.product.description,
       photos: sp.product.photos,
-      prixVente: sp.product.prixVente,
-      prixAchat: sp.product.prixAchat,
+      // Prix spécifiques au magasin ou prix de l'entrepôt par défaut
+      prixVente: sp.prixVente ?? sp.product.prixVente,
+      prixAchat: sp.prixAchat ?? sp.product.prixAchat,
       tva: sp.product.tva,
       stock: sp.stock,
       minStock: sp.minStock,
-      maxStock: sp.product.maxStock,
+      maxStock: sp.maxStock ?? sp.product.maxStock,
+      // Prix de l'entrepôt pour comparaison
+      warehousePrixVente: sp.product.prixVente,
+      warehousePrixAchat: sp.product.prixAchat,
+      // Prix spécifiques du magasin (pour l'édition)
+      storePrixVente: sp.prixVente,
+      storePrixAchat: sp.prixAchat,
+      storeMinStock: sp.minStock,
+      storeMaxStock: sp.maxStock,
       categoryId: sp.product.categoryId,
       brandId: sp.product.brandId,
       category: {

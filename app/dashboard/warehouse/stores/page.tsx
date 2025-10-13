@@ -18,6 +18,8 @@ import {
   MapPin,
   Eye,
   ShoppingCart,
+  UserCog,
+  User,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -29,6 +31,7 @@ import {
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { usePermissions } from "@/hooks/use-permissions"
 import { StoreDetailsSheet } from "@/components/warehouse/store-details-sheet"
+import { AssignManagerDialog } from "@/components/stores/assign-manager-dialog"
 import { toast } from "sonner"
 
 interface StoreData {
@@ -41,6 +44,14 @@ interface StoreData {
   email: string | null
   whatsapp: string | null
   isActive: boolean
+  managerId: string | null
+  manager?: {
+    id: string
+    email: string
+    firstName: string | null
+    lastName: string | null
+    name: string | null
+  } | null
   createdAt: string
   updatedAt: string
 }
@@ -55,6 +66,8 @@ export default function WarehouseStoresPage() {
   const [loading, setLoading] = useState(true)
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [managerDialogOpen, setManagerDialogOpen] = useState(false)
+  const [selectedStore, setSelectedStore] = useState<StoreDataExtended | null>(null)
   const { hasPermission } = usePermissions()
 
   useEffect(() => {
@@ -220,28 +233,72 @@ export default function WarehouseStoresPage() {
                       </div>
                     </div>
 
+                    {/* Manager */}
+                    <div className="mb-3 pb-3 border-b">
+                      {store.manager ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                              <User className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-500">Manager</p>
+                              <p className="font-medium text-gray-900 truncate">
+                                {store.manager.firstName && store.manager.lastName
+                                  ? `${store.manager.firstName} ${store.manager.lastName}`
+                                  : store.manager.name || store.manager.email}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedStore(store)
+                              setManagerDialogOpen(true)
+                            }}
+                            className="h-8 w-8 p-0 rounded-full"
+                          >
+                            <UserCog className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedStore(store)
+                            setManagerDialogOpen(true)
+                          }}
+                          className="w-full rounded-full text-xs"
+                        >
+                          <UserCog className="h-3.5 w-3.5 mr-2" />
+                          Assigner un manager
+                        </Button>
+                      )}
+                    </div>
+
                     {/* Informations */}
-                    <div className="space-y-2 text-sm min-h-[80px]">
+                    <div className="space-y-2 text-sm min-h-[60px]">
                       {store.address && (
                         <div className="flex items-start gap-2 text-gray-600">
                           <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                          <span className="line-clamp-2">{store.address}</span>
+                          <span className="line-clamp-1 text-xs">{store.address}</span>
                         </div>
                       )}
                       {store.phone && (
                         <div className="flex items-center gap-2 text-gray-600">
                           <Phone className="h-4 w-4 flex-shrink-0" />
-                          <span>{store.phone}</span>
+                          <span className="text-xs">{store.phone}</span>
                         </div>
                       )}
                       {store.email && (
                         <div className="flex items-center gap-2 text-gray-600">
                           <Mail className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{store.email}</span>
+                          <span className="truncate text-xs">{store.email}</span>
                         </div>
-                      )}
-                      {!store.address && !store.phone && !store.email && (
-                        <div className="text-gray-400 text-sm italic">Aucune information de contact</div>
                       )}
                     </div>
                   </CardContent>
@@ -257,6 +314,17 @@ export default function WarehouseStoresPage() {
         onOpenChange={setDetailsOpen}
         storeId={selectedStoreId}
       />
+
+      {selectedStore && (
+        <AssignManagerDialog
+          open={managerDialogOpen}
+          onOpenChange={setManagerDialogOpen}
+          storeId={selectedStore.id}
+          storeName={selectedStore.name}
+          currentManager={selectedStore.manager}
+          onSuccess={fetchStores}
+        />
+      )}
     </PermissionGuard>
   )
 }

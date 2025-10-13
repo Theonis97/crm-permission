@@ -11,6 +11,9 @@ async function main() {
     console.log("🧹 Nettoyage des données existantes...")
     await prisma.rolePermission.deleteMany()
     await prisma.userRole.deleteMany()
+    await prisma.orderItem.deleteMany()
+    await prisma.order.deleteMany()
+    await prisma.stockMovement.deleteMany()
     await prisma.permission.deleteMany()
     await prisma.role.deleteMany()
     await prisma.user.deleteMany()
@@ -152,6 +155,14 @@ async function main() {
       },
       { name: "warehouses.export", description: "Exporter les données d'entrepôt", module: "warehouses", action: "export" },
 
+      // Warehouse Orders management (Commandes magasins vers entrepôt)
+      { name: "warehouse.orders.view", description: "Voir les commandes d'entrepôt", module: "warehouse", action: "view" },
+      { name: "warehouse.orders.create", description: "Créer des commandes d'entrepôt", module: "warehouse", action: "create" },
+      { name: "warehouse.orders.update", description: "Modifier les commandes d'entrepôt", module: "warehouse", action: "update" },
+      { name: "warehouse.orders.delete", description: "Supprimer les commandes d'entrepôt", module: "warehouse", action: "delete" },
+      { name: "warehouse.orders.validate", description: "Valider les commandes d'entrepôt", module: "warehouse", action: "validate" },
+      { name: "warehouse.orders.approve", description: "Approuver les commandes d'entrepôt", module: "warehouse", action: "approve" },
+
       // Stores management (Magasins)
       { name: "stores.view", description: "Voir les magasins", module: "stores", action: "view" },
       { name: "stores.create", description: "Créer des magasins", module: "stores", action: "create" },
@@ -220,7 +231,7 @@ async function main() {
     // Manager : modules commerciaux sans delete
     const managerPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "stores"].includes(p.module) &&
+        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "warehouse", "stores"].includes(p.module) &&
         p.action !== "delete",
     )
     await Promise.all(

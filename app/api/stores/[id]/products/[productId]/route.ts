@@ -43,7 +43,7 @@ export async function PATCH(
 
     const { productId } = await params
     const body = await request.json()
-    const { stock, minStock } = body
+    const { stock, minStock, maxStock, prixVente, prixAchat } = body
 
     // Mettre à jour le StoreProduct
     const updatedStoreProduct = await prisma.storeProduct.update({
@@ -51,6 +51,9 @@ export async function PATCH(
       data: {
         ...(stock !== undefined && { stock }),
         ...(minStock !== undefined && { minStock }),
+        ...(maxStock !== undefined && { maxStock }),
+        ...(prixVente !== undefined && { prixVente }),
+        ...(prixAchat !== undefined && { prixAchat }),
       },
       include: {
         product: {

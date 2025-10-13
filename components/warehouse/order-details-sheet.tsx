@@ -149,7 +149,7 @@ export function OrderDetailsSheet({
   }
 
   const handlePrint = useReactToPrint({
-    content: () => printRef.current,
+    contentRef: printRef,
     documentTitle: `Commande_${order?.number || 'commande'}`,
   })
 
@@ -160,25 +160,20 @@ export function OrderDetailsSheet({
         className: "bg-amber-50 text-amber-700 border-amber-200",
         label: "En attente",
       },
-      CONFIRMED: {
+      APPROVED: {
         icon: CheckCircle2,
         className: "bg-blue-50 text-blue-700 border-blue-200",
-        label: "Confirmée",
+        label: "Approuvée",
       },
       PREPARING: {
         icon: Package,
         className: "bg-purple-50 text-purple-700 border-purple-200",
         label: "En préparation",
       },
-      READY: {
-        icon: CheckCircle2,
-        className: "bg-green-50 text-green-700 border-green-200",
-        label: "Prête",
-      },
-      DELIVERING: {
+      SHIPPED: {
         icon: Truck,
         className: "bg-cyan-50 text-cyan-700 border-cyan-200",
-        label: "En livraison",
+        label: "Expédiée",
       },
       DELIVERED: {
         icon: CheckCircle2,
@@ -189,6 +184,11 @@ export function OrderDetailsSheet({
         icon: XCircle,
         className: "bg-red-50 text-red-700 border-red-200",
         label: "Annulée",
+      },
+      REJECTED: {
+        icon: XCircle,
+        className: "bg-red-50 text-red-700 border-red-200",
+        label: "Rejetée",
       },
     }
 
@@ -226,11 +226,47 @@ export function OrderDetailsSheet({
   }
 
   const canValidate = order && order.status === "PENDING"
-  const hasInsufficientStock = order?.items?.some((item: any) => item.product.stock < item.quantity)
+  const hasInsufficientStock = order?.items?.some((item: any) => {
+    const requestedQty = item.requestedQuantity || item.quantity || 0
+    return item.product.stock < requestedQty
+  })
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col gap-0">
+        {/* Header toujours présent pour l'accessibilité */}
+        <SheetHeader className="p-6 pb-4 border-b shrink-0 bg-white sticky top-0 z-10">
+          {loading ? (
+            <>
+              <SheetTitle>Chargement...</SheetTitle>
+              <SheetDescription>Chargement des détails de la commande</SheetDescription>
+            </>
+          ) : !order ? (
+            <>
+              <SheetTitle>Erreur</SheetTitle>
+              <SheetDescription>Commande introuvable</SheetDescription>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="w-12 h-12 bg-blue-950 rounded-lg flex items-center justify-center shrink-0">
+                    <ShoppingCart className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <SheetTitle className="text-xl font-bold">
+                      {order.number}
+                    </SheetTitle>
+                    <SheetDescription className="text-sm mt-1">
+                      Créée le {formatDateTime(order.createdAt)}
+                    </SheetDescription>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetHeader>
+
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -242,86 +278,65 @@ export function OrderDetailsSheet({
           </div>
         ) : (
           <>
-            {/* Header fixe avec changement de statut */}
-            <div className="shrink-0 border-b bg-white sticky top-0 z-10">
-              <SheetHeader className="p-6 pb-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="w-12 h-12 bg-blue-950 rounded-lg flex items-center justify-center shrink-0">
-                      <ShoppingCart className="h-6 w-6 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <SheetTitle className="text-xl font-bold">
-                        {order.number}
-                      </SheetTitle>
-                      <SheetDescription className="text-sm mt-1">
-                        Créée le {formatDateTime(order.createdAt)}
-                      </SheetDescription>
-                    </div>
-                  </div>
-                </div>
-              </SheetHeader>
-
-              {/* Changement de statut */}
-              <div className="px-6 pb-4">
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-gray-700 shrink-0">
-                    Statut:
-                  </label>
-                  <Select
-                    value={order.status}
-                    onValueChange={handleStatusChange}
-                    disabled={updatingStatus || order.status === "DELIVERED" || order.status === "CANCELLED"}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PENDING">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-amber-600" />
-                          <span>En attente</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="CONFIRMED">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                          <span>Confirmée</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="PREPARING">
-                        <div className="flex items-center gap-2">
-                          <Package className="h-4 w-4 text-purple-600" />
-                          <span>En préparation</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="READY">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span>Prête</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="DELIVERING">
-                        <div className="flex items-center gap-2">
-                          <Truck className="h-4 w-4 text-cyan-600" />
-                          <span>En livraison</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="DELIVERED">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span>Livrée</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="CANCELLED">
-                        <div className="flex items-center gap-2">
-                          <XCircle className="h-4 w-4 text-red-600" />
-                          <span>Annulée</span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Changement de statut */}
+            <div className="px-6 pb-4 border-b shrink-0 bg-white">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700 shrink-0">
+                  Statut:
+                </label>
+                <Select
+                  value={order.status}
+                  onValueChange={handleStatusChange}
+                  disabled={updatingStatus || order.status === "DELIVERED" || order.status === "CANCELLED"}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PENDING">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-amber-600" />
+                        <span>En attente</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="APPROVED">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                        <span>Approuvée</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="PREPARING">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-purple-600" />
+                        <span>En préparation</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="SHIPPED">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-cyan-600" />
+                        <span>Expédiée</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="DELIVERED">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span>Livrée</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="CANCELLED">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-red-600" />
+                        <span>Annulée</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="REJECTED">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-red-600" />
+                        <span>Rejetée</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -350,11 +365,11 @@ export function OrderDetailsSheet({
                     <div className="flex items-start gap-2">
                       <User className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs text-gray-600">Créé par</div>
+                        <div className="text-xs text-gray-600">Demandé par</div>
                         <div className="font-medium text-sm">
-                          {order.createdBy.firstName && order.createdBy.lastName
-                            ? `${order.createdBy.firstName} ${order.createdBy.lastName}`
-                            : order.createdBy.email}
+                          {order.requester?.firstName && order.requester?.lastName
+                            ? `${order.requester.firstName} ${order.requester.lastName}`
+                            : order.requester?.email || "Non spécifié"}
                         </div>
                       </div>
                     </div>
@@ -405,7 +420,8 @@ export function OrderDetailsSheet({
                     </TableHeader>
                     <TableBody>
                       {order.items.map((item: any) => {
-                        const insufficientStock = item.product.stock < item.quantity
+                        const requestedQty = item.requestedQuantity || item.quantity || 0
+                        const insufficientStock = item.product.stock < requestedQty
                         return (
                           <TableRow key={item.id} className={insufficientStock ? "bg-red-50" : ""}>
                             <TableCell>
@@ -417,7 +433,7 @@ export function OrderDetailsSheet({
                               )}
                             </TableCell>
                             <TableCell className="text-center">
-                              <span className="font-semibold text-sm">{item.quantity}</span>
+                              <span className="font-semibold text-sm">{requestedQty}</span>
                             </TableCell>
                             <TableCell className="text-center">
                               <span
@@ -433,10 +449,10 @@ export function OrderDetailsSheet({
                               )}
                             </TableCell>
                             <TableCell className="text-right text-sm">
-                              {item.unitPrice.toLocaleString("fr-FR")} XAF
+                              {(item.unitCost || item.unitPrice || 0).toLocaleString("fr-FR")} XAF
                             </TableCell>
                             <TableCell className="text-right font-semibold text-sm">
-                              {item.total.toLocaleString("fr-FR")} XAF
+                              {(item.total || 0).toLocaleString("fr-FR")} XAF
                             </TableCell>
                           </TableRow>
                         )
@@ -451,24 +467,12 @@ export function OrderDetailsSheet({
                 <div className="flex justify-end">
                   <div className="w-72 space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Sous-total:</span>
-                      <span className="font-medium">{order.subtotal.toLocaleString("fr-FR")} XAF</span>
+                      <span className="text-gray-600">Quantité totale:</span>
+                      <span className="font-medium">{order.totalQuantity || 0} articles</span>
                     </div>
-                    {order.totalTax > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">TVA:</span>
-                        <span className="font-medium">{order.totalTax.toLocaleString("fr-FR")} XAF</span>
-                      </div>
-                    )}
-                    {order.deliveryFee > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Frais de livraison:</span>
-                        <span className="font-medium">{order.deliveryFee.toLocaleString("fr-FR")} XAF</span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-lg font-bold border-t pt-2">
-                      <span>Total:</span>
-                      <span className="text-blue-950">{order.total.toLocaleString("fr-FR")} XAF</span>
+                      <span>Coût total:</span>
+                      <span className="text-blue-950">{(order.totalCost || 0).toLocaleString("fr-FR")} XAF</span>
                     </div>
                   </div>
                 </div>

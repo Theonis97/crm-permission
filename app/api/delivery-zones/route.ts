@@ -30,6 +30,37 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             phone: true,
+            status: true,
+          },
+        },
+        storeOrders: {
+          where: {
+            status: {
+              in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING"], // Commandes en cours
+            },
+          },
+          select: {
+            id: true,
+            number: true,
+            status: true,
+            total: true,
+            createdAt: true,
+            contact: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 10, // Limite à 10 commandes les plus récentes
+        },
+        _count: {
+          select: {
+            storeOrders: true, // Compte total des commandes
           },
         },
       },

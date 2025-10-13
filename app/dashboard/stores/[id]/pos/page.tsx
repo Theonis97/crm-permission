@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,9 @@ import {
   Package,
   Loader2,
   Truck,
+  Info,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -120,12 +123,15 @@ export default function PosPage() {
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+  const [checkoutStep, setCheckoutStep] = useState(1)
   
   // Données
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
   const [deliveryPersons, setDeliveryPersons] = useState<DeliveryPerson[]>([])
+  const [contacts, setContacts] = useState<any[]>([])
+  const [deliveryZones, setDeliveryZones] = useState<any[]>([])
   
   // Loading states
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
@@ -133,16 +139,34 @@ export default function PosPage() {
   const [isLoadingBrands, setIsLoadingBrands] = useState(true)
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [searchingLocation, setSearchingLocation] = useState(false)
   
-  // Formulaire checkout
-  const [customerName, setCustomerName] = useState("")
+  // Formulaire checkout - Étape 1: Client
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
+  const [contactSearch, setContactSearch] = useState("")
+  const [customerFirstName, setCustomerFirstName] = useState("")
+  const [customerLastName, setCustomerLastName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [customerEmail, setCustomerEmail] = useState("")
+  
+  // Formulaire checkout - Étape 2: Livraison
   const [deliveryAddress, setDeliveryAddress] = useState("")
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([])
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false)
+  const [deliveryLatitude, setDeliveryLatitude] = useState<number | null>(null)
+  const [deliveryLongitude, setDeliveryLongitude] = useState<number | null>(null)
+  const [detectedZone, setDetectedZone] = useState<any>(null)
   const [selectedDeliveryPerson, setSelectedDeliveryPerson] = useState("")
-  const [deliveryFee, setDeliveryFee] = useState(500)
+  const [deliveryFee, setDeliveryFee] = useState(0)
+  const [loadingAddresses, setLoadingAddresses] = useState(false)
+  
+  // Formulaire checkout - Étape 3: Paiement
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [notes, setNotes] = useState("")
+
+  // Refs
+  const addressDropdownRef = useRef<HTMLDivElement>(null)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Charger les données au montage
   useEffect(() => {
@@ -150,8 +174,27 @@ export default function PosPage() {
     loadCategories()
     loadBrands()
     loadDeliveryPersons()
+    loadContacts()
+    loadDeliveryZones()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId])
+
+  // Fermer la dropdown d'adresses au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addressDropdownRef.current && !addressDropdownRef.current.contains(event.target as Node)) {
+        setShowAddressSuggestions(false)
+      }
+    }
+
+    if (showAddressSuggestions) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [showAddressSuggestions])
 
   const loadProducts = async () => {
     try {
@@ -212,6 +255,28 @@ export default function PosPage() {
     }
   }
 
+  const loadContacts = async () => {
+    try {
+      const response = await fetch("/api/contacts")
+      if (!response.ok) throw new Error("Erreur chargement contacts")
+      const data = await response.json()
+      setContacts(data)
+    } catch (error) {
+      console.error("Error loading contacts:", error)
+    }
+  }
+
+  const loadDeliveryZones = async () => {
+    try {
+      const response = await fetch(`/api/delivery-zones?storeId=${storeId}`)
+      if (!response.ok) throw new Error("Erreur chargement zones")
+      const data = await response.json()
+      setDeliveryZones(data.filter((z: any) => z.isActive))
+    } catch (error) {
+      console.error("Error loading delivery zones:", error)
+    }
+  }
+
   // Filtrage des produits
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -233,9 +298,115 @@ export default function PosPage() {
     )
   }
 
+  // Point-in-polygon algorithm pour détecter la zone
+  const isPointInPolygon = (lat: number, lng: number, polygon: any[]) => {
+    let inside = false
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].lat, yi = polygon[i].lng
+      const xj = polygon[j].lat, yj = polygon[j].lng
+      const intersect = ((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)
+      if (intersect) inside = !inside
+    }
+    return inside
+  }
+
+  const detectDeliveryZone = (lat: number, lng: number) => {
+    for (const zone of deliveryZones) {
+      if (isPointInPolygon(lat, lng, zone.coordinates)) {
+        setDetectedZone(zone)
+        setDeliveryFee(zone.deliveryFee || 0)
+        if (zone.deliveryPersonId) {
+          setSelectedDeliveryPerson(zone.deliveryPersonId)
+        }
+        return zone
+      }
+    }
+    setDetectedZone(null)
+    setDeliveryFee(0)
+    return null
+  }
+
+  // Autocomplétion d'adresses avec OpenStreetMap (avec debouncing)
+  const handleAddressSearch = (query: string) => {
+    setDeliveryAddress(query)
+    
+    // Clear le timer précédent
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    
+    if (query.length < 3) {
+      setAddressSuggestions([])
+      setShowAddressSuggestions(false)
+      setLoadingAddresses(false)
+      return
+    }
+
+    setLoadingAddresses(true)
+
+    // Debounce de 500ms
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        // Utiliser Nominatim avec countryCodes pour limiter aux pays pertinents (Gabon)
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?` +
+          `format=json&` +
+          `q=${encodeURIComponent(query)}&` +
+          `limit=5&` +
+          `addressdetails=1&` +
+          `countrycodes=ga`, // Gabon
+          {
+            headers: {
+              'Accept-Language': 'fr',
+            }
+          }
+        )
+        const data = await response.json()
+        
+        setAddressSuggestions(data)
+        setShowAddressSuggestions(data.length > 0)
+      } catch (error) {
+        console.error("Error fetching addresses:", error)
+        setAddressSuggestions([])
+        setShowAddressSuggestions(false)
+      } finally {
+        setLoadingAddresses(false)
+      }
+    }, 500) // Délai de 500ms
+  }
+
+  // Sélection d'une adresse depuis l'autocomplete
+  const handleSelectAddress = (suggestion: any) => {
+    const lat = parseFloat(suggestion.lat)
+    const lng = parseFloat(suggestion.lon)
+    
+    setDeliveryAddress(suggestion.display_name)
+    setDeliveryLatitude(lat)
+    setDeliveryLongitude(lng)
+    setShowAddressSuggestions(false)
+    setAddressSuggestions([])
+    
+    // Détecter automatiquement la zone
+    const zone = detectDeliveryZone(lat, lng)
+    if (zone) {
+      toast.success(`Zone détectée: ${zone.name} - Frais: ${zone.deliveryFee} FCFA`)
+    } else {
+      toast.warning("⚠️ Cette adresse n'est dans aucune zone de livraison configurée")
+    }
+  }
+
+  const handleSelectContact = (contact: any) => {
+    setSelectedContactId(contact.id)
+    setCustomerFirstName(contact.firstName || "")
+    setCustomerLastName(contact.lastName || "")
+    setCustomerPhone(contact.phone || "")
+    setCustomerEmail(contact.email || "")
+    setContactSearch("")
+  }
+
   const handleCreateOrder = async () => {
-    if (!customerName || !customerPhone) {
-      toast.error("Nom et téléphone du client requis")
+    if (!customerPhone) {
+      toast.error("Téléphone du client requis")
       return
     }
 
@@ -247,16 +418,42 @@ export default function PosPage() {
     try {
       setIsSubmitting(true)
 
+      // Créer ou récupérer le contact
+      let contactId = selectedContactId
+      if (!contactId && (customerFirstName || customerLastName)) {
+        const contactResponse = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: customerFirstName,
+            lastName: customerLastName,
+            phone: customerPhone,
+            email: customerEmail || null,
+            type: "PERSONNE",
+            status: "CLIENT",
+          }),
+        })
+        
+        if (contactResponse.ok) {
+          const newContact = await contactResponse.json()
+          contactId = newContact.id
+        }
+      }
+
       const orderData = {
         storeId,
-        customerName,
+        contactId: contactId || null,
+        customerName: `${customerFirstName} ${customerLastName}`.trim() || "Client",
         customerPhone,
         customerEmail: customerEmail || null,
         deliveryAddress: deliveryAddress || null,
+        deliveryLatitude,
+        deliveryLongitude,
+        deliveryZoneId: detectedZone?.id || null,
         priority: "NORMAL",
         deliveryPersonId: selectedDeliveryPerson || null,
         deliveryFee,
-        paymentMethod,
+        paymentMethod: paymentMethod.toUpperCase(),
         notes,
         items: cart.map(item => ({
           productId: item.product.id,
@@ -265,7 +462,7 @@ export default function PosPage() {
         })),
       }
 
-      const response = await fetch("/api/orders", {
+      const response = await fetch("/api/store-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderData),
@@ -280,14 +477,9 @@ export default function PosPage() {
       toast.success(`Commande ${order.number} créée avec succès !`)
       
       // Réinitialiser
+      resetCheckoutForm()
       clearCart()
       setIsCheckoutOpen(false)
-      setCustomerName("")
-      setCustomerPhone("")
-      setCustomerEmail("")
-      setDeliveryAddress("")
-      setSelectedDeliveryPerson("")
-      setNotes("")
       
       // Recharger les produits pour mettre à jour les stocks
       loadProducts()
@@ -297,6 +489,34 @@ export default function PosPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const resetCheckoutForm = () => {
+    setCheckoutStep(1)
+    setSelectedContactId(null)
+    setContactSearch("")
+    setCustomerFirstName("")
+    setCustomerLastName("")
+    setCustomerPhone("")
+    setCustomerEmail("")
+    setDeliveryAddress("")
+    setAddressSuggestions([])
+    setShowAddressSuggestions(false)
+    setDeliveryLatitude(null)
+    setDeliveryLongitude(null)
+    setDetectedZone(null)
+    setSelectedDeliveryPerson("")
+    setDeliveryFee(0)
+    setPaymentMethod("cash")
+    setNotes("")
+  }
+
+  const canProceedToStep2 = () => {
+    return customerPhone.trim().length > 0
+  }
+
+  const canProceedToStep3 = () => {
+    return deliveryAddress.trim().length > 0 && deliveryLatitude !== null && deliveryLongitude !== null
   }
 
   // Calculs du panier
@@ -639,197 +859,430 @@ export default function PosPage() {
         </div>
       </div>
 
-      {/* Dialog Checkout */}
-      <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Finaliser la commande</DialogTitle>
+      {/* Dialog Checkout Multi-étapes */}
+      <Dialog open={isCheckoutOpen} onOpenChange={(open) => {
+        setIsCheckoutOpen(open)
+        if (!open) resetCheckoutForm()
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">Finaliser la commande</DialogTitle>
             <DialogDescription>
-              Remplissez les informations du client et confirmez la commande
+              {checkoutStep === 1 && "Sélectionnez ou créez un client"}
+              {checkoutStep === 2 && "Configurez la livraison"}
+              {checkoutStep === 3 && "Confirmez le paiement"}
             </DialogDescription>
+            
+            {/* Indicateur d'étapes */}
+            <div className="flex items-center gap-2 mt-4">
+              {[1, 2, 3].map((step) => (
+                <div key={step} className="flex items-center flex-1">
+                  <div className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold transition-colors",
+                    checkoutStep === step ? "bg-blue-600 text-white" :
+                    checkoutStep > step ? "bg-green-500 text-white" :
+                    "bg-gray-200 text-gray-500"
+                  )}>
+                    {checkoutStep > step ? "✓" : step}
+                  </div>
+                  {step < 3 && (
+                    <div className={cn(
+                      "flex-1 h-1 mx-2 rounded",
+                      checkoutStep > step ? "bg-green-500" : "bg-gray-200"
+                    )} />
+                  )}
+                </div>
+              ))}
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Informations client */}
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Informations client
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="customerName">Nom complet *</Label>
+          {/* Contenu scrollable */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {/* ÉTAPE 1: Client */}
+            {checkoutStep === 1 && (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Rechercher un client existant
+                  </h3>
                   <Input
-                    id="customerName"
-                    placeholder="Ex: Jean Dupont"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Rechercher par nom, téléphone ou email..."
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
                   />
-                </div>
-                <div>
-                  <Label htmlFor="customerPhone">Téléphone *</Label>
-                  <Input
-                    id="customerPhone"
-                    placeholder="Ex: +237 690000000"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="customerEmail">Email (optionnel)</Label>
-                <Input
-                  id="customerEmail"
-                  type="email"
-                  placeholder="Ex: client@email.com"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Livraison */}
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Truck className="h-4 w-4" />
-                Livraison
-              </h3>
-              <div>
-                <Label htmlFor="deliveryAddress">Adresse de livraison</Label>
-                <Textarea
-                  id="deliveryAddress"
-                  placeholder="Entrez l'adresse complète..."
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="deliveryPerson">Livreur</Label>
-                  <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un livreur" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {deliveryPersons
-                        .filter(d => d.status === "AVAILABLE")
-                        .map((person) => (
-                          <SelectItem key={person.id} value={person.id}>
-                            {person.name} - {person.phone}
-                          </SelectItem>
+                  
+                  {contactSearch && (
+                    <div className="border rounded-lg max-h-48 overflow-y-auto">
+                      {contacts
+                        .filter(c => 
+                          c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                          c.lastName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                          c.phone?.includes(contactSearch) ||
+                          c.email?.toLowerCase().includes(contactSearch.toLowerCase())
+                        )
+                        .slice(0, 5)
+                        .map((contact) => (
+                          <button
+                            key={contact.id}
+                            onClick={() => handleSelectContact(contact)}
+                            className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 transition-colors"
+                          >
+                            <div className="font-medium">{contact.firstName} {contact.lastName}</div>
+                            <div className="text-sm text-gray-600">{contact.phone} {contact.email && `• ${contact.email}`}</div>
+                          </button>
                         ))}
-                    </SelectContent>
-                  </Select>
+                      {contacts.filter(c => 
+                        c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                        c.lastName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                        c.phone?.includes(contactSearch) ||
+                        c.email?.toLowerCase().includes(contactSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="p-4 text-center text-gray-500 text-sm">Aucun client trouvé</div>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <h3 className="font-semibold">Ou créer un nouveau client</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="customerFirstName">Prénom</Label>
+                      <Input
+                        id="customerFirstName"
+                        placeholder="Ex: Jean"
+                        value={customerFirstName}
+                        onChange={(e) => setCustomerFirstName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="customerLastName">Nom</Label>
+                      <Input
+                        id="customerLastName"
+                        placeholder="Ex: Dupont"
+                        value={customerLastName}
+                        onChange={(e) => setCustomerLastName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="customerPhone">Téléphone *</Label>
+                    <Input
+                      id="customerPhone"
+                      placeholder="Ex: +237 690000000"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="customerEmail">Email (optionnel)</Label>
+                    <Input
+                      id="customerEmail"
+                      type="email"
+                      placeholder="Ex: client@email.com"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 2: Livraison */}
+            {checkoutStep === 2 && (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Truck className="h-4 w-4" />
+                    Adresse de livraison
+                  </h3>
+                  <div className="relative" ref={addressDropdownRef}>
+                    <div className="relative">
+                      <Input
+                        placeholder="Tapez une adresse (ex: Boulevard Triomphal, Libreville)..."
+                        value={deliveryAddress}
+                        onChange={(e) => handleAddressSearch(e.target.value)}
+                        onFocus={() => {
+                          if (addressSuggestions.length > 0) {
+                            setShowAddressSuggestions(true)
+                          }
+                        }}
+                        className="flex-1 pr-10"
+                      />
+                      {loadingAddresses && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Dropdown d'autocomplete */}
+                    {showAddressSuggestions && addressSuggestions.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {addressSuggestions.map((suggestion, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleSelectAddress(suggestion)}
+                            className="w-full p-3 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors"
+                          >
+                            <div className="flex items-start gap-2">
+                              <Package className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm text-gray-900">
+                                  {suggestion.display_name}
+                                </div>
+                                {suggestion.address && (
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    {[
+                                      suggestion.address.road,
+                                      suggestion.address.suburb || suggestion.address.neighbourhood,
+                                      suggestion.address.city || suggestion.address.town,
+                                    ].filter(Boolean).join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {deliveryLatitude && deliveryLongitude && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                      <div className="flex items-center gap-2 text-green-700 font-medium mb-1">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Localisation confirmée
+                      </div>
+                      <div className="text-green-600 text-xs">
+                        Lat: {deliveryLatitude.toFixed(6)}, Lng: {deliveryLongitude.toFixed(6)}
+                      </div>
+                    </div>
+                  )}
+
+                  {detectedZone && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 text-blue-700 font-medium mb-2">
+                        <Info className="h-4 w-4" />
+                        Zone de livraison détectée
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Zone:</span>
+                          <span className="font-medium">{detectedZone.name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Frais de livraison:</span>
+                          <span className="font-medium">{detectedZone.deliveryFee} FCFA</span>
+                        </div>
+                        {detectedZone.estimatedTime && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Temps estimé:</span>
+                            <span className="font-medium">{detectedZone.estimatedTime} min</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {deliveryLatitude && deliveryLongitude && !detectedZone && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                      <div className="flex items-center gap-2 text-amber-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>Cette adresse n'est dans aucune zone de livraison configurée</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <h3 className="font-semibold">Configuration de la livraison</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="deliveryPerson">Livreur</Label>
+                      <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {deliveryPersons
+                            .filter(d => d.status === "AVAILABLE")
+                            .map((person) => (
+                              <SelectItem key={person.id} value={person.id}>
+                                {person.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="deliveryFee">Frais (FCFA)</Label>
+                      <Input
+                        id="deliveryFee"
+                        type="number"
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 3: Paiement et confirmation */}
+            {checkoutStep === 3 && (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Mode de paiement
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    {paymentMethods.map((method) => (
+                      <button
+                        key={method.id}
+                        onClick={() => setPaymentMethod(method.id)}
+                        className={cn(
+                          "p-4 rounded-lg border-2 transition-all flex flex-col items-center gap-2",
+                          paymentMethod === method.id
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <method.icon className="h-6 w-6" />
+                        <span className="text-sm font-medium">{method.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
                 <div>
-                  <Label htmlFor="deliveryFee">Frais de livraison (F)</Label>
-                  <Input
-                    id="deliveryFee"
-                    type="number"
-                    value={deliveryFee}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value))}
+                  <Label htmlFor="notes">Notes (optionnel)</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Ajoutez des instructions spéciales..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
                   />
                 </div>
-              </div>
-            </div>
 
-            <Separator />
-
-            {/* Paiement */}
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Mode de paiement
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {paymentMethods.map((method) => (
-                  <button
-                    key={method.id}
-                    onClick={() => setPaymentMethod(method.id)}
-                    className={cn(
-                      "p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2",
-                      paymentMethod === method.id
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-200 hover:border-gray-300"
-                    )}
-                  >
-                    <method.icon className="h-5 w-5" />
-                    <span className="text-xs font-medium">{method.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Notes */}
-            <div>
-              <Label htmlFor="notes">Notes (optionnel)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Ajoutez des instructions spéciales..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Récapitulatif */}
-            <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-              <h3 className="font-semibold mb-3">Récapitulatif de la commande</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Articles ({cartItemsCount})</span>
-                  <span>{cartSubtotal.toLocaleString()} F</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>TVA</span>
-                  <span>{cartTax.toLocaleString()} F</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Livraison</span>
-                  <span>{deliveryFee.toLocaleString()} F</span>
-                </div>
                 <Separator />
-                <div className="flex justify-between text-lg font-bold pt-2">
-                  <span>Total à payer</span>
-                  <span className="text-blue-600">{cartTotal.toLocaleString()} FCFA</span>
+
+                {/* Récapitulatif final */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-semibold">Récapitulatif de la commande</h3>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Client:</span>
+                      <span className="font-medium">
+                        {customerFirstName} {customerLastName} • {customerPhone}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Livraison:</span>
+                      <span className="font-medium text-right max-w-xs truncate">
+                        {deliveryAddress || "Non spécifiée"}
+                      </span>
+                    </div>
+                    {detectedZone && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Zone:</span>
+                        <span className="font-medium">{detectedZone.name}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Articles ({cartItemsCount})</span>
+                      <span>{cartSubtotal.toLocaleString()} FCFA</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>TVA</span>
+                      <span>{cartTax.toLocaleString()} FCFA</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Livraison</span>
+                      <span>{deliveryFee.toLocaleString()} FCFA</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between text-lg font-bold pt-2">
+                      <span>Total à payer</span>
+                      <span className="text-blue-600">{cartTotal.toLocaleString()} FCFA</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCheckoutOpen(false)}
-              disabled={isSubmitting}
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={handleCreateOrder}
-              disabled={isSubmitting || !customerName || !customerPhone}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Création...
-                </>
+          {/* Footer fixe avec boutons de navigation */}
+          <div className="shrink-0 border-t bg-white p-6">
+            <div className="flex items-center justify-between gap-3">
+              {checkoutStep > 1 ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setCheckoutStep(checkoutStep - 1)}
+                  disabled={isSubmitting}
+                >
+                  Précédent
+                </Button>
               ) : (
-                <>
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  Créer la commande
-                </>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsCheckoutOpen(false)
+                    resetCheckoutForm()
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Annuler
+                </Button>
               )}
-            </Button>
-          </DialogFooter>
+
+              {checkoutStep < 3 ? (
+                <Button
+                  onClick={() => setCheckoutStep(checkoutStep + 1)}
+                  disabled={
+                    (checkoutStep === 1 && !canProceedToStep2()) ||
+                    (checkoutStep === 2 && !canProceedToStep3())
+                  }
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Suivant
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleCreateOrder}
+                  disabled={isSubmitting}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Création...
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                      Créer la commande
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

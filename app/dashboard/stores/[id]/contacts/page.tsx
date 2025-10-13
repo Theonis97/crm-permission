@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, use } from "react"
+import { useState, use, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +14,10 @@ import {
   Phone, 
   Grid3X3, 
   List,
+  Loader2,
+  Users,
 } from "lucide-react"
+import { toast } from "sonner"
 import {
   Table,
   TableBody,
@@ -38,27 +41,66 @@ interface ContactsPageProps {
   }>
 }
 
-const mockContacts = [
-  { id: "1", name: "Jean Dupont", email: "jean.dupont@email.com", phone: "+241 0X XX XX 111", orders: 15, totalSpent: 675000, type: "client", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jean" },
-  { id: "2", name: "Marie Martin", email: "marie.martin@email.com", phone: "+241 0X XX XX 222", orders: 23, totalSpent: 1240000, type: "client", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Marie" },
-  { id: "3", name: "Paul Bernard", email: "paul.bernard@email.com", phone: "+241 0X XX XX 333", orders: 8, totalSpent: 320000, type: "prospect", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Paul" },
-  { id: "4", name: "Sophie Laurent", email: "sophie.laurent@email.com", phone: "+241 0X XX XX 444", orders: 31, totalSpent: 1850000, type: "vip", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sophie" },
-  { id: "5", name: "Alice Durand", email: "alice.durand@email.com", phone: "+241 0X XX XX 555", orders: 12, totalSpent: 540000, type: "client", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alice" },
-  { id: "6", name: "Bob Martin", email: "bob.martin@email.com", phone: "+241 0X XX XX 666", orders: 5, totalSpent: 180000, type: "client", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Bob" },
-]
+interface StoreContact {
+  id: string
+  storeId: string
+  contactId: string
+  totalOrders: number
+  totalSpent: number
+  lastOrderAt: string | null
+  contact: {
+    id: string
+    firstName: string | null
+    lastName: string | null
+    email: string | null
+    phone: string | null
+    photo: string | null
+    status: string
+  }
+}
 
 export default function ContactsPage({ params }: ContactsPageProps) {
   const router = useRouter()
   const { id: storeId } = use(params)
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
   const [searchTerm, setSearchTerm] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [contacts, setContacts] = useState<StoreContact[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const filteredContacts = mockContacts.filter(contact => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         contact.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = typeFilter === "all" || contact.type === typeFilter
-    return matchesSearch && matchesType
+  useEffect(() => {
+    loadContacts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId])
+
+  const loadContacts = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/stores/${storeId}/contacts`)
+      
+      if (!response.ok) {
+        throw new Error("Erreur lors du chargement des contacts")
+      }
+
+      const data = await response.json()
+      setContacts(data)
+    } catch (error) {
+      console.error("Error loading contacts:", error)
+      toast.error("Erreur lors du chargement des contacts")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredContacts = contacts.filter(storeContact => {
+    const contact = storeContact.contact
+    const fullName = `${contact.firstName || ""} ${contact.lastName || ""}`.trim()
+    
+    const matchesSearch = fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         contact.phone?.includes(searchTerm)
+    const matchesStatus = statusFilter === "all" || contact.status === statusFilter
+    return matchesSearch && matchesStatus
   })
 
   const getContactInitials = (name: string) => {
@@ -126,70 +168,104 @@ export default function ContactsPage({ params }: ContactsPageProps) {
                   />
                 </div>
 
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Type" />
+                    <SelectValue placeholder="Statut" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous les types</SelectItem>
-                    <SelectItem value="vip">VIP</SelectItem>
-                    <SelectItem value="client">Client</SelectItem>
-                    <SelectItem value="prospect">Prospect</SelectItem>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="CLIENT">Client</SelectItem>
+                    <SelectItem value="PROSPECT">Prospect</SelectItem>
+                    <SelectItem value="LEAD">Lead</SelectItem>
+                    <SelectItem value="ARCHIVE">Archivé</SelectItem>
                   </SelectContent>
                 </Select>
+                
+                <Badge variant="outline" className="ml-auto">
+                  {contacts.length} contact{contacts.length > 1 ? 's' : ''}
+                </Badge>
               </div>
             </div>
           </CardHeader>
 
           <CardContent className="p-0">
-            {viewMode === "grid" ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-3" />
+                  <p className="text-gray-600">Chargement des contacts...</p>
+                </div>
+              </div>
+            ) : filteredContacts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <Users className="h-16 w-16 mb-4 opacity-20" />
+                <p className="text-lg font-medium text-gray-600">Aucun contact trouvé</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {searchTerm || statusFilter !== "all" 
+                    ? "Essayez de modifier vos filtres"
+                    : "Commencez par créer un nouveau contact"}
+                </p>
+              </div>
+            ) : viewMode === "grid" ? (
               <div className="p-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredContacts.map((contact) => (
-                  <Card 
-                    key={contact.id} 
-                    className="hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => handleViewContact(contact.id)}
-                  >
-                    <CardContent>
-                      <div className="flex items-start gap-4">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={contact.avatar} alt={contact.name} />
-                          <AvatarFallback>{getContactInitials(contact.name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-semibold text-gray-900">{contact.name}</h3>
-                            {contact.type === 'vip' ? (
-                              <Badge className="bg-purple-100 text-purple-700">VIP</Badge>
-                            ) : contact.type === 'client' ? (
-                              <Badge className="bg-green-100 text-green-700">Client</Badge>
-                            ) : (
-                              <Badge className="bg-blue-100 text-blue-700">Prospect</Badge>
-                            )}
-                          </div>
-                          <div className="mt-2 space-y-1">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Mail className="h-3 w-3" />
-                              <span className="truncate">{contact.email}</span>
+                {filteredContacts.map((storeContact) => {
+                  const contact = storeContact.contact
+                  const fullName = `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Sans nom"
+                  const avatar = contact.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${contact.id}`
+                  
+                  return (
+                    <Card 
+                      key={storeContact.id} 
+                      className="hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => handleViewContact(contact.id)}
+                    >
+                      <CardContent>
+                        <div className="flex items-start gap-4">
+                          <Avatar className="h-12 w-12">
+                            <AvatarImage src={avatar} alt={fullName} />
+                            <AvatarFallback>{getContactInitials(fullName)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="font-semibold text-gray-900">{fullName}</h3>
+                              {contact.status === 'CLIENT' ? (
+                                <Badge className="bg-green-100 text-green-700">Client</Badge>
+                              ) : contact.status === 'PROSPECT' ? (
+                                <Badge className="bg-blue-100 text-blue-700">Prospect</Badge>
+                              ) : contact.status === 'LEAD' ? (
+                                <Badge className="bg-purple-100 text-purple-700">Lead</Badge>
+                              ) : (
+                                <Badge className="bg-gray-100 text-gray-700">Archivé</Badge>
+                              )}
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Phone className="h-3 w-3" />
-                              <span>{contact.phone}</span>
+                            <div className="mt-2 space-y-1">
+                              {contact.email && (
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                  <Mail className="h-3 w-3" />
+                                  <span className="truncate">{contact.email}</span>
+                                </div>
+                              )}
+                              {contact.phone && (
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                  <Phone className="h-3 w-3" />
+                                  <span>{contact.phone}</span>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-600">{contact.orders} commandes</span>
-                              <span className="font-semibold text-gray-900">
-                                {(contact.totalSpent / 1000).toFixed(0)}k FCFA
-                              </span>
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">{storeContact.totalOrders} commande{storeContact.totalOrders > 1 ? 's' : ''}</span>
+                                <span className="font-semibold text-gray-900">
+                                  {(storeContact.totalSpent / 1000).toFixed(0)}k FCFA
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -197,7 +273,7 @@ export default function ContactsPage({ params }: ContactsPageProps) {
                 <TableHeader>
                   <TableRow className="bg-gray-50">
                     <TableHead className="font-semibold">Contact</TableHead>
-                    <TableHead className="font-semibold">Type</TableHead>
+                    <TableHead className="font-semibold">Statut</TableHead>
                     <TableHead className="font-semibold">Email</TableHead>
                     <TableHead className="font-semibold">Téléphone</TableHead>
                     <TableHead className="font-semibold">Commandes</TableHead>
@@ -205,50 +281,66 @@ export default function ContactsPage({ params }: ContactsPageProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredContacts.map((contact) => (
-                    <TableRow 
-                      key={contact.id} 
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleViewContact(contact.id)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={contact.avatar} />
-                            <AvatarFallback>{getContactInitials(contact.name)}</AvatarFallback>
-                          </Avatar>
-                          <div className="font-medium">{contact.name}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {contact.type === 'vip' ? (
-                          <Badge className="bg-purple-100 text-purple-700">VIP</Badge>
-                        ) : contact.type === 'client' ? (
-                          <Badge className="bg-green-100 text-green-700">Client</Badge>
-                        ) : (
-                          <Badge className="bg-blue-100 text-blue-700">Prospect</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">
-                          {contact.email}
-                        </a>
-                      </TableCell>
-                      <TableCell>
-                        <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
-                          {contact.phone}
-                        </a>
-                      </TableCell>
-                      <TableCell>
-                        {contact.orders} commandes
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold">
-                          {(contact.totalSpent / 1000).toFixed(0)}k FCFA
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredContacts.map((storeContact) => {
+                    const contact = storeContact.contact
+                    const fullName = `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Sans nom"
+                    const avatar = contact.photo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${contact.id}`
+                    
+                    return (
+                      <TableRow 
+                        key={storeContact.id} 
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleViewContact(contact.id)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={avatar} />
+                              <AvatarFallback>{getContactInitials(fullName)}</AvatarFallback>
+                            </Avatar>
+                            <div className="font-medium">{fullName}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {contact.status === 'CLIENT' ? (
+                            <Badge className="bg-green-100 text-green-700">Client</Badge>
+                          ) : contact.status === 'PROSPECT' ? (
+                            <Badge className="bg-blue-100 text-blue-700">Prospect</Badge>
+                          ) : contact.status === 'LEAD' ? (
+                            <Badge className="bg-purple-100 text-purple-700">Lead</Badge>
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-700">Archivé</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {contact.email ? (
+                            <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>
+                              {contact.email}
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {contact.phone ? (
+                            <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>
+                              {contact.phone}
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {storeContact.totalOrders} commande{storeContact.totalOrders > 1 ? 's' : ''}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-semibold">
+                            {(storeContact.totalSpent / 1000).toFixed(0)}k FCFA
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
               </div>

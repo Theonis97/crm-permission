@@ -13,6 +13,17 @@ export async function GET(req: NextRequest) {
     }
 
     const stores = await prisma.store.findMany({
+      include: {
+        manager: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+          },
+        },
+      },
       orderBy: {
         createdAt: "desc",
       },
@@ -35,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { name, logo, coverImage, address, phone, email, whatsapp } = body
+    const { name, logo, coverImage, address, phone, email, whatsapp, managerId } = body
 
     // Validation
     if (!name || name.trim() === "") {
@@ -52,6 +63,18 @@ export async function POST(req: NextRequest) {
         phone: phone?.trim() || null,
         email: email?.trim() || null,
         whatsapp: whatsapp?.trim() || null,
+        managerId: managerId || null,
+      },
+      include: {
+        manager: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+          },
+        },
       },
     })
 

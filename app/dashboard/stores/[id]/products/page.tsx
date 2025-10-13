@@ -258,17 +258,14 @@ export default function ProductsPage({ params }: ProductsPageProps) {
           <div className="flex items-center gap-3">
             <Button
               onClick={() => setRestockingDialogOpen(true)}
-              size="lg"
-              className="h-11"
+              className="bg-blue-900 hover:bg-blue-800"
             >
               <Truck className="h-4 w-4 mr-2" />
               Demander un approvisionnement
             </Button>
             <Button
               onClick={() => setCreateProductDialogOpen(true)}
-              size="lg"
               variant="outline"
-              className="h-11"
             >
               <Plus className="h-4 w-4 mr-2" />
               Créer un produit
@@ -426,7 +423,7 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                     </p>
                     {products.length === 0 && (
                       <div className="flex gap-3 mt-4">
-                        <Button onClick={() => setRestockingDialogOpen(true)} className="flex-1">
+                        <Button onClick={() => setRestockingDialogOpen(true)} className="flex-1 bg-blue-900 hover:bg-blue-800">
                           <Truck className="h-4 w-4 mr-2" />
                           Demander un approvisionnement
                         </Button>

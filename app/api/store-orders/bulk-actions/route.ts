@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           status: { in: ["PENDING"] },
         }
 
-        result = await prisma.order.updateMany({
+        result = await prisma.storeOrder.updateMany({
           where: {
             id: { in: orderIds },
             status: { in: ["PENDING", "CONFIRMED", "PREPARING", "READY"] },
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
           updateData.deliveredAt = new Date()
         }
 
-        result = await prisma.order.updateMany({
+        result = await prisma.storeOrder.updateMany({
           where: {
             id: { in: orderIds },
           },
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        result = await prisma.order.updateMany({
+        result = await prisma.storeOrder.updateMany({
           where: {
             id: { in: orderIds },
           },
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
         break
 
       case "delete":
-        result = await prisma.order.deleteMany({
+        result = await prisma.storeOrder.deleteMany({
           where: {
             id: { in: orderIds },
             status: { in: ["PENDING", "CANCELLED"] }, // Seules les commandes en attente ou annulées peuvent être supprimées

@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
     const {
       storeId,
+      contactId,
       customerName,
       customerPhone,
       customerEmail,
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Générer un numéro de commande unique
-    const orderCount = await prisma.order.count()
+    const orderCount = await prisma.storeOrder.count()
     const orderNumber = `CMD-${new Date().getFullYear()}-${String(orderCount + 1).padStart(6, "0")}`
 
     // Calculer les totaux
@@ -118,11 +119,12 @@ export async function POST(request: NextRequest) {
     const deliveryFeeAmount = deliveryFee || 0
     const total = subtotal + totalTax + deliveryFeeAmount
 
-    // Créer la commande
-    const order = await prisma.order.create({
+    // Créer la commande client
+    const storeOrder = await prisma.storeOrder.create({
       data: {
         number: orderNumber,
         storeId,
+        contactId: contactId || null,
         customerName,
         customerPhone,
         customerEmail: customerEmail || null,
@@ -147,6 +149,15 @@ export async function POST(request: NextRequest) {
       },
       include: {
         store: true,
+        contact: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+          },
+        },
         items: {
           include: {
             product: {
@@ -183,7 +194,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(order, { status: 201 })
+    return NextResponse.json(storeOrder, { status: 201 })
   } catch (error) {
     console.error("Error creating order:", error)
     return NextResponse.json(
@@ -241,13 +252,22 @@ export async function GET(request: NextRequest) {
       where.status = status
     }
 
-    const orders = await prisma.order.findMany({
+    const storeOrders = await prisma.storeOrder.findMany({
       where,
       include: {
         store: {
           select: {
             id: true,
             name: true,
+          },
+        },
+        contact: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
           },
         },
         items: {
@@ -293,7 +313,7 @@ export async function GET(request: NextRequest) {
       take: 500,
     })
 
-    return NextResponse.json(orders)
+    return NextResponse.json(storeOrders)
   } catch (error) {
     console.error("Error fetching orders:", error)
     return NextResponse.json(

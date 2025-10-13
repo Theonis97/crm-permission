@@ -55,7 +55,7 @@ export async function PATCH(
     }
 
     // Vérifier que la commande existe
-    const order = await prisma.restockingOrder.findUnique({
+    const order = await prisma.order.findUnique({
       where: { id },
       include: {
         items: {
@@ -102,7 +102,7 @@ export async function PATCH(
     }
 
     // Mettre à jour le statut
-    const updatedOrder = await prisma.restockingOrder.update({
+    const updatedOrder = await prisma.order.update({
       where: { id },
       data: updateData,
       include: {
@@ -115,14 +115,16 @@ export async function PATCH(
         requester: {
           select: {
             id: true,
-            name: true,
+            firstName: true,
+            lastName: true,
             email: true,
           },
         },
         approver: {
           select: {
             id: true,
-            name: true,
+            firstName: true,
+            lastName: true,
             email: true,
           },
         },

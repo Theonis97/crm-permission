@@ -6,10 +6,10 @@ import { hasPermission } from "@/lib/auth-helpers"
 
 /**
  * Route API pour synchroniser les produits dans les magasins
- * à partir des commandes confirmées/livrées
+ * à partir des commandes approuvées/livrées
  * 
  * Cette route crée les StoreProduct manquants pour toutes les commandes
- * qui ont le statut CONFIRMED ou DELIVERED
+ * qui ont le statut APPROVED ou DELIVERED
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,11 +45,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Récupérer toutes les commandes confirmées ou livrées
+    // Récupérer toutes les commandes approuvées ou livrées
     const orders = await prisma.order.findMany({
       where: {
         status: {
-          in: ["CONFIRMED", "DELIVERED"],
+          in: ["APPROVED", "DELIVERED"],
         },
       },
       include: {
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
             await prisma.storeProduct.update({
               where: { id: existingStoreProduct.id },
               data: {
-                stock: existingStoreProduct.stock + item.quantity,
+                stock: existingStoreProduct.stock + item.requestedQuantity,
               },
             })
             storeProductsUpdated++
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
               data: {
                 storeId: order.storeId,
                 productId: item.productId,
-                stock: item.quantity,
+                stock: item.requestedQuantity,
                 minStock: 10, // Valeur par défaut
               },
             })

@@ -73,11 +73,11 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 8) // Top 8 catégories
 
-    // Récupérer les commandes en cours
+    // Récupérer les commandes en cours (restocking orders)
     const ordersInProgress = await prisma.order.count({
       where: {
         status: {
-          in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING"],
+          in: ["PENDING", "APPROVED", "PREPARING", "SHIPPED"],
         },
       },
     })

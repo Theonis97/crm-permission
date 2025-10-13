@@ -51,7 +51,7 @@ interface Order {
   storeId: string
   products: number
   totalQuantity: number
-  status: "PENDING" | "PREPARING" | "READY" | "SHIPPED" | "DELIVERED" | "CANCELLED"
+  status: "PENDING" | "APPROVED" | "PREPARING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "REJECTED"
   priority: "LOW" | "NORMAL" | "HIGH" | "URGENT"
   requestedDate: Date
   createdAt: Date
@@ -92,7 +92,7 @@ const mockOrders: Order[] = [
     storeId: "store-003",
     products: 22,
     totalQuantity: 189,
-    status: "READY",
+    status: "SHIPPED",
     priority: "URGENT",
     requestedDate: new Date("2025-10-09"),
     createdAt: new Date("2025-10-07T16:45:00"),
@@ -269,13 +269,13 @@ export default function WarehouseOrdersPage() {
   const handleBulkExport = () => {
     const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
     const csv = [
-      ["N° Commande", "Magasin", "Statut", "Priorité", "Total", "Date de création"].join(","),
+      ["N° Commande", "Magasin", "Statut", "Priorité", "Coût Total", "Date de création"].join(","),
       ...selectedOrdersData.map(order => [
         order.number,
         order.store?.name,
         order.status,
         order.priority,
-        order.total,
+        order.totalCost || 0,
         new Date(order.createdAt).toLocaleDateString("fr-FR")
       ].join(","))
     ].join("\n")
@@ -306,20 +306,15 @@ export default function WarehouseOrdersPage() {
         className: "border-amber-200 text-amber-700 bg-amber-50",
         label: "En attente",
       },
-      CONFIRMED: {
+      APPROVED: {
         icon: CheckCircle2,
         className: "border-blue-200 text-blue-700 bg-blue-50",
-        label: "Confirmée",
+        label: "Approuvée",
       },
       PREPARING: {
         icon: Package,
         className: "border-blue-200 text-blue-700 bg-blue-50",
         label: "En préparation",
-      },
-      READY: {
-        icon: CheckCircle2,
-        className: "border-green-200 text-green-700 bg-green-50",
-        label: "Prête",
       },
       SHIPPED: {
         icon: Truck,
@@ -335,6 +330,11 @@ export default function WarehouseOrdersPage() {
         icon: XCircle,
         className: "border-red-200 text-red-700 bg-red-50",
         label: "Annulée",
+      },
+      REJECTED: {
+        icon: XCircle,
+        className: "border-red-200 text-red-700 bg-red-50",
+        label: "Rejetée",
       },
     }
     return config[status] || config.PENDING
@@ -393,7 +393,7 @@ export default function WarehouseOrdersPage() {
     total: orders.length,
     pending: orders.filter((o) => o.status === "PENDING").length,
     preparing: orders.filter((o) => o.status === "PREPARING").length,
-    ready: orders.filter((o) => o.status === "READY").length,
+    ready: orders.filter((o) => o.status === "SHIPPED").length,
   }
 
   return (
@@ -443,11 +443,11 @@ export default function WarehouseOrdersPage() {
                 <div className="text-2xl font-bold text-blue-600">{stats.preparing}</div>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter("READY")}>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter("SHIPPED")}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 text-sm text-green-600 mb-1">
                   <CheckCircle2 className="h-4 w-4" />
-                  Prêtes
+                  Expédiées
                 </div>
                 <div className="text-2xl font-bold text-green-600">{stats.ready}</div>
               </CardContent>
@@ -482,12 +482,12 @@ export default function WarehouseOrdersPage() {
                     <SelectContent>
                       <SelectItem value="all">Tous les statuts</SelectItem>
                       <SelectItem value="PENDING">En attente</SelectItem>
-                      <SelectItem value="CONFIRMED">Confirmées</SelectItem>
+                      <SelectItem value="APPROVED">Approuvées</SelectItem>
                       <SelectItem value="PREPARING">En préparation</SelectItem>
-                      <SelectItem value="READY">Prêtes</SelectItem>
-                      <SelectItem value="DELIVERING">En livraison</SelectItem>
+                      <SelectItem value="SHIPPED">Expédiées</SelectItem>
                       <SelectItem value="DELIVERED">Livrées</SelectItem>
                       <SelectItem value="CANCELLED">Annulées</SelectItem>
+                      <SelectItem value="REJECTED">Rejetées</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -552,12 +552,12 @@ export default function WarehouseOrdersPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="PENDING">En attente</SelectItem>
-                        <SelectItem value="CONFIRMED">Confirmée</SelectItem>
+                        <SelectItem value="APPROVED">Approuvée</SelectItem>
                         <SelectItem value="PREPARING">En préparation</SelectItem>
-                        <SelectItem value="READY">Prête</SelectItem>
-                        <SelectItem value="DELIVERING">En livraison</SelectItem>
+                        <SelectItem value="SHIPPED">Expédiée</SelectItem>
                         <SelectItem value="DELIVERED">Livrée</SelectItem>
                         <SelectItem value="CANCELLED">Annulée</SelectItem>
+                        <SelectItem value="REJECTED">Rejetée</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
@@ -639,7 +639,7 @@ export default function WarehouseOrdersPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-semibold">
-                              {order.total?.toLocaleString("fr-FR")} XAF
+                              {(order.totalCost || 0).toLocaleString("fr-FR")} XAF
                             </TableCell>
                             <TableCell>{getStatusBadge(order.status)}</TableCell>
                             <TableCell>{getPriorityBadge(order.priority)}</TableCell>

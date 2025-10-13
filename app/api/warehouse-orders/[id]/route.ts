@@ -55,10 +55,9 @@ export async function GET(
                 brand: true,
               },
             },
-            variant: true,
           },
         },
-        createdBy: {
+        requester: {
           select: {
             id: true,
             firstName: true,
@@ -66,7 +65,6 @@ export async function GET(
             email: true,
           },
         },
-        contact: true,
       },
     })
 
@@ -148,10 +146,9 @@ export async function PATCH(
                 brand: true,
               },
             },
-            variant: true,
           },
         },
-        createdBy: {
+        requester: {
           select: {
             id: true,
             firstName: true,

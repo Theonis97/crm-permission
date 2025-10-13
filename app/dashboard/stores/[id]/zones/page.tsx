@@ -23,14 +23,12 @@ import {
   ChevronLeft,
   Info,
   X,
+  ShoppingCart,
+  Clock,
+  Package,
+  RefreshCw,
 } from "lucide-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import {
   Table,
   TableBody,
@@ -73,7 +71,23 @@ interface DeliveryZone {
     id: string
     name: string
     phone: string
+    status: string
   } | null
+  storeOrders?: Array<{
+    id: string
+    number: string
+    status: string
+    total: number
+    createdAt: string
+    contact: {
+      firstName: string | null
+      lastName: string | null
+      phone: string | null
+    } | null
+  }>
+  _count?: {
+    storeOrders: number
+  }
 }
 
 export default function StoreZonesPage() {
@@ -107,6 +121,13 @@ export default function StoreZonesPage() {
   // Charger les zones depuis l'API
   useEffect(() => {
     loadZones()
+    
+    // Rafraîchissement automatique toutes les 30 secondes
+    const interval = setInterval(() => {
+      loadZones()
+    }, 30000)
+    
+    return () => clearInterval(interval)
   }, [storeId])
 
   const loadZones = async () => {
@@ -418,10 +439,21 @@ export default function StoreZonesPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Statistiques
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Statistiques
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={loadZones}
+                      disabled={isLoadingZones}
+                      className="h-8 w-8 p-0"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingZones ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {isLoadingZones ? (
@@ -457,6 +489,94 @@ export default function StoreZonesPage() {
                         </div>
                         <Truck className="h-8 w-8 text-purple-600" />
                       </div>
+
+                      <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                        <div>
+                          <div className="text-sm text-gray-600">Commandes en cours</div>
+                          <div className="text-2xl font-bold text-orange-900">
+                            {zones.reduce((sum, z) => sum + (z.storeOrders?.length || 0), 0)}
+                          </div>
+                        </div>
+                        <ShoppingCart className="h-8 w-8 text-orange-600" />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Commandes en Temps Réel */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Commandes en Cours
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingZones ? (
+                    <div className="flex items-center justify-center p-6">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-900" />
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                      {filteredZones.filter(z => z.storeOrders && z.storeOrders.length > 0).length === 0 ? (
+                        <div className="text-center p-6 text-gray-500 text-sm">
+                          <ShoppingCart className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                          <p>Aucune commande en cours</p>
+                        </div>
+                      ) : (
+                        filteredZones.map((zone) => (
+                          zone.storeOrders && zone.storeOrders.length > 0 && (
+                            <div key={zone.id} className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: zone.color }} />
+                                {zone.name} ({zone.storeOrders.length})
+                              </div>
+                              {zone.storeOrders.map((order) => {
+                                const contactName = order.contact 
+                                  ? `${order.contact.firstName || ''} ${order.contact.lastName || ''}`.trim() || 'Client'
+                                  : 'Client'
+                                return (
+                                <div key={order.id} className="ml-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-sm">{order.number}</span>
+                                        <Badge 
+                                          variant="outline" 
+                                          className={`text-xs ${
+                                            order.status === "DELIVERED" ? "bg-green-50 text-green-700 border-green-200" :
+                                            order.status === "DELIVERING" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                            order.status === "PREPARING" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                                            "bg-gray-50 text-gray-700 border-gray-200"
+                                          }`}
+                                        >
+                                          {order.status}
+                                        </Badge>
+                                      </div>
+                                      {order.contact && (
+                                        <div className="text-xs text-gray-600 mt-1">
+                                          {contactName} {order.contact.phone && `• ${order.contact.phone}`}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-xs font-semibold text-blue-900">
+                                          {order.total.toLocaleString()} FCFA
+                                        </span>
+                                        <span className="text-xs text-gray-500">•</span>
+                                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          {new Date(order.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )})}
+                            </div>
+                          )
+                        ))
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -497,6 +617,7 @@ export default function StoreZonesPage() {
                       <TableHead className="font-semibold">Zone</TableHead>
                       <TableHead className="font-semibold">Couverture</TableHead>
                       <TableHead className="font-semibold">Livreur assigné</TableHead>
+                      <TableHead className="font-semibold">Commandes</TableHead>
                       <TableHead className="font-semibold">Frais</TableHead>
                       <TableHead className="font-semibold">Temps estimé</TableHead>
                       <TableHead className="font-semibold">Statut</TableHead>
@@ -535,6 +656,19 @@ export default function StoreZonesPage() {
                             <Badge variant="outline" className="text-gray-500">
                               Non assigné
                             </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {zone.storeOrders && zone.storeOrders.length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <ShoppingCart className="h-4 w-4 text-orange-600" />
+                              <span className="font-semibold text-orange-900">
+                                {zone.storeOrders.length}
+                              </span>
+                              <span className="text-xs text-gray-500">en cours</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">Aucune</span>
                           )}
                         </TableCell>
                         <TableCell>
@@ -589,7 +723,7 @@ export default function StoreZonesPage() {
 
       {/* Dialogue de création de zone */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="min-w-[65vw] w-full h-[95vh] flex flex-col p-0">
+        <DialogContent className="min-w-[65vw] w-full h-[95vh] flex flex-col p-0 z-[1000]">
           <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center justify-between">
               <div>

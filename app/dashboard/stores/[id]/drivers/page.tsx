@@ -245,7 +245,20 @@ export default function DriversPage() {
         throw new Error(error.error || "Erreur lors de la création")
       }
 
-      toast.success("Livreur créé avec succès!")
+      const result = await response.json()
+      
+      // Message différent si un utilisateur a été créé
+      if (result.userCreated) {
+        toast.success(
+          `Livreur créé avec succès!\n` +
+          `📧 Compte créé pour: ${result.userEmail}\n` +
+          `🔑 Mot de passe: ${result.defaultPassword}`,
+          { duration: 8000 }
+        )
+      } else {
+        toast.success("Livreur créé avec succès!")
+      }
+      
       setIsCreateDialogOpen(false)
       resetForm()
       await loadDrivers()
@@ -617,21 +630,7 @@ export default function DriversPage() {
                       {/* Statistiques du jour */}
                       {driver.todayStats && (
                         <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-gray-700 uppercase">Aujourd'hui</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openDetailsSheet(driver)
-                              }}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              Détails
-                            </Button>
-                          </div>
+                          
                           <div className="grid grid-cols-3 gap-2">
                             <div className="text-center">
                               <div className="flex items-center justify-center gap-1 mb-1">
@@ -904,7 +903,12 @@ export default function DriversPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="flex items-center gap-2">
+                Email
+                <Badge variant="outline" className="text-xs font-normal">
+                  Optionnel
+                </Badge>
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -912,6 +916,9 @@ export default function DriversPage() {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="Ex: jean.dupont@email.com"
               />
+              <p className="text-xs text-gray-500">
+                💡 Si un email est fourni, un compte utilisateur sera créé automatiquement avec le mot de passe : <code className="font-mono bg-gray-100 px-1 py-0.5 rounded">innotech</code>
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

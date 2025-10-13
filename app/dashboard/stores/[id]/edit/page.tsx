@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { ImageUpload } from "@/components/upload/image-upload"
+import { ManagerSelector } from "@/components/stores/manager-selector"
 import {
   Store,
   MapPin,
@@ -47,6 +48,7 @@ const storeSchema = z.object({
   email: z.string().email("Email invalide").optional().or(z.literal("")),
   whatsapp: z.string().optional(),
   isActive: z.boolean().optional(),
+  managerId: z.string().nullable().optional(),
 })
 
 type StoreFormData = z.infer<typeof storeSchema>
@@ -104,6 +106,7 @@ export default function EditStorePage({ params }: EditStorePageProps) {
         setValue("email", store.email || "")
         setValue("whatsapp", store.whatsapp || "")
         setValue("isActive", store.isActive)
+        setValue("managerId", store.managerId || null)
       } catch (error) {
         toast.error("Erreur", {
           description: error instanceof Error ? error.message : "Impossible de charger la boutique",
@@ -306,6 +309,13 @@ export default function EditStorePage({ params }: EditStorePageProps) {
                   onCheckedChange={(checked) => setValue("isActive", checked)}
                 />
               </div>
+
+              {/* Manager */}
+              <ManagerSelector
+                value={watch("managerId")}
+                onChange={(managerId) => setValue("managerId", managerId)}
+                disabled={isSubmitting}
+              />
 
               {/* Images */}
               <div className="grid md:grid-cols-2 gap-6">

@@ -192,7 +192,7 @@ export default function OrdersPage() {
   const loadOrders = async () => {
     try {
       setIsLoadingOrders(true)
-      const response = await fetch(`/api/orders?storeId=${storeId}`)
+      const response = await fetch(`/api/store-orders?storeId=${storeId}`)
       if (!response.ok) throw new Error("Erreur")
       const data = await response.json()
       setOrders(data)
@@ -299,7 +299,7 @@ export default function OrdersPage() {
     try {
       setIsPerformingAction(true)
 
-      const response = await fetch("/api/orders/bulk-actions", {
+      const response = await fetch("/api/store-orders/bulk-actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
