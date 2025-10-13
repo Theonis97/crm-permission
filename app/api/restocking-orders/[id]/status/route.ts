@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/auth-helpers"
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -41,12 +41,12 @@ export async function PATCH(
       )
     }
 
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
-    const { status } = body
+    const { status, rejectionReason } = body
 
     // Validation du statut
-    const validStatuses = ["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED", "CANCELLED"]
+    const validStatuses = ["PENDING", "APPROVED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REJECTED"]
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
         { error: "Statut invalide" },
@@ -55,7 +55,7 @@ export async function PATCH(
     }
 
     // Vérifier que la commande existe
-    const order = await prisma.order.findUnique({
+    const order = await prisma.restockingOrder.findUnique({
       where: { id },
       include: {
         items: {
@@ -63,12 +63,13 @@ export async function PATCH(
             product: true,
           },
         },
+        store: true,
       },
     })
 
     if (!order) {
       return NextResponse.json(
-        { error: "Commande introuvable" },
+        { error: "Commande d'approvisionnement introuvable" },
         { status: 404 }
       )
     }
@@ -81,14 +82,27 @@ export async function PATCH(
       )
     }
 
-    // Si on passe en DELIVERED, on met à jour la date de livraison
+    // Préparer les données de mise à jour
     const updateData: any = { status }
+
+    // Si approuvée
+    if (status === "APPROVED" && !order.approvedAt) {
+      updateData.approvedAt = new Date()
+      updateData.approvedBy = user.id
+    }
+
+    // Si livrée
     if (status === "DELIVERED" && !order.deliveredAt) {
       updateData.deliveredAt = new Date()
     }
 
+    // Si rejetée
+    if (status === "REJECTED") {
+      updateData.rejectionReason = rejectionReason || "Non spécifié"
+    }
+
     // Mettre à jour le statut
-    const updatedOrder = await prisma.order.update({
+    const updatedOrder = await prisma.restockingOrder.update({
       where: { id },
       data: updateData,
       include: {
@@ -98,26 +112,26 @@ export async function PATCH(
             product: true,
           },
         },
-        createdBy: {
+        requester: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
+            email: true,
+          },
+        },
+        approver: {
+          select: {
+            id: true,
+            name: true,
             email: true,
           },
         },
       },
     })
 
-    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est confirmée ou livrée
-    if (status === "CONFIRMED" || status === "DELIVERED") {
-      console.log("🚀 Début création StoreProduct pour la commande:", order.id)
-      console.log("📦 Magasin ID:", order.storeId)
-      console.log("📋 Nombre d'items:", order.items.length)
-      
+    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est approuvée ou livrée
+    if (status === "APPROVED" || status === "DELIVERED") {
       for (const item of order.items) {
-        console.log(`  ➡️ Traitement produit: ${item.name} (${item.productId}) - Quantité: ${item.quantity}`)
-        
         // Vérifier si le produit existe déjà dans le magasin
         const existingStoreProduct = await prisma.storeProduct.findFirst({
           where: {
@@ -127,36 +141,30 @@ export async function PATCH(
         })
 
         if (existingStoreProduct) {
-          console.log(`    ✅ StoreProduct existe déjà (ID: ${existingStoreProduct.id}), mise à jour du stock`)
           // Mettre à jour le stock existant (ajouter la quantité)
           await prisma.storeProduct.update({
             where: { id: existingStoreProduct.id },
             data: {
-              stock: existingStoreProduct.stock + item.quantity,
+              stock: existingStoreProduct.stock + item.requestedQuantity,
             },
           })
-          console.log(`    📈 Stock mis à jour: ${existingStoreProduct.stock} → ${existingStoreProduct.stock + item.quantity}`)
         } else {
-          console.log(`    🆕 Création nouveau StoreProduct`)
           // Créer un nouveau StoreProduct pour ce magasin
-          const newStoreProduct = await prisma.storeProduct.create({
+          await prisma.storeProduct.create({
             data: {
               storeId: order.storeId,
               productId: item.productId,
-              stock: item.quantity,
+              stock: item.requestedQuantity,
               minStock: 10, // Valeur par défaut
             },
           })
-          console.log(`    ✨ StoreProduct créé avec succès (ID: ${newStoreProduct.id})`)
         }
       }
-      
-      console.log("✅ Tous les StoreProduct ont été créés/mis à jour avec succès")
     }
 
     return NextResponse.json(updatedOrder)
   } catch (error: any) {
-    console.error("Error updating order status:", error)
+    console.error("Error updating restocking order status:", error)
     return NextResponse.json(
       { error: error.message || "Erreur lors de la mise à jour du statut" },
       { status: 500 }

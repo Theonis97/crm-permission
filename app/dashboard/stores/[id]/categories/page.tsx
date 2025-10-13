@@ -173,7 +173,7 @@ export default function CategoriesPage({ params }: CategoriesPageProps) {
       <div key={category.id}>
         <Card
           className={cn(
-            "hover:shadow-md transition-shadow",
+            "hover:shadow-md transition-shadow py-0",
             level > 0 && "ml-8 mt-2"
           )}
         >

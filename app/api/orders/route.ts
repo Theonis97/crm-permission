@@ -45,9 +45,15 @@ export async function POST(request: NextRequest) {
       customerPhone,
       customerEmail,
       deliveryAddress,
+      deliveryLatitude,
+      deliveryLongitude,
       priority,
       items, // [{ productId, variantId?, quantity, unitPrice }]
       notes,
+      deliveryPersonId,
+      deliveryZoneId,
+      deliveryFee,
+      paymentMethod,
     } = data
 
     if (!storeId || !customerName || !customerPhone || !items || items.length === 0) {
@@ -109,7 +115,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const total = subtotal + totalTax
+    const deliveryFeeAmount = deliveryFee || 0
+    const total = subtotal + totalTax + deliveryFeeAmount
 
     // Créer la commande
     const order = await prisma.order.create({
@@ -120,13 +127,18 @@ export async function POST(request: NextRequest) {
         customerPhone,
         customerEmail: customerEmail || null,
         deliveryAddress: deliveryAddress || null,
+        deliveryLatitude: deliveryLatitude || null,
+        deliveryLongitude: deliveryLongitude || null,
         status: "PENDING",
         priority: priority || "NORMAL",
         subtotal,
         totalTax,
+        deliveryFee: deliveryFeeAmount,
         total,
-        paymentMethod: "CASH",
+        paymentMethod: paymentMethod || "CASH",
         paymentStatus: "PENDING",
+        deliveryPersonId: deliveryPersonId || null,
+        deliveryZoneId: deliveryZoneId || null,
         notes: notes || null,
         createdById: user.id,
         items: {
@@ -144,6 +156,20 @@ export async function POST(request: NextRequest) {
               },
             },
             variant: true,
+          },
+        },
+        deliveryPerson: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+        deliveryZone: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
           },
         },
         createdBy: {
@@ -218,10 +244,38 @@ export async function GET(request: NextRequest) {
     const orders = await prisma.order.findMany({
       where,
       include: {
-        store: true,
+        store: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         items: {
           include: {
-            product: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                photos: true,
+              },
+            },
+          },
+        },
+        deliveryPerson: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            status: true,
+          },
+        },
+        deliveryZone: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            deliveryFee: true,
           },
         },
         createdBy: {
@@ -236,7 +290,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "desc",
       },
-      take: 100,
+      take: 500,
     })
 
     return NextResponse.json(orders)

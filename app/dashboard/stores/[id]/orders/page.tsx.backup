@@ -49,8 +49,6 @@ import {
   Loader2,
   Users,
   AlertCircle,
-  Plus,
-  User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -156,110 +154,61 @@ const formatFCFA = (amount: number) => {
   }).format(amount).replace('XAF', 'FCFA')
 }
 
-export default function OrdersPage() {
-  const params = useParams()
-  const storeId = params.id as string
-
-  // États données
-  const [orders, setOrders] = useState<Order[]>([])
-  const [deliveryPersons, setDeliveryPersons] = useState<DeliveryPerson[]>([])
-  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([])
-  
-  // Loading states
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true)
-  const [isPerformingAction, setIsPerformingAction] = useState(false)
-  
-  // Filtres
+export default function OrdersPage({ params }: OrdersPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [zoneFilter, setZoneFilter] = useState("all")
+  const [priorityFilter, setPriorityFilter] = useState("all")
+  const [paymentFilter, setPaymentFilter] = useState("all")
   const [deliveryPersonFilter, setDeliveryPersonFilter] = useState("all")
   const [dateFilter, setDateFilter] = useState("all")
-  
-  // Sélection
+  const [deliverySearchTerm, setDeliverySearchTerm] = useState("")
+  const [isDeliveryPopoverOpen, setIsDeliveryPopoverOpen] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
-
-  // Charger les données
-  useEffect(() => {
-    loadOrders()
-    loadDeliveryPersons()
-    loadDeliveryZones()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId])
-
-  const loadOrders = async () => {
-    try {
-      setIsLoadingOrders(true)
-      const response = await fetch(`/api/orders?storeId=${storeId}`)
-      if (!response.ok) throw new Error("Erreur")
-      const data = await response.json()
-      setOrders(data)
-    } catch (error) {
-      toast.error("Erreur lors du chargement des commandes")
-    } finally {
-      setIsLoadingOrders(false)
-    }
-  }
-
-  const loadDeliveryPersons = async () => {
-    try {
-      const response = await fetch(`/api/delivery-persons?storeId=${storeId}`)
-      if (!response.ok) return
-      const data = await response.json()
-      setDeliveryPersons(data.filter((d: any) => d.isActive))
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
-  const loadDeliveryZones = async () => {
-    try {
-      const response = await fetch(`/api/delivery-zones?storeId=${storeId}`)
-      if (!response.ok) return
-      const data = await response.json()
-      setDeliveryZones(data.filter((z: any) => z.isActive))
-    } catch (error) {
-      console.error(error)
-    }
-  }
+  const itemsPerPage = 10
 
   // Filtrage des commandes
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const matchesSearch = order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           order.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           order.customerPhone.includes(searchTerm) ||
-                           order.deliveryAddress?.toLowerCase().includes(searchTerm.toLowerCase())
+    return mockOrders.filter(order => {
+      const matchesSearch = order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           order.phone.includes(searchTerm) ||
+                           order.address.toLowerCase().includes(searchTerm.toLowerCase())
       
       const matchesStatus = statusFilter === "all" || order.status === statusFilter
-      const matchesZone = zoneFilter === "all" || 
-        (zoneFilter === "unassigned" && !order.deliveryZoneId) ||
-        order.deliveryZoneId === zoneFilter
+      const matchesPriority = priorityFilter === "all" || order.priority === priorityFilter
+      const matchesPayment = paymentFilter === "all" || order.paymentStatus === paymentFilter
       const matchesDeliveryPerson = deliveryPersonFilter === "all" || 
-        (deliveryPersonFilter === "unassigned" && !order.deliveryPersonId) ||
-        order.deliveryPersonId === deliveryPersonFilter
+        (deliveryPersonFilter === "unassigned" && !order.deliveryPerson) ||
+        order.deliveryPerson === deliveryPersonFilter
       
       // Filtre par date
       let matchesDate = true
       if (dateFilter !== "all") {
-        const orderDate = new Date(order.createdAt)
+        const orderDate = new Date(order.orderDate)
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         
         if (dateFilter === "today") {
           matchesDate = orderDate >= today
+        } else if (dateFilter === "yesterday") {
+          const yesterday = new Date(today)
+          yesterday.setDate(yesterday.getDate() - 1)
+          matchesDate = orderDate >= yesterday && orderDate < today
         } else if (dateFilter === "week") {
           const weekAgo = new Date(today)
           weekAgo.setDate(weekAgo.getDate() - 7)
           matchesDate = orderDate >= weekAgo
+        } else if (dateFilter === "month") {
+          const monthAgo = new Date(today)
+          monthAgo.setMonth(monthAgo.getMonth() - 1)
+          matchesDate = orderDate >= monthAgo
         }
       }
       
-      return matchesSearch && matchesStatus && matchesZone && matchesDeliveryPerson && matchesDate
+      return matchesSearch && matchesStatus && matchesPriority && matchesPayment && matchesDeliveryPerson && matchesDate
     })
-  }, [searchTerm, statusFilter, zoneFilter, deliveryPersonFilter, dateFilter, orders])
+  }, [searchTerm, statusFilter, priorityFilter, paymentFilter, deliveryPersonFilter, dateFilter])
 
   // Pagination
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
@@ -270,7 +219,24 @@ export default function OrdersPage() {
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, statusFilter, zoneFilter, deliveryPersonFilter, dateFilter])
+  }, [searchTerm, statusFilter, priorityFilter, paymentFilter, deliveryPersonFilter, dateFilter])
+
+  // Filtrer les livreurs pour la recherche
+  const filteredDeliveryPersons = useMemo(() => {
+    return deliveryPersons.filter(person => 
+      person.name.toLowerCase().includes(deliverySearchTerm.toLowerCase())
+    )
+  }, [deliverySearchTerm])
+
+  const updateOrderStatus = (orderId: string, newStatus: string) => {
+    // Ici vous implémenteriez la logique de mise à jour
+    console.log(`Updating order ${orderId} to status ${newStatus}`)
+  }
+
+  const assignDeliveryPerson = (orderId: string, deliveryPersonId: string) => {
+    // Ici vous implémenteriez la logique d'assignation
+    console.log(`Assigning delivery person ${deliveryPersonId} to order ${orderId}`)
+  }
 
   // Gestion de la sélection multiple
   const toggleOrderSelection = (orderId: string) => {
@@ -289,51 +255,25 @@ export default function OrdersPage() {
     }
   }
 
-  // Actions groupées
-  const handleBulkAction = async (action: string, data?: any) => {
-    if (selectedOrders.length === 0) {
-      toast.error("Aucune commande sélectionnée")
-      return
-    }
-
-    try {
-      setIsPerformingAction(true)
-
-      const response = await fetch("/api/orders/bulk-actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          orderIds: selectedOrders,
-          data,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de l'action")
-      }
-
-      const result = await response.json()
-      toast.success(result.message || "Action effectuée avec succès")
-      
-      await loadOrders()
-      setSelectedOrders([])
-    } catch (error: any) {
-      toast.error(error.message || "Erreur lors de l'action groupée")
-    } finally {
-      setIsPerformingAction(false)
-    }
+  const bulkUpdateStatus = (newStatus: string) => {
+    console.log(`Updating ${selectedOrders.length} orders to status ${newStatus}`)
+    // Ici vous implémenteriez la logique de mise à jour en masse
+    setSelectedOrders([])
   }
 
-  const stats = useMemo(() => ({
-    total: orders.length,
-    pending: orders.filter(o => o.status === "PENDING").length,
-    confirmed: orders.filter(o => o.status === "CONFIRMED").length,
-    delivering: orders.filter(o => o.status === "DELIVERING").length,
-    delivered: orders.filter(o => o.status === "DELIVERED").length,
-    unassigned: orders.filter(o => !o.deliveryPersonId).length,
-  }), [orders])
+  const bulkAssignDeliveryPerson = (deliveryPersonId: string) => {
+    console.log(`Assigning delivery person ${deliveryPersonId} to ${selectedOrders.length} orders`)
+    // Ici vous implémenteriez la logique d'assignation en masse
+    setSelectedOrders([])
+  }
+
+  const stats = {
+    total: mockOrders.length,
+    pending: mockOrders.filter(o => o.status === "pending").length,
+    confirmed: mockOrders.filter(o => o.status === "confirmed").length,
+    delivering: mockOrders.filter(o => o.status === "delivering").length,
+    delivered: mockOrders.filter(o => o.status === "delivered").length,
+  }
 
   return (
     <>
@@ -372,28 +312,37 @@ export default function OrdersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les statuts</SelectItem>
-                    <SelectItem value="PENDING">En attente</SelectItem>
-                    <SelectItem value="CONFIRMED">Confirmée</SelectItem>
-                    <SelectItem value="PREPARING">Préparation</SelectItem>
-                    <SelectItem value="READY">Prête</SelectItem>
-                    <SelectItem value="DELIVERING">En livraison</SelectItem>
-                    <SelectItem value="DELIVERED">Livrée</SelectItem>
-                    <SelectItem value="CANCELLED">Annulée</SelectItem>
+                    <SelectItem value="pending">En attente</SelectItem>
+                    <SelectItem value="confirmed">Confirmée</SelectItem>
+                    <SelectItem value="preparing">Préparation</SelectItem>
+                    <SelectItem value="ready">Prête</SelectItem>
+                    <SelectItem value="delivering">En livraison</SelectItem>
+                    <SelectItem value="delivered">Livrée</SelectItem>
+                    <SelectItem value="cancelled">Annulée</SelectItem>
                   </SelectContent>
                 </Select>
 
-                <Select value={zoneFilter} onValueChange={setZoneFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Zone" />
+                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="Priorité" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Toutes les zones</SelectItem>
-                    <SelectItem value="unassigned">Non assignée</SelectItem>
-                    {deliveryZones.map(zone => (
-                      <SelectItem key={zone.id} value={zone.id}>
-                        {zone.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="all">Toutes</SelectItem>
+                    <SelectItem value="normal">Normale</SelectItem>
+                    <SelectItem value="high">Élevée</SelectItem>
+                    <SelectItem value="urgent">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                  <SelectTrigger className="w-36">
+                    <SelectValue placeholder="Paiement" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="pending">En attente</SelectItem>
+                    <SelectItem value="paid">Payé</SelectItem>
+                    <SelectItem value="failed">Échoué</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -405,54 +354,109 @@ export default function OrdersPage() {
                   <SelectContent>
                     <SelectItem value="all">Toutes les dates</SelectItem>
                     <SelectItem value="today">Aujourd'hui</SelectItem>
+                    <SelectItem value="yesterday">Hier</SelectItem>
                     <SelectItem value="week">7 derniers jours</SelectItem>
+                    <SelectItem value="month">30 derniers jours</SelectItem>
                   </SelectContent>
                 </Select>
 
-                {/* Filtre par Livreur */}
-                <Select value={deliveryPersonFilter} onValueChange={setDeliveryPersonFilter}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder="Livreur" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous les livreurs</SelectItem>
-                    <SelectItem value="unassigned">Non assignés</SelectItem>
-                    {deliveryPersons.map(person => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Filtre par Livreur avec Popover */}
+                <Popover open={isDeliveryPopoverOpen} onOpenChange={setIsDeliveryPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-44">
+                      <User className="h-4 w-4 mr-2" />
+                      {deliveryPersonFilter === "all" 
+                        ? "Tous les livreurs"
+                        : deliveryPersonFilter === "unassigned"
+                        ? "Non assignés"
+                        : deliveryPersons.find(p => p.name === deliveryPersonFilter)?.name || "Livreur"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-0" align="start">
+                    <div className="p-3 border-b">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <Input
+                          placeholder="Rechercher un livreur..."
+                          className="pl-10 h-9"
+                          value={deliverySearchTerm}
+                          onChange={(e) => setDeliverySearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <button
+                        className={cn(
+                          "w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors text-sm",
+                          deliveryPersonFilter === "all" && "bg-blue-50 text-blue-700 font-medium"
+                        )}
+                        onClick={() => {
+                          setDeliveryPersonFilter("all")
+                          setIsDeliveryPopoverOpen(false)
+                          setDeliverySearchTerm("")
+                        }}
+                      >
+                        Tous les livreurs
+                      </button>
+                      <button
+                        className={cn(
+                          "w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors text-sm",
+                          deliveryPersonFilter === "unassigned" && "bg-blue-50 text-blue-700 font-medium"
+                        )}
+                        onClick={() => {
+                          setDeliveryPersonFilter("unassigned")
+                          setIsDeliveryPopoverOpen(false)
+                          setDeliverySearchTerm("")
+                        }}
+                      >
+                        Non assignés
+                      </button>
+                      {filteredDeliveryPersons.length > 0 ? (
+                        filteredDeliveryPersons.map((person) => (
+                          <button
+                            key={person.id}
+                            className={cn(
+                              "w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors",
+                              deliveryPersonFilter === person.name && "bg-blue-50 text-blue-700 font-medium"
+                            )}
+                            onClick={() => {
+                              setDeliveryPersonFilter(person.name)
+                              setIsDeliveryPopoverOpen(false)
+                              setDeliverySearchTerm("")
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium">{person.name}</div>
+                                <div className="text-xs text-gray-500">{person.phone}</div>
+                              </div>
+                              <Badge 
+                                variant={person.status === "available" ? "default" : "secondary"}
+                                className="text-xs"
+                              >
+                                {person.status === "available" ? "Disponible" : "Occupé"}
+                              </Badge>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-6 text-center text-sm text-gray-500">
+                          Aucun livreur trouvé
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={loadOrders}
-                  disabled={isLoadingOrders}
-                >
-                  <RefreshCw className={cn("h-4 w-4", isLoadingOrders && "animate-spin")} />
+                <Button variant="outline" size="sm">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Actualiser
                 </Button>
-
               </div>
             </div>
           </CardHeader>
 
           <CardContent className="py-0">
-            {isLoadingOrders ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="text-center">
-                  <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-3" />
-                  <p className="text-gray-600">Chargement des commandes...</p>
-                </div>
-              </div>
-            ) : filteredOrders.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                <Package className="h-16 w-16 mb-4 opacity-20" />
-                <p className="text-sm">Aucune commande trouvée</p>
-              </div>
-            ) : (
-            <>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -489,42 +493,21 @@ export default function OrdersPage() {
                           />
                         </TableCell>
                         <TableCell className="font-medium text-blue-600">
-                          <div className="flex flex-col">
-                            <span>{order.number}</span>
-                            <span className="text-xs text-gray-500">
-                              {new Date(order.createdAt).toLocaleDateString("fr-FR")}
-                            </span>
-                          </div>
+                          {order.id}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-600">
-                              {order.customerName.split(' ').map(n => n[0]).join('')}
+                              {order.customer.split(' ').map(n => n[0]).join('')}
                             </div>
                             <div>
-                              <div className="font-medium">{order.customerName}</div>
-                              <div className="text-xs text-gray-500 flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                {order.customerPhone}
-                              </div>
-                              {order.deliveryZone && (
-                                <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                  <MapPin className="h-3 w-3" />
-                                  {order.deliveryZone.name}
-                                </div>
-                              )}
+                              <div className="font-medium">{order.customer}</div>
+                              <div className="text-xs text-gray-500">{order.phone}</div>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="font-semibold">
-                          <div className="flex flex-col">
-                            <span>{order.total.toLocaleString()} F</span>
-                            {order.deliveryFee > 0 && (
-                              <span className="text-xs text-gray-500">
-                                +{order.deliveryFee.toLocaleString()} F livraison
-                              </span>
-                            )}
-                          </div>
+                          {formatFCFA(order.total)}
                         </TableCell>
                         <TableCell>
                           <Badge className={cn("text-xs", statusConfig.color)}>
@@ -536,15 +519,12 @@ export default function OrdersPage() {
                           {order.deliveryPerson ? (
                             <div className="flex items-center gap-2">
                               <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-xs font-medium text-green-600">
-                                {order.deliveryPerson.name.split(' ').map(n => n[0]).join('')}
+                                {order.deliveryPerson.split(' ').map(n => n[0]).join('')}
                               </div>
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium">{order.deliveryPerson.name}</span>
-                                <span className="text-xs text-gray-500">{order.deliveryPerson.phone}</span>
-                              </div>
+                              <span className="text-sm">{order.deliveryPerson}</span>
                             </div>
                           ) : (
-                            <Badge variant="outline" className="text-gray-400">Non assigné</Badge>
+                            <span className="text-sm text-gray-400">Non assigné</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -560,6 +540,38 @@ export default function OrdersPage() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 Voir détails
                               </DropdownMenuItem>
+                              <DropdownMenuItem>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Modifier
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>Changer le statut</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, "confirmed")}>
+                                Confirmer
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, "preparing")}>
+                                En préparation
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, "ready")}>
+                                Prête
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, "delivering")}>
+                                En livraison
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, "delivered")}>
+                                Livrée
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>Assigner livreur</DropdownMenuLabel>
+                              {deliveryPersons.filter(dp => dp.status === "available").map(dp => (
+                                <DropdownMenuItem 
+                                  key={dp.id}
+                                  onClick={() => assignDeliveryPerson(order.id, dp.id)}
+                                >
+                                  <User className="h-4 w-4 mr-2" />
+                                  {dp.name}
+                                </DropdownMenuItem>
+                              ))}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -627,8 +639,6 @@ export default function OrdersPage() {
                 </div>
               </div>
             )}
-            </>
-            )}
           </CardContent>
         </Card>
 
@@ -659,28 +669,28 @@ export default function OrdersPage() {
                   <DropdownMenuContent>
                     <DropdownMenuLabel>Changer le statut</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "CONFIRMED" })}>
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("confirmed")}>
                       <CheckCircle2 className="h-4 w-4 mr-2 text-blue-500" />
                       Confirmer
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "PREPARING" })}>
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("preparing")}>
                       <Clock className="h-4 w-4 mr-2 text-yellow-500" />
                       En préparation
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "READY" })}>
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("ready")}>
                       <Package className="h-4 w-4 mr-2 text-purple-500" />
                       Prête
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "DELIVERING" })}>
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("delivering")}>
                       <Truck className="h-4 w-4 mr-2 text-orange-500" />
                       En livraison
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "DELIVERED" })}>
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("delivered")}>
                       <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
                       Livrée
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "CANCELLED" })} className="text-red-600">
+                    <DropdownMenuItem onClick={() => bulkUpdateStatus("cancelled")} className="text-red-600">
                       <XCircle className="h-4 w-4 mr-2" />
                       Annuler
                     </DropdownMenuItem>
@@ -701,8 +711,8 @@ export default function OrdersPage() {
                     {deliveryPersons.map(dp => (
                       <DropdownMenuItem 
                         key={dp.id}
-                        onClick={() => handleBulkAction("assignDeliveryPerson", { deliveryPersonId: dp.id })}
-                        disabled={dp.status !== "AVAILABLE"}
+                        onClick={() => bulkAssignDeliveryPerson(dp.id)}
+                        disabled={dp.status !== "available"}
                       >
                         <User className="h-4 w-4 mr-2" />
                         <div className="flex items-center justify-between flex-1">
