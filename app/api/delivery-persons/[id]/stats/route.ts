@@ -84,6 +84,41 @@ export async function GET(
     const avgOrderValue = totalDelivered > 0 ? allTimeRevenue / totalDelivered : 0
     const avgDeliveryFee = totalDelivered > 0 ? allTimeDeliveryFees / totalDelivered : 0
 
+    // Récupérer le stock du livreur
+    const stock = await prisma.deliveryPersonStock.findMany({
+      where: {
+        deliveryPersonId,
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            prixVente: true,
+          },
+        },
+        variant: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            prixVente: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    })
+
+    // Calculer les statistiques du stock
+    const totalItems = stock.reduce((sum, item) => sum + item.quantity, 0)
+    const totalValue = stock.reduce((sum, item) => {
+      const price = item.variant?.prixVente || item.product.prixVente
+      return sum + price * item.quantity
+    }, 0)
+
     return NextResponse.json({
       today: {
         delivered: deliveredOrders.length,
@@ -100,6 +135,14 @@ export async function GET(
         totalDeliveryFees: allTimeDeliveryFees,
         avgOrderValue,
         avgDeliveryFee,
+      },
+      stock: {
+        items: stock,
+        summary: {
+          totalItems,
+          totalValue,
+          totalProducts: stock.length,
+        },
       },
     })
   } catch (error: any) {

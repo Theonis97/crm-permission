@@ -106,6 +106,18 @@ interface DeliveryPerson {
     pending: number
     revenue: number
   }
+  stockSummary?: {
+    totalItems: number
+    totalValue: number
+    totalProducts: number
+  }
+  orders?: Array<{
+    id: string
+    number: string
+    status: string
+    customerName: string
+    total: number
+  }>
 }
 
 interface DeliveryZone {
@@ -141,6 +153,32 @@ interface DriverDetailedStats {
     totalDeliveryFees: number
     avgOrderValue: number
     avgDeliveryFee: number
+  }
+  stock?: {
+    items: Array<{
+      id: string
+      productId: string
+      variantId: string | null
+      quantity: number
+      reserved: number
+      product: {
+        id: string
+        name: string
+        sku: string | null
+        prixVente: number
+      }
+      variant: {
+        id: string
+        name: string | null
+        sku: string
+        prixVente: number | null
+      } | null
+    }>
+    summary: {
+      totalItems: number
+      totalValue: number
+      totalProducts: number
+    }
   }
 }
 
@@ -627,6 +665,31 @@ export default function DriversPage() {
                         )}
                       </div>
 
+                      {/* Stock du livreur */}
+                      {driver.stockSummary && driver.stockSummary.totalItems > 0 && (
+                        <div className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-amber-600" />
+                              <span className="text-xs font-semibold text-amber-900">Stock Personnel</span>
+                            </div>
+                            <Badge variant="outline" className="bg-white text-amber-700 border-amber-200 text-xs">
+                              {driver.stockSummary.totalProducts} produits
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div>
+                              <p className="text-xs text-amber-700">Articles</p>
+                              <p className="text-lg font-bold text-amber-900">{driver.stockSummary.totalItems}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-amber-700">Valeur</p>
+                              <p className="text-lg font-bold text-amber-900">{(driver.stockSummary.totalValue / 1000).toFixed(0)}k</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Statistiques du jour */}
                       {driver.todayStats && (
                         <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
@@ -731,6 +794,7 @@ export default function DriversPage() {
                     <TableHead>Contact</TableHead>
                     <TableHead>Véhicule</TableHead>
                     <TableHead>Zones</TableHead>
+                    <TableHead>Stock</TableHead>
                     <TableHead>Aujourd'hui</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -788,6 +852,21 @@ export default function DriversPage() {
                           </div>
                         ) : (
                           <Badge variant="outline" className="text-gray-500">Non assigné</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {driver.stockSummary && driver.stockSummary.totalItems > 0 ? (
+                          <div className="flex items-center gap-3 text-xs">
+                            <div className="flex items-center gap-1">
+                              <Package className="h-3 w-3 text-amber-600" />
+                              <span className="font-semibold text-amber-700">{driver.stockSummary.totalItems}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-green-600">
+                              <span className="font-semibold">{(driver.stockSummary.totalValue / 1000).toFixed(0)}k</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Vide</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -1212,17 +1291,21 @@ export default function DriversPage() {
             </div>
           ) : driverStats ? (
             <Tabs defaultValue="today" className="mt-6">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsList className="grid w-full grid-cols-4 mb-6">
                 <TabsTrigger value="today" className="gap-2">
                   <Calendar className="h-4 w-4" />
                   Aujourd'hui
+                </TabsTrigger>
+                <TabsTrigger value="stock" className="gap-2">
+                  <Package className="h-4 w-4" />
+                  Stock
                 </TabsTrigger>
                 <TabsTrigger value="performance" className="gap-2">
                   <TrendingUp className="h-4 w-4" />
                   Performance
                 </TabsTrigger>
                 <TabsTrigger value="orders" className="gap-2">
-                  <Package className="h-4 w-4" />
+                  <Truck className="h-4 w-4" />
                   Commandes
                 </TabsTrigger>
               </TabsList>
@@ -1272,6 +1355,109 @@ export default function DriversPage() {
                       </div>
                     </div>
                   </div>
+                </ScrollArea>
+              </TabsContent>
+
+              {/* Onglet Stock */}
+              <TabsContent value="stock" className="space-y-6">
+                <ScrollArea className="h-[calc(100vh-280px)]">
+                  {driverStats.stock ? (
+                    <div className="space-y-6 pr-4">
+                      {/* Résumé du stock */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="text-center p-4 bg-amber-50 rounded-xl border border-amber-100">
+                          <Package className="h-6 w-6 text-amber-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-amber-700">{driverStats.stock.summary.totalItems}</p>
+                          <p className="text-xs text-amber-600 mt-1">Articles</p>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-xl border border-green-100">
+                          <DollarSign className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-green-700">{(driverStats.stock.summary.totalValue / 1000).toFixed(0)}k</p>
+                          <p className="text-xs text-green-600 mt-1">Valeur (FCFA)</p>
+                        </div>
+                        <div className="text-center p-4 bg-blue-50 rounded-xl border border-blue-100">
+                          <Activity className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-blue-700">{driverStats.stock.summary.totalProducts}</p>
+                          <p className="text-xs text-blue-600 mt-1">Produits</p>
+                        </div>
+                      </div>
+
+                      {/* Liste des produits en stock */}
+                      {driverStats.stock.items.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                          <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                          <p className="text-sm">Aucun produit en stock</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <h3 className="font-semibold text-gray-900 text-sm">Produits en stock ({driverStats.stock.items.length})</h3>
+                          {driverStats.stock.items.map((item) => {
+                            const price = item.variant?.prixVente || item.product.prixVente
+                            const available = item.quantity - item.reserved
+                            const totalValue = price * item.quantity
+                            
+                            return (
+                              <div key={item.id} className="p-4 bg-gray-50 rounded-xl border hover:border-gray-300 transition-colors">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <p className="font-semibold text-gray-900">{item.product.name}</p>
+                                    {item.variant && (
+                                      <p className="text-xs text-gray-500 mt-0.5">{item.variant.name}</p>
+                                    )}
+                                    {(item.variant?.sku || item.product.sku) && (
+                                      <p className="text-xs text-gray-400 mt-0.5">SKU: {item.variant?.sku || item.product.sku}</p>
+                                    )}
+                                  </div>
+                                  <div className="text-right ml-4">
+                                    <p className="text-sm font-bold text-gray-900">{totalValue.toLocaleString()} F</p>
+                                    <p className="text-xs text-gray-500">{price.toLocaleString()} F/u</p>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-gray-600">Total:</span>
+                                      <span className="font-semibold text-gray-900">{item.quantity}</span>
+                                    </div>
+                                    {item.reserved > 0 && (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-amber-600">Réservé:</span>
+                                        <span className="font-semibold text-amber-700">{item.reserved}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-green-600">Disponible:</span>
+                                      <span className="font-semibold text-green-700">{available}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Bouton pour voir plus de détails */}
+                      <div className="pt-4 border-t">
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => {
+                            window.location.href = `/dashboard/stores/${storeId}/drivers/${selectedDriver?.id}`
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Voir le détail complet
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-400">
+                      <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                      <p className="text-sm">Aucune information de stock</p>
+                    </div>
+                  )}
                 </ScrollArea>
               </TabsContent>
 

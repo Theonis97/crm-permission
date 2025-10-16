@@ -182,6 +182,14 @@ async function main() {
       },
       { name: "stores.view_sales", description: "Voir les ventes du magasin", module: "stores", action: "view_sales" },
       { name: "stores.export", description: "Exporter les données du magasin", module: "stores", action: "export" },
+
+      // Store Orders management (Commandes clients)
+      { name: "orders.view", description: "Voir les commandes clients", module: "orders", action: "view" },
+      { name: "orders.create", description: "Créer des commandes clients", module: "orders", action: "create" },
+      { name: "orders.edit", description: "Modifier les commandes clients", module: "orders", action: "edit" },
+      { name: "orders.delete", description: "Supprimer les commandes clients", module: "orders", action: "delete" },
+      { name: "orders.validate", description: "Valider les commandes clients", module: "orders", action: "validate" },
+      { name: "orders.cancel", description: "Annuler les commandes clients", module: "orders", action: "cancel" },
     ]
 
     const permissions = await Promise.all(
@@ -231,7 +239,7 @@ async function main() {
     // Manager : modules commerciaux sans delete
     const managerPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "warehouse", "stores"].includes(p.module) &&
+        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "warehouse", "stores", "orders"].includes(p.module) &&
         p.action !== "delete",
     )
     await Promise.all(
@@ -249,7 +257,7 @@ async function main() {
     // Commercial : permissions de base
     const commercialPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "tasks", "opportunities", "stores"].includes(p.module) &&
+        ["contacts", "products", "quotes", "tasks", "opportunities", "stores", "orders"].includes(p.module) &&
         (["view", "create", "edit"].includes(p.action) || p.name === "stores.view_sales"),
     )
     await Promise.all(

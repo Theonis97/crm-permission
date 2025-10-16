@@ -8,7 +8,32 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   ArrowLeft,
   Mail,
@@ -30,6 +55,12 @@ import {
   TrendingUp,
   Clock,
   CheckSquare,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
+  Loader2,
+  PackageX,
+  History,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -40,21 +71,96 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
+import { toast } from "sonner"
 
 interface Driver {
   id: string
   name: string
-  email: string
+  email: string | null
   phone: string
-  status: string
-  avatar?: string
-  vehicle: string
-  plateNumber: string
-  zone: string
-  activeDeliveries: number
+  status: "AVAILABLE" | "BUSY" | "OFFLINE"
+  avatar: string | null
+  vehicle: string | null
+  plateNumber: string | null
+  rating: number | null
   totalDeliveries: number
-  rating: number
+  activeDeliveries: number
   stockValue: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  store: {
+    id: string
+    name: string
+  }
+  deliveryZones: Array<{
+    id: string
+    name: string
+    color: string
+  }>
+}
+
+interface StockItem {
+  id: string
+  productId: string
+  variantId: string | null
+  quantity: number
+  reserved: number
+  product: {
+    id: string
+    name: string
+    sku: string | null
+    prixVente: number
+    photos: string[]
+  }
+  variant: {
+    id: string
+    name: string | null
+    sku: string
+    prixVente: number | null
+    attributes: any
+    images: string[]
+  } | null
+}
+
+interface StockMovement {
+  id: string
+  type: "SUPPLY" | "SALE" | "RETURN" | "ADJUSTMENT"
+  quantity: number
+  notes: string | null
+  createdAt: string
+  product: {
+    id: string
+    name: string
+    sku: string | null
+    photos: string[]
+  }
+  variant: {
+    id: string
+    name: string | null
+    sku: string
+    attributes: any
+  } | null
+  storeOrder: {
+    id: string
+    number: string
+    customerName: string
+    status: string
+  } | null
+  createdBy: {
+    id: string
+    name: string | null
+    email: string
+  } | null
+}
+
+interface StoreProduct {
+  id: string
+  productId: string
+  name: string
+  sku: string | null
+  stock: number
+  prixVente: number
 }
 
 export default function StoreDriverDetailPage() {
@@ -67,27 +173,196 @@ export default function StoreDriverDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("orders")
   const [dateFilter, setDateFilter] = useState("today")
+  const [stats, setStats] = useState({ orders: 0, revenue: 0, avgOrder: 0, completionRate: 0 })
+  
+  // Stock management states
+  const [stock, setStock] = useState<StockItem[]>([])
+  const [stockSummary, setStockSummary] = useState({ totalItems: 0, totalValue: 0, totalProducts: 0 })
+  const [movements, setMovements] = useState<StockMovement[]>([])
+  const [loadingStock, setLoadingStock] = useState(false)
+  const [loadingMovements, setLoadingMovements] = useState(false)
+  
+  // Dialogues
+  const [showAddStockDialog, setShowAddStockDialog] = useState(false)
+  const [showMovementDialog, setShowMovementDialog] = useState(false)
+  
+  // Add stock form
+  const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([])
+  const [selectedProduct, setSelectedProduct] = useState("")
+  const [addQuantity, setAddQuantity] = useState("")
+  const [addNotes, setAddNotes] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Movement form
+  const [movementType, setMovementType] = useState<"RETURN" | "ADJUSTMENT">("RETURN")
+  const [movementProduct, setMovementProduct] = useState("")
+  const [movementQuantity, setMovementQuantity] = useState("")
+  const [movementNotes, setMovementNotes] = useState("")
 
+  // Fetch driver data
   useEffect(() => {
-    setTimeout(() => {
-      setDriver({
-        id: driverId,
-        name: "Jacques Mballa",
-        email: "jacques.mballa@email.com",
-        phone: "+241 0X XX XX 111",
-        status: "available",
-        avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jacques",
-        vehicle: "Moto Yamaha",
-        plateNumber: "LBV-1234-AB",
-        zone: "Libreville Centre",
-        activeDeliveries: 3,
-        totalDeliveries: 156,
-        rating: 4.8,
-        stockValue: 450000,
-      })
-      setLoading(false)
-    }, 500)
+    fetchDriverData()
   }, [driverId])
+  
+  // Fetch stock when tab changes
+  useEffect(() => {
+    if (activeTab === "stock") {
+      fetchStock()
+    } else if (activeTab === "history") {
+      fetchMovements()
+    }
+  }, [activeTab, driverId])
+  
+  const fetchDriverData = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/delivery-persons/${driverId}`)
+      
+      if (!response.ok) {
+        throw new Error("Livreur non trouvé")
+      }
+      
+      const data = await response.json()
+      setDriver(data)
+    } catch (error) {
+      console.error("Error fetching driver:", error)
+      toast.error("Erreur lors du chargement des données")
+      setDriver(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const fetchStock = async () => {
+    try {
+      setLoadingStock(true)
+      const response = await fetch(`/api/delivery-persons/${driverId}/stock`)
+      if (response.ok) {
+        const data = await response.json()
+        setStock(data.stock)
+        setStockSummary(data.summary)
+      } else {
+        toast.error("Erreur lors du chargement du stock")
+      }
+    } catch (error) {
+      console.error("Error fetching stock:", error)
+      toast.error("Erreur lors du chargement du stock")
+    } finally {
+      setLoadingStock(false)
+    }
+  }
+  
+  const fetchMovements = async () => {
+    try {
+      setLoadingMovements(true)
+      const response = await fetch(`/api/delivery-persons/${driverId}/stock/movements?limit=50`)
+      if (response.ok) {
+        const data = await response.json()
+        setMovements(data.movements)
+      } else {
+        toast.error("Erreur lors du chargement des mouvements")
+      }
+    } catch (error) {
+      console.error("Error fetching movements:", error)
+      toast.error("Erreur lors du chargement des mouvements")
+    } finally {
+      setLoadingMovements(false)
+    }
+  }
+  
+  const fetchStoreProducts = async () => {
+    try {
+      const response = await fetch(`/api/stores/${storeId}/products`)
+      if (response.ok) {
+        const data = await response.json()
+        setStoreProducts(data.products || [])
+      }
+    } catch (error) {
+      console.error("Error fetching products:", error)
+    }
+  }
+  
+  const handleAddStock = async () => {
+    if (!selectedProduct || !addQuantity || parseInt(addQuantity) <= 0) {
+      toast.error("Veuillez sélectionner un produit et une quantité valide")
+      return
+    }
+    
+    try {
+      setIsSubmitting(true)
+      const response = await fetch(`/api/delivery-persons/${driverId}/stock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: selectedProduct,
+          quantity: parseInt(addQuantity),
+          notes: addNotes,
+        }),
+      })
+      
+      if (response.ok) {
+        toast.success("Stock ajouté avec succès")
+        setShowAddStockDialog(false)
+        setSelectedProduct("")
+        setAddQuantity("")
+        setAddNotes("")
+        fetchStock()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Erreur lors de l'ajout du stock")
+      }
+    } catch (error) {
+      console.error("Error adding stock:", error)
+      toast.error("Erreur lors de l'ajout du stock")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+  
+  const handleMovement = async () => {
+    if (!movementProduct || !movementQuantity) {
+      toast.error("Veuillez remplir tous les champs")
+      return
+    }
+    
+    try {
+      setIsSubmitting(true)
+      const response = await fetch(`/api/delivery-persons/${driverId}/stock/movements`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: movementProduct,
+          type: movementType,
+          quantity: parseInt(movementQuantity),
+          notes: movementNotes,
+        }),
+      })
+      
+      if (response.ok) {
+        toast.success("Mouvement enregistré avec succès")
+        setShowMovementDialog(false)
+        setMovementProduct("")
+        setMovementQuantity("")
+        setMovementNotes("")
+        fetchStock()
+        fetchMovements()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Erreur lors de l'enregistrement du mouvement")
+      }
+    } catch (error) {
+      console.error("Error creating movement:", error)
+      toast.error("Erreur lors de l'enregistrement du mouvement")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+  
+  useEffect(() => {
+    if (showAddStockDialog) {
+      fetchStoreProducts()
+    }
+  }, [showAddStockDialog])
 
   const getDriverInitials = (name: string) => {
     return name.substring(0, 2).toUpperCase()
@@ -95,16 +370,43 @@ export default function StoreDriverDetailPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "available":
+      case "AVAILABLE":
         return <Badge className="bg-green-100 text-green-700">Disponible</Badge>
-      case "busy":
-        return <Badge className="bg-amber-100 text-amber-700">En livraison</Badge>
-      case "offline":
+      case "BUSY":
+        return <Badge className="bg-amber-100 text-amber-700">Occupé</Badge>
+      case "OFFLINE":
         return <Badge className="bg-gray-100 text-gray-700">Hors ligne</Badge>
       default:
         return <Badge>{status}</Badge>
     }
   }
+
+  // Charger les statistiques selon le filtre de date
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch(`/api/delivery-persons/${driverId}/stats`)
+        if (response.ok) {
+          const data = await response.json()
+          // Pour l'instant on utilise les stats "today", on pourrait ajouter des filtres plus tard
+          setStats({
+            orders: data.today.total,
+            revenue: data.today.revenue,
+            avgOrder: data.allTime.avgOrderValue,
+            completionRate: data.today.total > 0 
+              ? Math.round((data.today.delivered / data.today.total) * 100) 
+              : 0
+          })
+        }
+      } catch (error) {
+        console.error("Error fetching stats:", error)
+      }
+    }
+    
+    if (driver) {
+      fetchStats()
+    }
+  }, [driver, driverId, dateFilter])
 
   if (loading) {
     return (
@@ -124,22 +426,6 @@ export default function StoreDriverDetailPage() {
       </div>
     )
   }
-
-  const getDateFilterStats = () => {
-    // Mock data basé sur le filtre de date
-    switch (dateFilter) {
-      case "today":
-        return { orders: 8, revenue: 120000, avgOrder: 15000, completionRate: 100 }
-      case "month":
-        return { orders: 156, revenue: 2340000, avgOrder: 15000, completionRate: 98 }
-      case "lastMonth":
-        return { orders: 142, revenue: 2130000, avgOrder: 15000, completionRate: 97 }
-      default:
-        return { orders: 8, revenue: 120000, avgOrder: 15000, completionRate: 100 }
-    }
-  }
-
-  const stats = getDateFilterStats()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -192,16 +478,16 @@ export default function StoreDriverDetailPage() {
               <CardContent className="p-6">
                 <div className="text-center mb-6">
                   <Avatar className="h-24 w-24 mx-auto mb-4">
-                    <AvatarImage src={driver.avatar} />
+                    <AvatarImage src={driver.avatar || undefined} />
                     <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white">
                       {getDriverInitials(driver.name)}
                     </AvatarFallback>
                   </Avatar>
                   <h1 className="text-2xl font-bold text-gray-900 mb-2">{driver.name}</h1>
-                  <p className="text-gray-600 mb-2">{driver.vehicle}</p>
+                  {driver.vehicle && <p className="text-gray-600 mb-2">{driver.vehicle}</p>}
                   <div className="flex justify-center gap-2 mb-4">
                     {getStatusBadge(driver.status)}
-                    <Badge variant="outline">{driver.plateNumber}</Badge>
+                    {driver.plateNumber && <Badge variant="outline">{driver.plateNumber}</Badge>}
                   </div>
                 </div>
 
@@ -275,14 +561,16 @@ export default function StoreDriverDetailPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-3 border-b pb-2">Informations</h3>
                     <div className="space-y-3">
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Email</label>
-                        <div className="text-sm text-gray-900">
-                          <a href={`mailto:${driver.email}`} className="text-blue-600 hover:underline">
-                            {driver.email}
-                          </a>
+                      {driver.email && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-500">Email</label>
+                          <div className="text-sm text-gray-900">
+                            <a href={`mailto:${driver.email}`} className="text-blue-600 hover:underline">
+                              {driver.email}
+                            </a>
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <div>
                         <label className="text-sm font-medium text-gray-500">Téléphone</label>
                         <div className="text-sm text-gray-900">
@@ -292,15 +580,31 @@ export default function StoreDriverDetailPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Zone de livraison</label>
-                        <div className="text-sm text-gray-900">{driver.zone}</div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Véhicule</label>
-                        <div className="text-sm text-gray-900">
-                          {driver.vehicle} - {driver.plateNumber}
+                        <label className="text-sm font-medium text-gray-500">Zones de livraison</label>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {driver.deliveryZones.length > 0 ? (
+                            driver.deliveryZones.map(zone => (
+                              <span
+                                key={zone.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+                                style={{ backgroundColor: `${zone.color}20`, color: zone.color }}
+                              >
+                                {zone.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-400">Aucune zone assignée</span>
+                          )}
                         </div>
                       </div>
+                      {driver.vehicle && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-500">Véhicule</label>
+                          <div className="text-sm text-gray-900">
+                            {driver.vehicle} {driver.plateNumber && `- ${driver.plateNumber}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -504,35 +808,130 @@ export default function StoreDriverDetailPage() {
               </TabsContent>
 
               <TabsContent value="stock" className="space-y-6">
+                {/* Stock Summary Cards */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Total Articles</CardTitle>
+                      <Package className="h-4 w-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{stockSummary.totalItems}</div>
+                      <p className="text-xs text-gray-500">en stock</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Valeur Totale</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-green-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">
+                        {(stockSummary.totalValue / 1000).toFixed(0)}k
+                      </div>
+                      <p className="text-xs text-gray-500">FCFA</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Produits Différents</CardTitle>
+                      <ShoppingBag className="h-4 w-4 text-purple-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{stockSummary.totalProducts}</div>
+                      <p className="text-xs text-gray-500">références</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Stock Actions */}
+                <div className="flex gap-2">
+                  <Button onClick={() => setShowAddStockDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Approvisionner
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowMovementDialog(true)}>
+                    <ArrowUpRight className="h-4 w-4 mr-2" />
+                    Retour / Ajustement
+                  </Button>
+                </div>
+
+                {/* Stock List */}
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>Stock actuel du livreur</CardTitle>
-                      <Button size="sm">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Ajouter produits
-                      </Button>
-                    </div>
+                    <CardTitle>Stock actuel du livreur</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {[
-                        { name: "Coca-Cola 1.5L", quantity: 12, price: 1000 },
-                        { name: "Pain de mie", quantity: 8, price: 750 },
-                        { name: "Lait condensé", quantity: 15, price: 1500 },
-                      ].map((product, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">{product.name}</h4>
-                            <p className="text-sm text-gray-600">Quantité: {product.quantity}</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold">{product.price.toLocaleString()} FCFA</div>
-                            <div className="text-sm text-gray-600">par unité</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    {loadingStock ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                      </div>
+                    ) : stock.length === 0 ? (
+                      <div className="text-center py-8">
+                        <PackageX className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">Aucun stock disponible</p>
+                        <Button
+                          variant="outline"
+                          className="mt-4"
+                          onClick={() => setShowAddStockDialog(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Ajouter du stock
+                        </Button>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Produit</TableHead>
+                            <TableHead>SKU</TableHead>
+                            <TableHead className="text-right">Quantité</TableHead>
+                            <TableHead className="text-right">Réservé</TableHead>
+                            <TableHead className="text-right">Disponible</TableHead>
+                            <TableHead className="text-right">Prix unitaire</TableHead>
+                            <TableHead className="text-right">Valeur totale</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {stock.map((item) => {
+                            const price = item.variant?.prixVente || item.product.prixVente
+                            const available = item.quantity - item.reserved
+                            const totalValue = price * item.quantity
+                            
+                            return (
+                              <TableRow key={item.id}>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium">{item.product.name}</div>
+                                    {item.variant && (
+                                      <div className="text-sm text-gray-500">{item.variant.name}</div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm text-gray-600">
+                                  {item.variant?.sku || item.product.sku || "-"}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">{item.quantity}</TableCell>
+                                <TableCell className="text-right text-amber-600">{item.reserved}</TableCell>
+                                <TableCell className="text-right">
+                                  <Badge variant={available > 0 ? "default" : "secondary"}>
+                                    {available}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {price.toLocaleString()} FCFA
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {totalValue.toLocaleString()} FCFA
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -540,30 +939,90 @@ export default function StoreDriverDetailPage() {
               <TabsContent value="history" className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Historique des prises de produits</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Historique des mouvements de stock</CardTitle>
+                      <Button variant="outline" size="sm" onClick={fetchMovements}>
+                        <History className="h-4 w-4 mr-2" />
+                        Actualiser
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex items-start gap-4 p-4 border rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-medium">
-                                Prise du {format(new Date(2024, 11, 28 - i), "d MMM yyyy", { locale: fr })}
-                              </h4>
-                              <span className="font-semibold">150,000 FCFA</span>
+                    {loadingMovements ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                      </div>
+                    ) : movements.length === 0 ? (
+                      <div className="text-center py-8">
+                        <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">Aucun mouvement enregistré</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {movements.map((movement) => {
+                          const isPositive = movement.type === "SUPPLY" || movement.type === "RETURN"
+                          const typeColors = {
+                            SUPPLY: "bg-green-100 text-green-700",
+                            SALE: "bg-blue-100 text-blue-700",
+                            RETURN: "bg-amber-100 text-amber-700",
+                            ADJUSTMENT: "bg-purple-100 text-purple-700",
+                          }
+                          const typeLabels = {
+                            SUPPLY: "Approvisionnement",
+                            SALE: "Vente",
+                            RETURN: "Retour",
+                            ADJUSTMENT: "Ajustement",
+                          }
+                          const typeIcons = {
+                            SUPPLY: <ArrowDownRight className="h-4 w-4" />,
+                            SALE: <ArrowUpRight className="h-4 w-4" />,
+                            RETURN: <ArrowDownRight className="h-4 w-4" />,
+                            ADJUSTMENT: <Activity className="h-4 w-4" />,
+                          }
+                          
+                          return (
+                            <div key={movement.id} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-gray-50">
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={typeColors[movement.type]}>
+                                      {typeIcons[movement.type]}
+                                      <span className="ml-1">{typeLabels[movement.type]}</span>
+                                    </Badge>
+                                    <span className="text-sm text-gray-500">
+                                      {format(new Date(movement.createdAt), "d MMM yyyy 'à' HH:mm", { locale: fr })}
+                                    </span>
+                                  </div>
+                                  <span className={`font-semibold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                                    {isPositive ? "+" : "-"}{Math.abs(movement.quantity)} unités
+                                  </span>
+                                </div>
+                                
+                                <div className="space-y-1">
+                                  <div className="font-medium">{movement.product.name}</div>
+                                  {movement.variant && (
+                                    <div className="text-sm text-gray-500">{movement.variant.name}</div>
+                                  )}
+                                  {movement.notes && (
+                                    <div className="text-sm text-gray-600 italic">{movement.notes}</div>
+                                  )}
+                                  {movement.storeOrder && (
+                                    <div className="text-sm text-blue-600">
+                                      Commande #{movement.storeOrder.number} - {movement.storeOrder.customerName}
+                                    </div>
+                                  )}
+                                  {movement.createdBy && (
+                                    <div className="text-xs text-gray-500">
+                                      Par {movement.createdBy.name || movement.createdBy.email}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-600">
-                              25 produits récupérés - Retour en fin de journée: 12,000 FCFA
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                              <Calendar className="h-3 w-3" />
-                              <span>08:30 - 18:45</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -571,6 +1030,159 @@ export default function StoreDriverDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Dialog: Ajouter du stock */}
+      <Dialog open={showAddStockDialog} onOpenChange={setShowAddStockDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Approvisionner le livreur</DialogTitle>
+            <DialogDescription>
+              Transférer des produits du stock du magasin vers le livreur
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="product">Produit</Label>
+              <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                <SelectTrigger id="product">
+                  <SelectValue placeholder="Sélectionner un produit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {storeProducts.map((product) => (
+                    <SelectItem key={product.productId} value={product.productId}>
+                      {product.name} - Stock: {product.stock}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantité</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={addQuantity}
+                onChange={(e) => setAddQuantity(e.target.value)}
+                placeholder="Ex: 10"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes (optionnel)</Label>
+              <Textarea
+                id="notes"
+                value={addNotes}
+                onChange={(e) => setAddNotes(e.target.value)}
+                placeholder="Ajouter une note..."
+                rows={3}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAddStockDialog(false)}
+              disabled={isSubmitting}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleAddStock} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Ajouter au stock
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Retour ou Ajustement */}
+      <Dialog open={showMovementDialog} onOpenChange={setShowMovementDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mouvement de stock</DialogTitle>
+            <DialogDescription>
+              Enregistrer un retour ou un ajustement de stock
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="movementType">Type de mouvement</Label>
+              <Select value={movementType} onValueChange={(value: any) => setMovementType(value)}>
+                <SelectTrigger id="movementType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RETURN">Retour au magasin</SelectItem>
+                  <SelectItem value="ADJUSTMENT">Ajustement de stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="movementProduct">Produit</Label>
+              <Select value={movementProduct} onValueChange={setMovementProduct}>
+                <SelectTrigger id="movementProduct">
+                  <SelectValue placeholder="Sélectionner un produit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stock.map((item) => (
+                    <SelectItem key={item.id} value={item.productId}>
+                      {item.product.name} - Stock: {item.quantity}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="movementQuantity">
+                Quantité {movementType === "ADJUSTMENT" && "(+ ou -)"}
+              </Label>
+              <Input
+                id="movementQuantity"
+                type="number"
+                value={movementQuantity}
+                onChange={(e) => setMovementQuantity(e.target.value)}
+                placeholder={movementType === "ADJUSTMENT" ? "Ex: +5 ou -3" : "Ex: 10"}
+              />
+              <p className="text-xs text-gray-500">
+                {movementType === "RETURN" 
+                  ? "Quantité à retourner au magasin" 
+                  : "Quantité positive pour ajouter, négative pour retirer"}
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="movementNotes">Notes (optionnel)</Label>
+              <Textarea
+                id="movementNotes"
+                value={movementNotes}
+                onChange={(e) => setMovementNotes(e.target.value)}
+                placeholder="Raison du mouvement..."
+                rows={3}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowMovementDialog(false)}
+              disabled={isSubmitting}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleMovement} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Ajouter les statistiques du jour pour chaque livreur
+    // Ajouter les statistiques du jour et le stock pour chaque livreur
     const deliveryPersonsWithStats = await Promise.all(
       deliveryPersons.map(async (person) => {
         // Commandes du jour
@@ -80,6 +80,32 @@ export async function GET(request: NextRequest) {
           .filter(o => o.status === "DELIVERED")
           .reduce((sum, order) => sum + order.total, 0)
 
+        // Stock du livreur
+        const stock = await prisma.deliveryPersonStock.findMany({
+          where: {
+            deliveryPersonId: person.id,
+          },
+          include: {
+            product: {
+              select: {
+                prixVente: true,
+              },
+            },
+            variant: {
+              select: {
+                prixVente: true,
+              },
+            },
+          },
+        })
+
+        // Calculer le résumé du stock
+        const totalItems = stock.reduce((sum, item) => sum + item.quantity, 0)
+        const totalValue = stock.reduce((sum, item) => {
+          const price = item.variant?.prixVente || item.product.prixVente
+          return sum + price * item.quantity
+        }, 0)
+
         return {
           ...person,
           todayStats: {
@@ -87,6 +113,11 @@ export async function GET(request: NextRequest) {
             delivering: deliveringToday,
             pending: pendingToday,
             revenue: todayRevenue,
+          },
+          stockSummary: {
+            totalItems,
+            totalValue,
+            totalProducts: stock.length,
           },
         }
       })

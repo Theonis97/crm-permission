@@ -3,8 +3,18 @@ import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log("🔧 Ajout des permissions orders...")
+  console.log("🔧 Correction des permissions orders...")
 
+  // 1. Vérifier les rôles existants
+  const allRoles = await prisma.role.findMany()
+  console.log(`\n📋 Rôles existants: ${allRoles.map(r => r.name).join(", ")}`)
+
+  if (allRoles.length === 0) {
+    console.log("\n⚠️  Aucun rôle trouvé. Exécutez d'abord: npx prisma db seed")
+    return
+  }
+
+  // 2. Créer les permissions orders
   const ordersPermissions = [
     {
       name: "orders.view",
@@ -44,49 +54,42 @@ async function main() {
     },
   ]
 
-  // Créer les permissions
+  console.log("\n🔐 Création des permissions...")
   for (const permission of ordersPermissions) {
     const existing = await prisma.permission.findUnique({
       where: { name: permission.name },
     })
 
     if (existing) {
-      console.log(`✅ Permission "${permission.name}" existe déjà`)
+      console.log(`  ✓ Permission "${permission.name}" existe déjà`)
     } else {
       await prisma.permission.create({
         data: permission,
       })
-      console.log(`✨ Permission "${permission.name}" créée`)
+      console.log(`  ✨ Permission "${permission.name}" créée`)
     }
   }
 
-  // Récupérer tous les rôles
-  const roles = await prisma.role.findMany({
-    where: {
-      name: {
-        in: ["Super Admin", "Admin", "Manager", "Commercial"],
-      },
-    },
-  })
+  // 3. Attribuer aux rôles existants
+  console.log("\n🔗 Attribution aux rôles...")
 
-  console.log(`\n📋 ${roles.length} rôles trouvés: ${roles.map(r => r.name).join(", ")}`)
+  for (const role of allRoles) {
+    console.log(`\n  Rôle: ${role.name}`)
+    
+    // Super Admin et Admin : toutes les permissions
+    let permissionsToAssign: string[] = []
+    if (role.name === "Super Admin") {
+      permissionsToAssign = ordersPermissions.map(p => p.name)
+    } else if (role.name === "Admin" || role.name === "Manager") {
+      permissionsToAssign = ["orders.view", "orders.create", "orders.edit", "orders.validate", "orders.cancel"]
+    } else if (role.name === "Commercial") {
+      permissionsToAssign = ["orders.view", "orders.create", "orders.edit"]
+    } else {
+      // Autres rôles : uniquement view
+      permissionsToAssign = ["orders.view"]
+    }
 
-  // Définir les permissions par rôle
-  const rolePermissionsMap: Record<string, string[]> = {
-    "Super Admin": ["orders.view", "orders.create", "orders.edit", "orders.delete", "orders.validate", "orders.cancel"],
-    "Admin": ["orders.view", "orders.create", "orders.edit", "orders.validate", "orders.cancel"],
-    "Manager": ["orders.view", "orders.create", "orders.edit", "orders.validate", "orders.cancel"],
-    "Commercial": ["orders.view", "orders.create", "orders.edit"],
-  }
-
-  // Assigner les permissions
-  for (const role of roles) {
-    const permissionNames = rolePermissionsMap[role.name]
-    if (!permissionNames) continue
-
-    console.log(`\n🔐 Attribution des permissions au rôle "${role.name}"...`)
-
-    for (const permName of permissionNames) {
+    for (const permName of permissionsToAssign) {
       const perm = await prisma.permission.findUnique({
         where: { name: permName },
       })
@@ -108,20 +111,20 @@ async function main() {
               permissionId: perm.id,
             },
           })
-          console.log(`  ✅ Permission "${permName}" attribuée à ${role.name}`)
+          console.log(`    ✅ ${permName}`)
         } else {
-          console.log(`  ✓ Permission "${permName}" déjà attribuée`)
+          console.log(`    ✓ ${permName} (déjà attribué)`)
         }
       }
     }
   }
 
-  console.log("\n✅ Toutes les permissions orders ont été ajoutées et attribuées !")
+  console.log("\n✅ Permissions orders configurées avec succès !")
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Erreur:", e)
+    console.error("\n❌ Erreur:", e)
     process.exit(1)
   })
   .finally(async () => {

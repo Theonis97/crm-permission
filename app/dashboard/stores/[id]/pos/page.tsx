@@ -123,7 +123,8 @@ export default function PosPage() {
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
-  const [checkoutStep, setCheckoutStep] = useState(1)
+  const [checkoutStep, setCheckoutStep] = useState(0)
+  const [orderType, setOrderType] = useState<"CLIENT" | "DRIVER" | null>(null)
   
   // Données
   const [products, setProducts] = useState<Product[]>([])
@@ -257,7 +258,7 @@ export default function PosPage() {
 
   const loadContacts = async () => {
     try {
-      const response = await fetch("/api/contacts")
+      const response = await fetch(`/api/stores/${storeId}/contacts`)
       if (!response.ok) throw new Error("Erreur chargement contacts")
       const data = await response.json()
       setContacts(data)
@@ -405,84 +406,34 @@ export default function PosPage() {
   }
 
   const handleCreateOrder = async () => {
-    if (!customerPhone) {
-      toast.error("Téléphone du client requis")
-      return
-    }
-
     if (cart.length === 0) {
       toast.error("Le panier est vide")
       return
     }
 
+    // Validation selon le type de commande
+    if (orderType === "CLIENT") {
+      if (!customerPhone) {
+        toast.error("Téléphone du client requis")
+        return
+      }
+    } else if (orderType === "DRIVER") {
+      if (!selectedDeliveryPerson) {
+        toast.error("Veuillez sélectionner un livreur")
+        return
+      }
+    }
+
     try {
       setIsSubmitting(true)
 
-      // Créer ou récupérer le contact
-      let contactId = selectedContactId
-      if (!contactId && (customerFirstName || customerLastName)) {
-        const contactResponse = await fetch("/api/contacts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            firstName: customerFirstName,
-            lastName: customerLastName,
-            phone: customerPhone,
-            email: customerEmail || null,
-            type: "PERSONNE",
-            status: "CLIENT",
-          }),
-        })
-        
-        if (contactResponse.ok) {
-          const newContact = await contactResponse.json()
-          contactId = newContact.id
-        }
+      if (orderType === "DRIVER") {
+        // Transférer le stock au livreur
+        await handleTransferToDriver()
+      } else {
+        // Créer une commande client classique
+        await handleCreateClientOrder()
       }
-
-      const orderData = {
-        storeId,
-        contactId: contactId || null,
-        customerName: `${customerFirstName} ${customerLastName}`.trim() || "Client",
-        customerPhone,
-        customerEmail: customerEmail || null,
-        deliveryAddress: deliveryAddress || null,
-        deliveryLatitude,
-        deliveryLongitude,
-        deliveryZoneId: detectedZone?.id || null,
-        priority: "NORMAL",
-        deliveryPersonId: selectedDeliveryPerson || null,
-        deliveryFee,
-        paymentMethod: paymentMethod.toUpperCase(),
-        notes,
-        items: cart.map(item => ({
-          productId: item.product.id,
-          quantity: item.quantity,
-          unitPrice: item.product.prixVente,
-        })),
-      }
-
-      const response = await fetch("/api/store-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderData),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur création commande")
-      }
-
-      const order = await response.json()
-      toast.success(`Commande ${order.number} créée avec succès !`)
-      
-      // Réinitialiser
-      resetCheckoutForm()
-      clearCart()
-      setIsCheckoutOpen(false)
-      
-      // Recharger les produits pour mettre à jour les stocks
-      loadProducts()
     } catch (error: any) {
       console.error("Error creating order:", error)
       toast.error(error.message || "Erreur lors de la création de la commande")
@@ -491,8 +442,113 @@ export default function PosPage() {
     }
   }
 
+  const handleCreateClientOrder = async () => {
+    // Créer ou récupérer le contact
+    let contactId = selectedContactId
+    if (!contactId && (customerFirstName || customerLastName || customerPhone)) {
+      // Créer le contact et l'associer automatiquement à la boutique
+      const contactResponse = await fetch(`/api/stores/${storeId}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: customerFirstName,
+          lastName: customerLastName,
+          phone: customerPhone,
+          email: customerEmail || null,
+          type: "PERSONNE",
+          status: "CLIENT",
+        }),
+      })
+      
+      if (contactResponse.ok) {
+        const newContact = await contactResponse.json()
+        contactId = newContact.id
+        
+        // Recharger la liste des contacts pour inclure le nouveau
+        loadContacts()
+      }
+    }
+
+    const orderData = {
+      storeId,
+      contactId: contactId || null,
+      customerName: `${customerFirstName} ${customerLastName}`.trim() || "Client",
+      customerPhone,
+      customerEmail: customerEmail || null,
+      deliveryAddress: deliveryAddress || null,
+      deliveryLatitude,
+      deliveryLongitude,
+      deliveryZoneId: detectedZone?.id || null,
+      priority: "NORMAL",
+      deliveryPersonId: selectedDeliveryPerson || null,
+      deliveryFee,
+      paymentMethod: paymentMethod.toUpperCase(),
+      notes,
+      items: cart.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: item.product.prixVente,
+      })),
+    }
+
+    const response = await fetch("/api/store-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orderData),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Erreur création commande")
+    }
+
+    const order = await response.json()
+    toast.success(`Commande ${order.number} créée avec succès !`)
+    
+    // Réinitialiser
+    resetCheckoutForm()
+    clearCart()
+    setIsCheckoutOpen(false)
+    
+    // Recharger les produits pour mettre à jour les stocks
+    loadProducts()
+  }
+
+  const handleTransferToDriver = async () => {
+    const transferData = {
+      deliveryPersonId: selectedDeliveryPerson,
+      items: cart.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      })),
+      notes: notes || "Transfert de stock depuis POS",
+    }
+
+    const response = await fetch(`/api/delivery-persons/${selectedDeliveryPerson}/stock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(transferData),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Erreur lors du transfert de stock")
+    }
+
+    toast.success("Stock transféré au livreur avec succès !")
+    
+    // Réinitialiser
+    resetCheckoutForm()
+    clearCart()
+    setIsCheckoutOpen(false)
+    
+    // Recharger les produits pour mettre à jour les stocks
+    loadProducts()
+  }
+
   const resetCheckoutForm = () => {
-    setCheckoutStep(1)
+    setCheckoutStep(0)
+    setOrderType(null)
     setSelectedContactId(null)
     setContactSearch("")
     setCustomerFirstName("")
@@ -512,11 +568,22 @@ export default function PosPage() {
   }
 
   const canProceedToStep2 = () => {
-    return customerPhone.trim().length > 0
+    if (orderType === "CLIENT") {
+      return customerPhone.trim().length > 0
+    }
+    // Pour DRIVER, pas d'étape 2
+    return false
   }
 
   const canProceedToStep3 = () => {
-    return deliveryAddress.trim().length > 0 && deliveryLatitude !== null && deliveryLongitude !== null
+    if (orderType === "CLIENT") {
+      return deliveryAddress.trim().length > 0 && deliveryLatitude !== null && deliveryLongitude !== null
+    }
+    return false
+  }
+
+  const canSubmitDriverOrder = () => {
+    return selectedDeliveryPerson !== ""
   }
 
   // Calculs du panier
@@ -868,38 +935,112 @@ export default function PosPage() {
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
             <DialogTitle className="text-xl">Finaliser la commande</DialogTitle>
             <DialogDescription>
-              {checkoutStep === 1 && "Sélectionnez ou créez un client"}
+              {checkoutStep === 0 && "Sélectionnez le type de transaction"}
+              {checkoutStep === 1 && (orderType === "CLIENT" ? "Sélectionnez ou créez un client" : "Sélectionnez le livreur")}
               {checkoutStep === 2 && "Configurez la livraison"}
               {checkoutStep === 3 && "Confirmez le paiement"}
             </DialogDescription>
             
-            {/* Indicateur d'étapes */}
-            <div className="flex items-center gap-2 mt-4">
-              {[1, 2, 3].map((step) => (
-                <div key={step} className="flex items-center flex-1">
-                  <div className={cn(
-                    "flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold transition-colors",
-                    checkoutStep === step ? "bg-blue-600 text-white" :
-                    checkoutStep > step ? "bg-green-500 text-white" :
-                    "bg-gray-200 text-gray-500"
-                  )}>
-                    {checkoutStep > step ? "✓" : step}
-                  </div>
-                  {step < 3 && (
+            {/* Indicateur d'étapes - seulement si type sélectionné */}
+            {orderType === "CLIENT" && checkoutStep > 0 && (
+              <div className="flex items-center gap-2 mt-4">
+                {[1, 2, 3].map((step) => (
+                  <div key={step} className="flex items-center flex-1">
                     <div className={cn(
-                      "flex-1 h-1 mx-2 rounded",
-                      checkoutStep > step ? "bg-green-500" : "bg-gray-200"
-                    )} />
-                  )}
-                </div>
-              ))}
-            </div>
+                      "flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold transition-colors",
+                      checkoutStep === step ? "bg-blue-600 text-white" :
+                      checkoutStep > step ? "bg-green-500 text-white" :
+                      "bg-gray-200 text-gray-500"
+                    )}>
+                      {checkoutStep > step ? "✓" : step}
+                    </div>
+                    {step < 3 && (
+                      <div className={cn(
+                        "flex-1 h-1 mx-2 rounded",
+                        checkoutStep > step ? "bg-green-500" : "bg-gray-200"
+                      )} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </DialogHeader>
 
           {/* Contenu scrollable */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {/* ÉTAPE 1: Client */}
-            {checkoutStep === 1 && (
+            {/* ÉTAPE 0: Sélection du type de transaction */}
+            {checkoutStep === 0 && (
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-semibold mb-2">Type de transaction</h3>
+                  <p className="text-sm text-gray-600">
+                    Choisissez si c'est pour un client final ou pour transférer au livreur
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Option Client Direct */}
+                  <button
+                    onClick={() => {
+                      setOrderType("CLIENT")
+                      setCheckoutStep(1)
+                    }}
+                    className="group relative p-8 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all"
+                  >
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center group-hover:from-blue-500 group-hover:to-blue-600 transition-all">
+                        <User className="h-10 w-10 text-blue-600 group-hover:text-white transition-colors" />
+                      </div>
+                      <div className="text-center">
+                        <h4 className="text-lg font-semibold mb-2 group-hover:text-blue-600 transition-colors">
+                          Client Direct
+                        </h4>
+                        
+                      </div>
+                      
+                    </div>
+                  </button>
+
+                  {/* Option Livreur */}
+                  <button
+                    onClick={() => {
+                      setOrderType("DRIVER")
+                      setCheckoutStep(1)
+                    }}
+                    className="group relative p-8 rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all"
+                  >
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center group-hover:from-green-500 group-hover:to-green-600 transition-all">
+                        <Truck className="h-10 w-10 text-green-600 group-hover:text-white transition-colors" />
+                      </div>
+                      <div className="text-center">
+                        <h4 className="text-lg font-semibold mb-2 group-hover:text-green-600 transition-colors">
+                          Transfert Livreur
+                        </h4>
+                       
+                      </div>
+                      
+                    </div>
+                  </button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                    <div className="text-sm text-blue-900">
+                      <p className="font-medium mb-1">Information</p>
+                      <ul className="space-y-1 text-blue-700">
+                        <li>• <strong>Client Direct :</strong> Crée une commande client avec toutes les infos (livraison, paiement, etc.)</li>
+                        <li>• <strong>Transfert Livreur :</strong> Ajoute les produits au stock du livreur et enregistre les mouvements</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 1: Client ou Livreur selon le type */}
+            {checkoutStep === 1 && orderType === "CLIENT" && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -915,29 +1056,31 @@ export default function PosPage() {
                   {contactSearch && (
                     <div className="border rounded-lg max-h-48 overflow-y-auto">
                       {contacts
-                        .filter(c => 
-                          c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                        .filter(storeContact => {
+                          const c = storeContact.contact
+                          return c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                            c.lastName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                            c.phone?.includes(contactSearch) ||
+                            c.email?.toLowerCase().includes(contactSearch.toLowerCase())
+                        })
+                        .slice(0, 5)
+                        .map((storeContact) => (
+                          <button
+                            key={storeContact.contact.id}
+                            onClick={() => handleSelectContact(storeContact.contact)}
+                            className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 transition-colors"
+                          >
+                            <div className="font-medium">{storeContact.contact.firstName} {storeContact.contact.lastName}</div>
+                            <div className="text-sm text-gray-600">{storeContact.contact.phone} {storeContact.contact.email && `• ${storeContact.contact.email}`}</div>
+                          </button>
+                        ))}
+                      {contacts.filter(storeContact => {
+                        const c = storeContact.contact
+                        return c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
                           c.lastName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
                           c.phone?.includes(contactSearch) ||
                           c.email?.toLowerCase().includes(contactSearch.toLowerCase())
-                        )
-                        .slice(0, 5)
-                        .map((contact) => (
-                          <button
-                            key={contact.id}
-                            onClick={() => handleSelectContact(contact)}
-                            className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 transition-colors"
-                          >
-                            <div className="font-medium">{contact.firstName} {contact.lastName}</div>
-                            <div className="text-sm text-gray-600">{contact.phone} {contact.email && `• ${contact.email}`}</div>
-                          </button>
-                        ))}
-                      {contacts.filter(c => 
-                        c.firstName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
-                        c.lastName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
-                        c.phone?.includes(contactSearch) ||
-                        c.email?.toLowerCase().includes(contactSearch.toLowerCase())
-                      ).length === 0 && (
+                      }).length === 0 && (
                         <div className="p-4 text-center text-gray-500 text-sm">Aucun client trouvé</div>
                       )}
                     </div>
@@ -991,8 +1134,123 @@ export default function PosPage() {
               </div>
             )}
 
+            {/* ÉTAPE 1: Sélection du livreur (Mode DRIVER) */}
+            {checkoutStep === 1 && orderType === "DRIVER" && (
+              <div className="space-y-4">
+                
+
+                <div className="space-y-3">
+                  <Label htmlFor="driverSelect" className="text-base font-semibold">
+                    Sélectionner le livreur *
+                  </Label>
+                  
+                  {isLoadingDrivers ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    </div>
+                  ) : deliveryPersons.filter(d => d.status === "AVAILABLE" || d.status === "BUSY").length === 0 ? (
+                    <div className="p-8 text-center border-2 border-dashed rounded-lg">
+                      <Truck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p className="text-gray-500">Aucun livreur disponible</p>
+                      <p className="text-xs text-gray-400 mt-2">Les livreurs doivent être disponibles ou occupés</p>
+                    </div>
+                  ) : (
+                    <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
+                      <SelectTrigger className="w-full h-14 text-base py-8">
+                        <SelectValue placeholder="Choisir un livreur..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deliveryPersons
+                          .filter(d => d.status === "AVAILABLE" || d.status === "BUSY")
+                          .map((driver) => (
+                            <SelectItem key={driver.id} value={driver.id} className="py-2">
+                              <div className="flex items-center gap-3 w-full">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center font-semibold text-green-700">
+                                  {driver.name.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{driver.name}</span>
+                                    <Badge 
+                                      variant={driver.status === "AVAILABLE" ? "default" : "secondary"}
+                                      className={cn(
+                                        "text-xs",
+                                        driver.status === "AVAILABLE" 
+                                          ? "bg-green-100 text-green-700 border-green-200" 
+                                          : "bg-amber-100 text-amber-700 border-amber-200"
+                                      )}
+                                    >
+                                      {driver.status === "AVAILABLE" ? "Disponible" : "Occupé"}
+                                    </Badge>
+                                  </div>
+                                  <span className="text-sm text-gray-600">{driver.phone}</span>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+              
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Label htmlFor="driverNotes">Notes (optionnel)</Label>
+                  <Textarea
+                    id="driverNotes"
+                    placeholder="Ex: Stock pour la tournée du matin..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Récapitulatif du transfert */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-semibold">Récapitulatif du transfert</h3>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Nombre d'articles:</span>
+                      <span className="font-medium">{cartItemsCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Valeur totale:</span>
+                      <span className="font-medium">{cartSubtotal.toLocaleString()} FCFA</span>
+                    </div>
+                    {selectedDeliveryPerson && (
+                      <div className="flex justify-between text-green-700">
+                        <span>Livreur:</span>
+                        <span className="font-medium">
+                          {deliveryPersons.find(d => d.id === selectedDeliveryPerson)?.name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium mb-1">Mouvements automatiques :</p>
+                        <ul className="space-y-0.5">
+                          <li>• <strong>Magasin :</strong> Sortie de stock enregistrée</li>
+                          <li>• <strong>Livreur :</strong> Entrée de stock enregistrée</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ÉTAPE 2: Livraison */}
-            {checkoutStep === 2 && (
+            {checkoutStep === 2 && orderType === "CLIENT" && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1134,8 +1392,8 @@ export default function PosPage() {
               </div>
             )}
 
-            {/* ÉTAPE 3: Paiement et confirmation */}
-            {checkoutStep === 3 && (
+            {/* ÉTAPE 3: Paiement et confirmation (CLIENT uniquement) */}
+            {checkoutStep === 3 && orderType === "CLIENT" && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1230,10 +1488,19 @@ export default function PosPage() {
           {/* Footer fixe avec boutons de navigation */}
           <div className="shrink-0 border-t bg-white p-6">
             <div className="flex items-center justify-between gap-3">
-              {checkoutStep > 1 ? (
+              {/* Bouton Précédent ou Annuler */}
+              {checkoutStep > 0 && (orderType === "CLIENT" ? checkoutStep > 1 : checkoutStep > 1) ? (
                 <Button
                   variant="outline"
-                  onClick={() => setCheckoutStep(checkoutStep - 1)}
+                  onClick={() => {
+                    if (checkoutStep === 1 && orderType) {
+                      // Retour à la sélection du type
+                      setCheckoutStep(0)
+                      setOrderType(null)
+                    } else {
+                      setCheckoutStep(checkoutStep - 1)
+                    }
+                  }}
                   disabled={isSubmitting}
                 >
                   Précédent
@@ -1242,16 +1509,51 @@ export default function PosPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setIsCheckoutOpen(false)
-                    resetCheckoutForm()
+                    if (checkoutStep === 0 || (checkoutStep === 1 && orderType)) {
+                      // Permettre de revenir à l'étape 0 si on est à l'étape 1
+                      if (checkoutStep === 1 && orderType) {
+                        setCheckoutStep(0)
+                        setOrderType(null)
+                      } else {
+                        setIsCheckoutOpen(false)
+                        resetCheckoutForm()
+                      }
+                    } else {
+                      setIsCheckoutOpen(false)
+                      resetCheckoutForm()
+                    }
                   }}
                   disabled={isSubmitting}
                 >
-                  Annuler
+                  {checkoutStep === 1 && orderType ? "Retour" : "Annuler"}
                 </Button>
               )}
 
-              {checkoutStep < 3 ? (
+              {/* Bouton Suivant ou Valider */}
+              {checkoutStep === 0 ? (
+                // Pas de bouton suivant à l'étape 0, la sélection se fait via les cards
+                <div></div>
+              ) : orderType === "DRIVER" && checkoutStep === 1 ? (
+                // Pour DRIVER, bouton de validation direct à l'étape 1
+                <Button
+                  onClick={handleCreateOrder}
+                  disabled={isSubmitting || !canSubmitDriverOrder()}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Transfert en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Truck className="h-4 w-4 mr-2" />
+                      Transférer au livreur
+                    </>
+                  )}
+                </Button>
+              ) : orderType === "CLIENT" && checkoutStep < 3 ? (
+                // Pour CLIENT, bouton suivant jusqu'à l'étape 3
                 <Button
                   onClick={() => setCheckoutStep(checkoutStep + 1)}
                   disabled={
@@ -1262,7 +1564,8 @@ export default function PosPage() {
                 >
                   Suivant
                 </Button>
-              ) : (
+              ) : orderType === "CLIENT" && checkoutStep === 3 ? (
+                // Pour CLIENT, bouton de validation finale à l'étape 3
                 <Button
                   onClick={handleCreateOrder}
                   disabled={isSubmitting}
@@ -1280,7 +1583,7 @@ export default function PosPage() {
                     </>
                   )}
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </DialogContent>

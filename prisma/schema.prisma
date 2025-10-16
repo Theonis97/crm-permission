@@ -179,16 +179,18 @@ model Product {
   brandId String? @map("brand_id") // Optionnel
   brand   Brand?  @relation(fields: [brandId], references: [id])
 
-  quoteItems      QuoteItem[]
-  invoiceItems    InvoiceItem[]
-  stockMovements  StockMovement[]
-  storeProducts   StoreProduct[]
-  warehouseStocks WarehouseStock[]
-  lots            Lot[]
-  transferItems   TransferItem[]
-  variants        ProductVariant[]
-  storeOrderItems StoreOrderItem[] // Items des commandes clients
-  orderItems      OrderItem[] // Items des commandes d'approvisionnement
+  quoteItems              QuoteItem[]
+  invoiceItems            InvoiceItem[]
+  stockMovements          StockMovement[]
+  storeProducts           StoreProduct[]
+  warehouseStocks         WarehouseStock[]
+  lots                    Lot[]
+  transferItems           TransferItem[]
+  variants                ProductVariant[]
+  storeOrderItems         StoreOrderItem[] // Items des commandes clients
+  orderItems              OrderItem[] // Items des commandes d'approvisionnement
+  deliveryPersonStocks    DeliveryPersonStock[] // Stock des livreurs
+  deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -227,8 +229,10 @@ model ProductVariant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  product         Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  storeOrderItems StoreOrderItem[]
+  product                Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storeOrderItems        StoreOrderItem[]
+  deliveryPersonStocks   DeliveryPersonStock[] // Stock des livreurs pour cette variante
+  deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs pour cette variante
 
   @@index([productId])
   @@index([sku])
@@ -294,6 +298,13 @@ enum DeliveryPersonStatus {
   AVAILABLE
   BUSY
   OFFLINE
+}
+
+enum DeliveryStockMovementType {
+  SUPPLY       // Approvisionnement depuis le magasin
+  SALE         // Vente à un client
+  RETURN       // Retour au magasin
+  ADJUSTMENT   // Ajustement de stock
 }
 
 // Relation produit-magasin (stock par magasin)
@@ -378,8 +389,9 @@ model StoreOrder {
   deliveryZone   DeliveryZone?   @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
   createdBy      User            @relation(fields: [createdById], references: [id])
 
-  items            StoreOrderItem[]
-  whatsappMessages WhatsAppMessage[]
+  items                  StoreOrderItem[]
+  whatsappMessages       WhatsAppMessage[]
+  deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock liés à cette commande
 
   @@map("store_orders")
 }
@@ -424,10 +436,12 @@ model DeliveryPerson {
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  storeOrders   StoreOrder[]
-  wallet        CourierWallet?
-  deliveryZones DeliveryZone[] // Zones assignées au livreur
+  store               Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeOrders         StoreOrder[]
+  wallet              CourierWallet?
+  deliveryZones       DeliveryZone[] // Zones assignées au livreur
+  stock               DeliveryPersonStock[] // Stock du livreur
+  stockMovements      DeliveryStockMovement[] // Mouvements de stock du livreur
 
   @@map("delivery_persons")
 }
@@ -681,13 +695,14 @@ model User {
   opportunityParticipants   OpportunityParticipant[]
   opportunities             Opportunity[]
   auditLogs         AuditLog[]
-  contacts          Contact[]
-  stockMovements    StockMovement[]
-  storeOrders       StoreOrder[]
-  managedStores     Store[]                          @relation("StoreManager")
-  managedWarehouses Warehouse[]
-  requestedOrders   Order[] @relation("OrderRequester")
-  approvedOrders    Order[] @relation("OrderApprover")
+  contacts               Contact[]
+  stockMovements         StockMovement[]
+  storeOrders            StoreOrder[]
+  managedStores          Store[]                   @relation("StoreManager")
+  managedWarehouses      Warehouse[]
+  requestedOrders        Order[]                   @relation("OrderRequester")
+  approvedOrders         Order[]                   @relation("OrderApprover")
+  deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
 
   @@map("users")
 }
@@ -1034,4 +1049,55 @@ model Report {
   @@index([type])
   @@index([status])
   @@map("reports")
+}
+
+// ============================================================================
+// GESTION DU STOCK DES LIVREURS
+// ============================================================================
+
+// Stock par livreur et par produit
+model DeliveryPersonStock {
+  id               String   @id @default(cuid())
+  deliveryPersonId String   @map("delivery_person_id")
+  productId        String   @map("product_id")
+  variantId        String?  @map("variant_id") // Si stock d'une variante spécifique
+  quantity         Int      @default(0)
+  reserved         Int      @default(0) // Quantité réservée pour commandes en cours
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  deliveryPerson DeliveryPerson  @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@unique([deliveryPersonId, productId, variantId])
+  @@index([deliveryPersonId])
+  @@index([productId])
+  @@map("delivery_person_stocks")
+}
+
+// Mouvements de stock des livreurs
+model DeliveryStockMovement {
+  id               String                     @id @default(cuid())
+  deliveryPersonId String                     @map("delivery_person_id")
+  productId        String                     @map("product_id")
+  variantId        String?                    @map("variant_id")
+  type             DeliveryStockMovementType
+  quantity         Int // Quantité (positif ou négatif selon le type)
+  storeOrderId     String?                    @map("store_order_id") // Référence à la commande client si c'est une vente
+  notes            String?
+  createdById      String?                    @map("created_by_id") // Utilisateur qui a créé le mouvement
+  createdAt        DateTime                   @default(now()) @map("created_at")
+
+  deliveryPerson DeliveryPerson  @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  storeOrder     StoreOrder?     @relation(fields: [storeOrderId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([deliveryPersonId])
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("delivery_stock_movements")
 }
