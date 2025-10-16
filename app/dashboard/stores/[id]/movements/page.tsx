@@ -37,6 +37,7 @@ import {
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { toast } from "sonner"
+import { ReturnMovementDialog } from "@/components/stores/return-movement-dialog"
 
 interface MovementsPageProps {
   params: Promise<{
@@ -116,6 +117,7 @@ export default function MovementsPage({ params }: MovementsPageProps) {
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<string>("all")
+  const [showReturnDialog, setShowReturnDialog] = useState(false)
   
   useEffect(() => {
     params.then(p => {
@@ -187,8 +189,8 @@ export default function MovementsPage({ params }: MovementsPageProps) {
         title="Mouvements de stock"
         description="Suivi des entrées et sorties"
         action={{
-          label: "Nouveau mouvement",
-          onClick: () => {},
+          label: "Enregistrer un retour",
+          onClick: () => setShowReturnDialog(true),
           icon: Plus,
         }}
       />
@@ -443,6 +445,16 @@ export default function MovementsPage({ params }: MovementsPageProps) {
         </CardHeader>
       </Card>
       </div>
+
+      {/* Modal de retour */}
+      <ReturnMovementDialog
+        open={showReturnDialog}
+        onOpenChange={setShowReturnDialog}
+        storeId={storeId}
+        onSuccess={() => {
+          fetchStoreMovements(storeId)
+        }}
+      />
     </>
   )
 }

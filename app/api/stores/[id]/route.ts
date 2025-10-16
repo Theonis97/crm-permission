@@ -12,8 +12,11 @@ export async function GET(
     const session = await getServerSession(authOptions)
     const { id } = await params
 
+    console.log("[STORE_GET] Fetching store with ID:", id)
+
     if (!session?.user) {
-      return NextResponse.json({ message: "Non authentifié" }, { status: 401 })
+      console.log("[STORE_GET] No authenticated user")
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
     }
 
     const store = await prisma.store.findUnique({
@@ -32,13 +35,15 @@ export async function GET(
     })
 
     if (!store) {
-      return NextResponse.json({ message: "Magasin introuvable" }, { status: 404 })
+      console.log("[STORE_GET] Store not found for ID:", id)
+      return NextResponse.json({ error: "Magasin introuvable" }, { status: 404 })
     }
 
+    console.log("[STORE_GET] Store found:", store.name)
     return NextResponse.json(store)
   } catch (error) {
-    console.error("Error fetching store:", error)
-    return NextResponse.json({ message: "Erreur lors de la récupération du magasin" }, { status: 500 })
+    console.error("[STORE_GET] Error fetching store:", error)
+    return NextResponse.json({ error: "Erreur lors de la récupération du magasin" }, { status: 500 })
   }
 }
 
@@ -52,7 +57,7 @@ export async function PUT(
     const { id } = await params
 
     if (!session?.user) {
-      return NextResponse.json({ message: "Non authentifié" }, { status: 401 })
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
     }
 
     const body = await req.json()
@@ -64,12 +69,12 @@ export async function PUT(
     })
 
     if (!existingStore) {
-      return NextResponse.json({ message: "Magasin introuvable" }, { status: 404 })
+      return NextResponse.json({ error: "Magasin introuvable" }, { status: 404 })
     }
 
     // Validation du nom seulement s'il est fourni
     if (name !== undefined && (!name || name.trim() === "")) {
-      return NextResponse.json({ message: "Le nom du magasin est requis" }, { status: 400 })
+      return NextResponse.json({ error: "Le nom du magasin est requis" }, { status: 400 })
     }
 
     // Préparer les données à mettre à jour (seulement les champs fournis)
@@ -105,7 +110,7 @@ export async function PUT(
     return NextResponse.json(updatedStore)
   } catch (error) {
     console.error("Error updating store:", error)
-    return NextResponse.json({ message: "Erreur lors de la mise à jour du magasin" }, { status: 500 })
+    return NextResponse.json({ error: "Erreur lors de la mise à jour du magasin" }, { status: 500 })
   }
 }
 
@@ -119,7 +124,7 @@ export async function DELETE(
     const { id } = await params
 
     if (!session?.user) {
-      return NextResponse.json({ message: "Non authentifié" }, { status: 401 })
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
     }
 
     // Vérifier si le magasin existe
@@ -128,7 +133,7 @@ export async function DELETE(
     })
 
     if (!existingStore) {
-      return NextResponse.json({ message: "Magasin introuvable" }, { status: 404 })
+      return NextResponse.json({ error: "Magasin introuvable" }, { status: 404 })
     }
 
     // Supprimer le magasin
@@ -139,6 +144,6 @@ export async function DELETE(
     return NextResponse.json({ message: "Magasin supprimé avec succès" })
   } catch (error) {
     console.error("Error deleting store:", error)
-    return NextResponse.json({ message: "Erreur lors de la suppression du magasin" }, { status: 500 })
+    return NextResponse.json({ error: "Erreur lors de la suppression du magasin" }, { status: 500 })
   }
 }

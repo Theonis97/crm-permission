@@ -84,7 +84,17 @@ export async function POST(request: NextRequest) {
     let subtotal = 0
     let totalTax = 0
 
-    const orderItems = []
+    const orderItems: Array<{
+      productId: string
+      variantId: string | null
+      name: string
+      sku: string | null
+      quantity: number
+      unitPrice: number
+      taxRate: number
+      discount: number
+      total: number
+    }> = []
     for (const item of items) {
       const product = await prisma.product.findUnique({
         where: { id: item.productId },
@@ -119,79 +129,134 @@ export async function POST(request: NextRequest) {
     const deliveryFeeAmount = deliveryFee || 0
     const total = subtotal + totalTax + deliveryFeeAmount
 
-    // Créer la commande client
-    const storeOrder = await prisma.storeOrder.create({
-      data: {
-        number: orderNumber,
-        storeId,
-        contactId: contactId || null,
-        customerName,
-        customerPhone,
-        customerEmail: customerEmail || null,
-        deliveryAddress: deliveryAddress || null,
-        deliveryLatitude: deliveryLatitude || null,
-        deliveryLongitude: deliveryLongitude || null,
-        status: "PENDING",
-        priority: priority || "NORMAL",
-        subtotal,
-        totalTax,
-        deliveryFee: deliveryFeeAmount,
-        total,
-        paymentMethod: paymentMethod || "CASH",
-        paymentStatus: "PENDING",
-        deliveryPersonId: deliveryPersonId || null,
-        deliveryZoneId: deliveryZoneId || null,
-        notes: notes || null,
-        createdById: user.id,
-        items: {
-          create: orderItems,
-        },
-      },
-      include: {
-        store: true,
-        contact: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            email: true,
+    // Créer la commande et enregistrer les mouvements de stock dans une transaction
+    const storeOrder = await prisma.$transaction(async (tx) => {
+      // 1. Créer la commande
+      const order = await tx.storeOrder.create({
+        data: {
+          number: orderNumber,
+          storeId,
+          contactId: contactId || null,
+          customerName,
+          customerPhone,
+          customerEmail: customerEmail || null,
+          deliveryAddress: deliveryAddress || null,
+          deliveryLatitude: deliveryLatitude || null,
+          deliveryLongitude: deliveryLongitude || null,
+          status: "PENDING",
+          priority: priority || "NORMAL",
+          subtotal,
+          totalTax,
+          deliveryFee: deliveryFeeAmount,
+          total,
+          paymentMethod: paymentMethod || "CASH",
+          paymentStatus: "PENDING",
+          deliveryPersonId: deliveryPersonId || null,
+          deliveryZoneId: deliveryZoneId || null,
+          notes: notes || null,
+          createdById: user.id,
+          items: {
+            create: orderItems,
           },
         },
-        items: {
-          include: {
-            product: {
-              include: {
-                category: true,
-                brand: true,
-              },
+        include: {
+          store: true,
+          contact: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              email: true,
             },
-            variant: true,
+          },
+          items: {
+            include: {
+              product: {
+                include: {
+                  category: true,
+                  brand: true,
+                },
+              },
+              variant: true,
+            },
+          },
+          deliveryPerson: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+          deliveryZone: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
           },
         },
-        deliveryPerson: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
+      })
+
+      // 2. Pour chaque produit, créer un mouvement de stock et décrémenter le stock
+      for (const item of items) {
+        const { productId, quantity } = item
+
+        // Vérifier si le produit existe dans le stock du magasin
+        const storeProduct = await tx.storeProduct.findFirst({
+          where: {
+            storeId,
+            productId,
           },
-        },
-        deliveryZone: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
+        })
+
+        if (!storeProduct) {
+          throw new Error(`Le produit ${productId} n'existe pas dans le stock du magasin`)
+        }
+
+        // Vérifier si le stock est suffisant
+        if (storeProduct.stock < quantity) {
+          const productInfo = await tx.product.findUnique({
+            where: { id: productId },
+            select: { name: true },
+          })
+          throw new Error(`Stock insuffisant pour ${productInfo?.name || 'le produit'}. Stock disponible: ${storeProduct.stock}, demandé: ${quantity}`)
+        }
+
+        // Créer le mouvement de stock (SALE = sortie)
+        await tx.stockMovement.create({
+          data: {
+            productId,
+            quantity: -quantity, // Quantité négative pour une sortie
+            type: "SALE",
+            note: `Vente commande ${orderNumber} - ${customerName}`,
+            userId: user.id,
           },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+        })
+
+        // Décrémenter le stock du magasin
+        await tx.storeProduct.update({
+          where: { id: storeProduct.id },
+          data: {
+            stock: {
+              decrement: quantity,
+            },
           },
-        },
-      },
+        })
+      }
+
+      return order
+    }, {
+      maxWait: 5000,
+      timeout: 10000,
     })
 
     return NextResponse.json(storeOrder, { status: 201 })
@@ -249,7 +314,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      where.status = status
+      // Si le statut contient une virgule, on le traite comme un tableau
+      const statuses = status.includes(",") 
+        ? status.split(",").map(s => s.trim()) 
+        : [status.trim()]
+      where.status = statuses.length > 1 ? { in: statuses } : statuses[0]
     }
 
     const storeOrders = await prisma.storeOrder.findMany({

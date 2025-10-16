@@ -54,6 +54,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { CancelOrderDialog } from "@/components/stores/cancel-order-dialog"
+import { OrderDetailsSheet } from "@/components/stores/order-details-sheet"
 
 interface Order {
   id: string
@@ -75,7 +77,9 @@ interface Order {
   paymentStatus: string
   deliveryPersonId: string | null
   deliveryZoneId: string | null
+  notes: string | null
   createdAt: string
+  deliveredAt: string | null
   store: {
     id: string
     name: string
@@ -93,14 +97,23 @@ interface Order {
     color: string
     deliveryFee: number
   } | null
+  createdBy?: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  } | null
 }
 
 interface OrderItem {
   id: string
   productId: string
   name: string
+  sku: string | null
   quantity: number
   unitPrice: number
+  taxRate: number
+  discount: number
   total: number
   product: {
     id: string
@@ -180,6 +193,14 @@ export default function OrdersPage() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
+  
+  // Modal d'annulation
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null)
+  
+  // Sheet de détails
+  const [showOrderDetails, setShowOrderDetails] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
 
   // Charger les données
   useEffect(() => {
@@ -556,10 +577,30 @@ export default function OrdersPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedOrder(order)
+                                  setShowOrderDetails(true)
+                                }}
+                              >
                                 <Eye className="h-4 w-4 mr-2" />
                                 Voir détails
                               </DropdownMenuItem>
+                              {!["DELIVERED", "CANCELLED"].includes(order.status) && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-red-600 focus:text-red-600"
+                                    onClick={() => {
+                                      setOrderToCancel(order)
+                                      setShowCancelDialog(true)
+                                    }}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                    Annuler la commande
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -735,6 +776,24 @@ export default function OrdersPage() {
           </Card>
         )}
       </div>
+
+      {/* Modal d'annulation */}
+      <CancelOrderDialog
+        open={showCancelDialog}
+        onOpenChange={setShowCancelDialog}
+        order={orderToCancel}
+        onSuccess={() => {
+          loadOrders()
+          setOrderToCancel(null)
+        }}
+      />
+
+      {/* Sheet de détails de commande */}
+      <OrderDetailsSheet
+        open={showOrderDetails}
+        onOpenChange={setShowOrderDetails}
+        order={selectedOrder}
+      />
     </>
   )
 }
