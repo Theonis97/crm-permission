@@ -424,8 +424,9 @@ model DeliveryPerson {
   id              String               @id @default(cuid())
   storeId         String               @map("store_id")
   name            String
-  phone           String
-  email           String?
+  phone           String               @unique // Obligatoire et unique
+  email           String               @unique // Obligatoire et unique
+  password        String // Mot de passe hashé (par défaut "password" sera défini lors de la création)
   avatar          String?
   vehicle         String? // Type de véhicule
   plateNumber     String?              @map("plate_number") // Plaque d'immatriculation

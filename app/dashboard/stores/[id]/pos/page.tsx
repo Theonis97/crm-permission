@@ -480,7 +480,7 @@ export default function PosPage() {
       deliveryLongitude,
       deliveryZoneId: detectedZone?.id || null,
       priority: "NORMAL",
-      deliveryPersonId: selectedDeliveryPerson || null,
+      deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : null,
       deliveryFee,
       paymentMethod: paymentMethod.toUpperCase(),
       notes,
@@ -577,7 +577,7 @@ export default function PosPage() {
 
   const canProceedToStep3 = () => {
     if (orderType === "CLIENT") {
-      return deliveryAddress.trim().length > 0 && deliveryLatitude !== null && deliveryLongitude !== null
+      return deliveryAddress.trim().length > 0
     }
     return false
   }
@@ -1255,8 +1255,11 @@ export default function PosPage() {
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Truck className="h-4 w-4" />
-                    Adresse de livraison
+                    Adresse de livraison *
                   </h3>
+                  <p className="text-sm text-gray-600">
+                    Vous pouvez entrer une adresse manuellement ou sélectionner une suggestion avec géolocalisation
+                  </p>
                   <div className="relative" ref={addressDropdownRef}>
                     <div className="relative">
                       <Input
@@ -1354,20 +1357,35 @@ export default function PosPage() {
                       </div>
                     </div>
                   )}
+
+                  {deliveryAddress && !deliveryLatitude && !deliveryLongitude && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                      <div className="flex items-start gap-2 text-blue-700">
+                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium mb-1">Adresse manuelle</p>
+                          <p className="text-xs">
+                            Vous avez saisi une adresse manuellement. La détection automatique de zone et les frais de livraison ne seront pas calculés automatiquement.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
 
                 <div className="space-y-3">
-                  <h3 className="font-semibold">Configuration de la livraison</h3>
+                  <h3 className="font-semibold">Configuration de la livraison (optionnel)</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label htmlFor="deliveryPerson">Livreur</Label>
+                      <Label htmlFor="deliveryPerson">Livreur (optionnel)</Label>
                       <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
                         <SelectTrigger>
                           <SelectValue placeholder="Sélectionner" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="none">Aucun livreur</SelectItem>
                           {deliveryPersons
                             .filter(d => d.status === "AVAILABLE")
                             .map((person) => (
@@ -1455,6 +1473,14 @@ export default function PosPage() {
                       <div className="flex justify-between">
                         <span className="text-gray-600">Zone:</span>
                         <span className="font-medium">{detectedZone.name}</span>
+                      </div>
+                    )}
+                    {selectedDeliveryPerson && selectedDeliveryPerson !== "none" && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Livreur:</span>
+                        <span className="font-medium">
+                          {deliveryPersons.find(d => d.id === selectedDeliveryPerson)?.name || "Non spécifié"}
+                        </span>
                       </div>
                     )}
                   </div>
