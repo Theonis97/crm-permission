@@ -259,8 +259,8 @@ export default function DriversPage() {
   }
 
   const handleCreateDriver = async () => {
-    if (!formData.name.trim() || !formData.phone.trim()) {
-      toast.error("Le nom et le téléphone sont requis")
+    if (!formData.name.trim() || !formData.phone.trim() || !formData.email.trim()) {
+      toast.error("Le nom, le téléphone et l'email sont requis")
       return
     }
 
@@ -272,7 +272,6 @@ export default function DriversPage() {
         body: JSON.stringify({
           storeId,
           ...formData,
-          email: formData.email || null,
           vehicle: formData.vehicle || null,
           plateNumber: formData.plateNumber || null,
         }),
@@ -285,16 +284,21 @@ export default function DriversPage() {
 
       const result = await response.json()
       
-      // Message différent si un utilisateur a été créé
-      if (result.userCreated) {
+      // Message différent selon que l'utilisateur existait déjà ou non
+      if (result.userAlreadyExisted) {
         toast.success(
           `Livreur créé avec succès!\n` +
-          `📧 Compte créé pour: ${result.userEmail}\n` +
-          `🔑 Mot de passe: ${result.defaultPassword}`,
+          `📧 Utilisateur existant associé: ${result.userEmail}\n` +
+          `ℹ️ Le compte utilisateur existait déjà`,
           { duration: 8000 }
         )
       } else {
-        toast.success("Livreur créé avec succès!")
+        toast.success(
+          `Livreur créé avec succès!\n` +
+          `📧 Nouveau compte créé pour: ${result.userEmail}\n` +
+          `🔑 Mot de passe: ${result.defaultPassword}`,
+          { duration: 8000 }
+        )
       }
       
       setIsCreateDialogOpen(false)
@@ -983,9 +987,9 @@ export default function DriversPage() {
 
             <div className="grid gap-2">
               <Label htmlFor="email" className="flex items-center gap-2">
-                Email
-                <Badge variant="outline" className="text-xs font-normal">
-                  Optionnel
+                Email *
+                <Badge variant="default" className="text-xs font-normal bg-blue-500">
+                  Obligatoire
                 </Badge>
               </Label>
               <Input
@@ -994,9 +998,12 @@ export default function DriversPage() {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="Ex: jean.dupont@email.com"
+                required
               />
               <p className="text-xs text-gray-500">
-                💡 Si un email est fourni, un compte utilisateur sera créé automatiquement avec le mot de passe : <code className="font-mono bg-gray-100 px-1 py-0.5 rounded">innotech</code>
+                💡 Si l'email n'existe pas, un nouveau compte sera créé avec le mot de passe : <code className="font-mono bg-gray-100 px-1 py-0.5 rounded">innotech</code>
+                <br />
+                ℹ️ Si l'email existe déjà, l'utilisateur sera simplement ajouté comme livreur
               </p>
             </div>
 

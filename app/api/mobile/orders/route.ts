@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateMobileUser, hasRole } from '@/lib/auth-mobile';
 import { prisma } from '@/lib/prisma';
+import { geocodeAddressWithCache, isPointInPolygon } from '@/lib/geocoding';
 
 /**
  * GET /api/mobile/orders
@@ -40,13 +41,20 @@ export async function GET(request: NextRequest) {
     console.log(`   Zone: ${deliveryZone ? `${deliveryZone.name} (${deliveryZone.id})` : 'Aucune zone assignée'}`);
 
     // Construire le filtre des commandes
+    // Le livreur voit :
+    // 1. Les commandes qui LUI sont assignées (quelque soit le statut)
+    // 2. Les commandes PENDING non assignées de SA zone
     const where: any = {
       storeId: user.storeId, // Commandes du même magasin
       OR: [
         // 1. Commandes directement assignées au livreur
         { deliveryPersonId: user.id },
-        // 2. Commandes de la zone du livreur
-        ...(deliveryZone ? [{ deliveryZoneId: deliveryZone.id }] : []),
+        // 2. Commandes PENDING non assignées de la zone du livreur
+        ...(deliveryZone ? [{
+          deliveryZoneId: deliveryZone.id,
+          deliveryPersonId: null, // Non assignées
+          status: { in: ['PENDING', 'CONFIRMED', 'PREPARING'] }, // Commandes en attente
+        }] : []),
       ],
     };
 
@@ -56,41 +64,88 @@ export async function GET(request: NextRequest) {
     }
     // Si 'all', on ne filtre pas par statut (toutes les commandes)
 
-    // Si le livreur a une zone, ajouter le matching textuel sur l'adresse
-    if (deliveryZone) {
+    // Si le livreur a une zone, vérifier géographiquement les commandes
+    if (deliveryZone && deliveryZone.coordinates) {
       // Récupérer toutes les commandes du magasin avec adresse
+      // Uniquement les commandes NON ASSIGNÉES et en attente
       const allOrders = await prisma.storeOrder.findMany({
         where: {
           storeId: user.storeId,
           deliveryAddress: { not: null },
+          deliveryPersonId: null, // Non assignées uniquement
+          status: { in: ['PENDING', 'CONFIRMED', 'PREPARING'] }, // Seulement les commandes en attente
           ...(status && status !== 'all' ? { status: status as any } : {}),
         },
         select: {
           id: true,
           deliveryAddress: true,
+          deliveryLatitude: true,
+          deliveryLongitude: true,
         },
       });
 
-      // Filtrer celles dont l'adresse contient le nom de la zone ou sa couverture
-      const zoneName = deliveryZone.name.toLowerCase();
-      const zoneCoverage = deliveryZone.coverage?.toLowerCase() || '';
+      console.log(`   🔍 Vérification géographique de ${allOrders.length} commandes...`);
       
-      const matchingOrderIds = allOrders
-        .filter(order => {
-          const address = order.deliveryAddress?.toLowerCase() || '';
-          return (
-            address.includes(zoneName) ||
-            (zoneCoverage && address.includes(zoneCoverage))
-          );
-        })
-        .map(order => order.id);
-
-      // Ajouter ces IDs au filtre OR
-      if (matchingOrderIds.length > 0) {
-        where.OR.push({ id: { in: matchingOrderIds } });
-        console.log(`   ✓ ${matchingOrderIds.length} commandes matchées par adresse`);
+      // Récupérer le polygone de la zone
+      const zonePolygon = deliveryZone.coordinates as Array<{ lat: number; lng: number }>;
+      
+      if (!Array.isArray(zonePolygon) || zonePolygon.length < 3) {
+        console.log(`   ⚠️ Polygone de zone invalide pour ${deliveryZone.name}`);
       } else {
-        console.log(`   ✗ Aucune commande matchée par adresse`);
+        const matchingOrderIds: string[] = [];
+
+        // Vérifier chaque commande
+        for (const order of allOrders) {
+          let coordinates: { lat: number; lng: number } | null = null;
+
+          // Utiliser les coordonnées déjà stockées si disponibles
+          if (order.deliveryLatitude && order.deliveryLongitude) {
+            coordinates = {
+              lat: order.deliveryLatitude,
+              lng: order.deliveryLongitude,
+            };
+            console.log(`   📍 Commande ${order.id}: utilise coordonnées stockées`);
+          } else if (order.deliveryAddress) {
+            // Sinon, géocoder l'adresse
+            console.log(`   🌍 Géocodage de: ${order.deliveryAddress}`);
+            const geocodingResult = await geocodeAddressWithCache(order.deliveryAddress);
+            
+            if (geocodingResult.success && geocodingResult.coordinates) {
+              coordinates = geocodingResult.coordinates;
+              
+              // Mettre à jour les coordonnées dans la commande pour la prochaine fois
+              await prisma.storeOrder.update({
+                where: { id: order.id },
+                data: {
+                  deliveryLatitude: coordinates.lat,
+                  deliveryLongitude: coordinates.lng,
+                },
+              });
+              console.log(`   ✅ Géocodage réussi: ${coordinates.lat}, ${coordinates.lng}`);
+            } else {
+              console.log(`   ❌ Géocodage échoué: ${geocodingResult.error}`);
+            }
+          }
+
+          // Vérifier si les coordonnées sont dans le polygone
+          if (coordinates) {
+            const inZone = isPointInPolygon(coordinates, zonePolygon);
+            if (inZone) {
+              matchingOrderIds.push(order.id);
+              console.log(`   ✅ Commande ${order.id} dans la zone ${deliveryZone.name}`);
+            } else {
+              console.log(`   ❌ Commande ${order.id} hors zone ${deliveryZone.name}`);
+            }
+          }
+        }
+
+        // Ajouter ces IDs au filtre OR
+        if (matchingOrderIds.length > 0) {
+          where.OR.push({ id: { in: matchingOrderIds } });
+          console.log(`   ✓ ${matchingOrderIds.length} commandes dans la zone géographique`);
+        } else {
+          console.log(`   ✗ Aucune commande dans la zone géographique`);
+        }
       }
     }
 

@@ -370,9 +370,14 @@ model StoreOrder {
   paymentMethod PaymentMethod @default(CASH) @map("payment_method")
   paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
   paidAt        DateTime?     @map("paid_at")
+  
+  // Nouveaux champs pour la gestion des paiements en espèces
+  amountReceived Float? @map("amount_received") // Montant reçu du client
+  changeGiven    Float? @map("change_given")    // Monnaie rendue au client
 
   deliveryPersonId  String?   @map("delivery_person_id")
   deliveryZoneId    String?   @map("delivery_zone_id")
+  requestedDeliveryDate DateTime? @map("requested_delivery_date") // Date de livraison souhaitée par le client
   estimatedDelivery DateTime? @map("estimated_delivery")
   deliveredAt       DateTime? @map("delivered_at")
 

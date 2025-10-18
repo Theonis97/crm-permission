@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogOut, Settings, User, Bell, Search } from "lucide-react"
+import { LogOut, Settings, User, Bell, Search, Map } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 export default function HomeLayout({
@@ -116,6 +116,17 @@ export default function HomeLayout({
 
             {/* Actions utilisateur */}
             <div className="flex items-center space-x-4">
+              {/* Carte de livraison */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex items-center gap-2"
+                onClick={() => router.push('/dashboard/delivery-map')}
+              >
+                <Map className="h-4 w-4" />
+                <span className="hidden md:inline">Carte</span>
+              </Button>
+
               {/* Notifications */}
               <Button variant="ghost" size="sm" className="relative">
                 <Bell className="h-5 w-5" />

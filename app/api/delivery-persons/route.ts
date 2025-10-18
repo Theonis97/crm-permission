@@ -181,32 +181,85 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validation
-    if (!storeId || !name || !phone) {
+    if (!storeId || !name || !phone || !email) {
       return NextResponse.json(
-        { error: "Données invalides. Le nom et le téléphone sont requis." },
+        { error: "Données invalides. Le nom, le téléphone et l'email sont requis." },
         { status: 400 }
       )
     }
 
-    // Si l'email est fourni, créer un utilisateur
+    // Vérifier si l'email ou le téléphone existe déjà pour un livreur
+    const existingDeliveryPersonByEmail = await prisma.deliveryPerson.findUnique({
+      where: { email },
+    })
+
+    if (existingDeliveryPersonByEmail) {
+      return NextResponse.json(
+        { error: "Un livreur avec cet email existe déjà." },
+        { status: 400 }
+      )
+    }
+
+    const existingDeliveryPersonByPhone = await prisma.deliveryPerson.findUnique({
+      where: { phone },
+    })
+
+    if (existingDeliveryPersonByPhone) {
+      return NextResponse.json(
+        { error: "Un livreur avec ce numéro de téléphone existe déjà." },
+        { status: 400 }
+      )
+    }
+
+    // Vérifier si l'email existe déjà pour un utilisateur
+    let existingUser = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    })
+
+    // Hasher le mot de passe par défaut "innotech"
+    const hashedPassword = await bcrypt.hash("innotech", 12)
+
     let createdUser = null
-    if (email) {
-      // Vérifier si l'email existe déjà
-      const existingUser = await prisma.user.findUnique({
-        where: { email },
-      })
+    let userAlreadyExisted = false
 
-      if (existingUser) {
-        return NextResponse.json(
-          { error: "Un utilisateur avec cet email existe déjà." },
-          { status: 400 }
-        )
+    if (existingUser) {
+      // L'utilisateur existe déjà, on va l'utiliser
+      userAlreadyExisted = true
+      createdUser = existingUser
+
+      // Vérifier si l'utilisateur a déjà le rôle Livreur
+      const hasDeliveryRole = existingUser.userRoles.some(ur => 
+        ["Livreur", "Delivery", "Courier"].includes(ur.role.name)
+      )
+
+      // Si l'utilisateur n'a pas le rôle Livreur, l'ajouter
+      if (!hasDeliveryRole) {
+        const deliveryRole = await prisma.role.findFirst({
+          where: {
+            name: {
+              in: ["Livreur", "Delivery", "Courier"],
+            },
+          },
+        })
+
+        if (deliveryRole) {
+          await prisma.userRole.create({
+            data: {
+              userId: existingUser.id,
+              roleId: deliveryRole.id,
+            },
+          })
+        }
       }
-
-      // Hasher le mot de passe par défaut "innotech"
-      const hashedPassword = await bcrypt.hash("innotech", 12)
-
-      // Extraire firstName et lastName du nom complet
+    } else {
+      // L'utilisateur n'existe pas, on le crée
       const nameParts = name.split(" ")
       const firstName = nameParts[0]
       const lastName = nameParts.slice(1).join(" ") || ""
@@ -250,13 +303,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Créer le livreur
+    // Créer le livreur avec le même mot de passe hashé
     const deliveryPerson = await prisma.deliveryPerson.create({
       data: {
         storeId,
         name,
         phone,
         email,
+        password: hashedPassword,
         avatar,
         vehicle,
         plateNumber,
@@ -281,9 +335,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       deliveryPerson,
-      userCreated: !!createdUser,
-      userEmail: createdUser?.email,
-      defaultPassword: createdUser ? "innotech" : null,
+      userCreated: !userAlreadyExisted,
+      userAlreadyExisted,
+      userEmail: createdUser.email,
+      defaultPassword: userAlreadyExisted ? null : "innotech",
     }, { status: 201 })
   } catch (error: any) {
     console.error("Error creating delivery person:", error)

@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       deliveryZoneId,
       deliveryFee,
       paymentMethod,
+      requestedDeliveryDate,
     } = data
 
     if (!storeId || !customerName || !customerPhone || !items || items.length === 0) {
@@ -153,6 +154,7 @@ export async function POST(request: NextRequest) {
           paymentStatus: "PENDING",
           deliveryPersonId: deliveryPersonId || null,
           deliveryZoneId: deliveryZoneId || null,
+          requestedDeliveryDate: requestedDeliveryDate ? new Date(requestedDeliveryDate) : null,
           notes: notes || null,
           createdById: user.id,
           items: {

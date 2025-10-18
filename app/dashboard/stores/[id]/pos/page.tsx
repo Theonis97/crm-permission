@@ -39,6 +39,7 @@ import {
   Info,
   CheckCircle2,
   AlertTriangle,
+  Calendar,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -160,6 +161,11 @@ export default function PosPage() {
   const [selectedDeliveryPerson, setSelectedDeliveryPerson] = useState("")
   const [deliveryFee, setDeliveryFee] = useState(0)
   const [loadingAddresses, setLoadingAddresses] = useState(false)
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(() => {
+    // Par défaut, la date de livraison est aujourd'hui
+    const today = new Date()
+    return today.toISOString().split('T')[0] // Format YYYY-MM-DD
+  })
   
   // Formulaire checkout - Étape 3: Paiement
   const [paymentMethod, setPaymentMethod] = useState("cash")
@@ -479,6 +485,7 @@ export default function PosPage() {
       deliveryLatitude,
       deliveryLongitude,
       deliveryZoneId: detectedZone?.id || null,
+      requestedDeliveryDate: requestedDeliveryDate ? new Date(requestedDeliveryDate).toISOString() : null,
       priority: "NORMAL",
       deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : null,
       deliveryFee,
@@ -563,6 +570,9 @@ export default function PosPage() {
     setDetectedZone(null)
     setSelectedDeliveryPerson("")
     setDeliveryFee(0)
+    // Réinitialiser la date de livraison à aujourd'hui
+    const today = new Date()
+    setRequestedDeliveryDate(today.toISOString().split('T')[0])
     setPaymentMethod("cash")
     setNotes("")
   }
@@ -1375,6 +1385,34 @@ export default function PosPage() {
 
                 <Separator />
 
+                {/* Date de livraison souhaitée */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Date de livraison souhaitée
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Sélectionnez la date à laquelle le client souhaite recevoir sa commande
+                  </p>
+                  <Input
+                    type="date"
+                    value={requestedDeliveryDate}
+                    onChange={(e) => setRequestedDeliveryDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]} // Minimum aujourd'hui
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Par défaut: {new Date(requestedDeliveryDate).toLocaleDateString('fr-FR', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                </div>
+
+                <Separator />
+
                 <div className="space-y-3">
                   <h3 className="font-semibold">Configuration de la livraison (optionnel)</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -1467,6 +1505,16 @@ export default function PosPage() {
                       <span className="text-gray-600">Livraison:</span>
                       <span className="font-medium text-right max-w-xs truncate">
                         {deliveryAddress || "Non spécifiée"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Date souhaitée:</span>
+                      <span className="font-medium">
+                        {new Date(requestedDeliveryDate).toLocaleDateString('fr-FR', { 
+                          weekday: 'short', 
+                          day: 'numeric', 
+                          month: 'short' 
+                        })}
                       </span>
                     </div>
                     {detectedZone && (
