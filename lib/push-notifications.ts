@@ -79,7 +79,11 @@ export class PushNotificationService {
       }
 
       // Créer le message de notification
-      const messages: ExpoPushMessage[] = pushTokens.map(token => ({
+      interface PushNotificationMessage extends Omit<ExpoPushMessage, 'to'> {
+        to: string; // S'assurer que 'to' est une chaîne et non un tableau
+      }
+
+      const messages: PushNotificationMessage[] = pushTokens.map(token => ({
         to: token,
         sound: 'default',
         title: '🚚 Nouvelle commande disponible !',
