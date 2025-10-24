@@ -498,6 +498,14 @@ export default function PosPage() {
       })),
     }
 
+    // Debug : Vérifier les données envoyées
+    console.log('🔍 [POS] Données commande envoyées:', {
+      deliveryZoneId: orderData.deliveryZoneId,
+      detectedZone: detectedZone?.name,
+      hasDeliveryAddress: !!orderData.deliveryAddress,
+      customerName: orderData.customerName,
+    })
+
     const response = await fetch("/api/store-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

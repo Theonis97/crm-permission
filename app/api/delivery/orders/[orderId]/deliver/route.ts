@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { consumeDeliveryPersonStock } from '@/lib/delivery-stock-validator';
+import { Prisma } from '@prisma/client';
 
 /**
  * POST /api/delivery/orders/[orderId]/deliver
@@ -48,6 +49,7 @@ export async function POST(
           },
         },
       },
+      // Récupérer aussi le createdById pour le mouvement de stock
     });
 
     if (!order) {
@@ -98,7 +100,7 @@ export async function POST(
     }));
 
     // Transaction pour mettre à jour la commande et consommer le stock
-    const updatedOrder = await prisma.$transaction(async (tx) => {
+    const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // 1. Mettre à jour la commande avec les nouveaux champs
       const updated = await tx.storeOrder.update({
         where: { id: orderId },
@@ -132,7 +134,9 @@ export async function POST(
       });
 
       // 2. Consommer le stock du livreur et créer les mouvements de vente
-      await consumeDeliveryPersonStock(driverId, orderId, stockItems, driverId);
+      // Passer le client de transaction tx pour éviter les transactions imbriquées
+      // Le createdById de la commande est un User, pas le driverId (DeliveryPerson)
+      await consumeDeliveryPersonStock(driverId, orderId, stockItems, order.createdById, tx);
 
       return updated;
     });

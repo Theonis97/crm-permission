@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { PushNotificationService } from "@/lib/push-notifications"
 
 export async function POST(request: NextRequest) {
   try {
@@ -130,7 +131,55 @@ export async function POST(request: NextRequest) {
     const deliveryFeeAmount = deliveryFee || 0
     const total = subtotal + totalTax + deliveryFeeAmount
 
-    // Créer la commande et enregistrer les mouvements de stock dans une transaction
+    // Pré-validation du stock AVANT la transaction pour éviter les timeouts
+    console.log('🔍 Pré-validation du stock...');
+    const stockValidations: {
+      storeProductId: string;
+      productId: string;
+      quantity: number;
+      productName: string;
+    }[] = []
+    
+    for (const item of items) {
+      const { productId, quantity } = item
+      
+      const storeProduct = await prisma.storeProduct.findFirst({
+        where: {
+          storeId,
+          productId,
+        },
+        include: {
+          product: {
+            select: { name: true }
+          }
+        }
+      })
+
+      if (!storeProduct) {
+        return NextResponse.json(
+          { error: `Le produit ${productId} n'existe pas dans le stock du magasin` },
+          { status: 400 }
+        )
+      }
+
+      if (storeProduct.stock < quantity) {
+        return NextResponse.json(
+          { error: `Stock insuffisant pour ${storeProduct.product.name}. Stock disponible: ${storeProduct.stock}, demandé: ${quantity}` },
+          { status: 400 }
+        )
+      }
+
+      stockValidations.push({
+        storeProductId: storeProduct.id,
+        productId,
+        quantity,
+        productName: storeProduct.product.name
+      })
+    }
+
+    console.log('✅ Stock validé, création de la commande...');
+
+    // Transaction optimisée avec batch operations
     const storeOrder = await prisma.$transaction(async (tx) => {
       // 1. Créer la commande
       const order = await tx.storeOrder.create({
@@ -208,58 +257,79 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // 2. Pour chaque produit, créer un mouvement de stock et décrémenter le stock
-      for (const item of items) {
-        const { productId, quantity } = item
+      // 2. Batch création des mouvements de stock
+      const stockMovements = stockValidations.map(item => ({
+        productId: item.productId,
+        quantity: -item.quantity, // Quantité négative pour une sortie
+        type: "SALE" as const,
+        note: `Vente commande ${orderNumber} - ${customerName}`,
+        userId: user.id,
+      }))
 
-        // Vérifier si le produit existe dans le stock du magasin
-        const storeProduct = await tx.storeProduct.findFirst({
-          where: {
-            storeId,
-            productId,
-          },
-        })
+      await tx.stockMovement.createMany({
+        data: stockMovements,
+      })
 
-        if (!storeProduct) {
-          throw new Error(`Le produit ${productId} n'existe pas dans le stock du magasin`)
-        }
-
-        // Vérifier si le stock est suffisant
-        if (storeProduct.stock < quantity) {
-          const productInfo = await tx.product.findUnique({
-            where: { id: productId },
-            select: { name: true },
-          })
-          throw new Error(`Stock insuffisant pour ${productInfo?.name || 'le produit'}. Stock disponible: ${storeProduct.stock}, demandé: ${quantity}`)
-        }
-
-        // Créer le mouvement de stock (SALE = sortie)
-        await tx.stockMovement.create({
-          data: {
-            productId,
-            quantity: -quantity, // Quantité négative pour une sortie
-            type: "SALE",
-            note: `Vente commande ${orderNumber} - ${customerName}`,
-            userId: user.id,
-          },
-        })
-
-        // Décrémenter le stock du magasin
-        await tx.storeProduct.update({
-          where: { id: storeProduct.id },
+      // 3. Batch mise à jour des stocks
+      const stockUpdates = stockValidations.map(item => 
+        tx.storeProduct.update({
+          where: { id: item.storeProductId },
           data: {
             stock: {
-              decrement: quantity,
+              decrement: item.quantity,
             },
           },
         })
-      }
+      )
 
+      await Promise.all(stockUpdates)
+
+      console.log('✅ Transaction terminée avec succès');
       return order
     }, {
-      maxWait: 5000,
-      timeout: 10000,
+      maxWait: 10000,
+      timeout: 20000,
     })
+
+    // Debug : Vérifier les données de la commande
+    console.log('🔍 Debug commande créée:', {
+      id: storeOrder.id,
+      number: storeOrder.number,
+      deliveryZoneId: storeOrder.deliveryZoneId,
+      hasDeliveryZone: !!storeOrder.deliveryZone,
+      deliveryZoneName: storeOrder.deliveryZone?.name,
+    })
+
+    // Envoyer notification push si la commande a une zone de livraison
+    if (storeOrder.deliveryZoneId && storeOrder.deliveryZone) {
+      try {
+        console.log(`📱 Envoi notification push pour zone ${storeOrder.deliveryZone.name}`)
+        
+        await PushNotificationService.sendNewOrderNotification(
+          storeOrder.deliveryZoneId,
+          {
+            orderId: storeOrder.id,
+            orderNumber: storeOrder.number,
+            customerName: storeOrder.customerName,
+            deliveryAddress: storeOrder.deliveryAddress || 'Adresse non spécifiée',
+            total: storeOrder.total,
+            zoneId: storeOrder.deliveryZoneId,
+            zoneName: storeOrder.deliveryZone.name,
+          }
+        )
+        
+        console.log(`✅ Notification envoyée pour commande ${storeOrder.number}`)
+      } catch (notificationError) {
+        // Ne pas faire échouer la création de commande si la notification échoue
+        console.error('❌ Erreur envoi notification push:', notificationError)
+      }
+    } else {
+      console.log('⚠️ Pas de notification envoyée - Raison:', {
+        hasDeliveryZoneId: !!storeOrder.deliveryZoneId,
+        hasDeliveryZone: !!storeOrder.deliveryZone,
+        deliveryZoneId: storeOrder.deliveryZoneId,
+      })
+    }
 
     return NextResponse.json(storeOrder, { status: 201 })
   } catch (error) {

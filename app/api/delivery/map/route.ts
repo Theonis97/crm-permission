@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const zoneFilter = searchParams.get('zoneId'); // Filtre optionnel par zone
+    const dateFilter = searchParams.get('date'); // Filtre optionnel par date
 
     // 1. Récupérer les commandes en attente avec coordonnées
     const ordersWhere: any = {
@@ -36,6 +37,21 @@ export async function GET(request: NextRequest) {
     // Filtrer par zone si spécifié
     if (zoneFilter && zoneFilter !== 'all') {
       ordersWhere.deliveryZoneId = zoneFilter;
+    }
+
+    // Filtrer par date si spécifié (commandes du jour uniquement)
+    if (dateFilter) {
+      const filterDate = new Date(dateFilter);
+      const startOfDay = new Date(filterDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(filterDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      ordersWhere.createdAt = {
+        gte: startOfDay,
+        lte: endOfDay,
+      };
     }
 
     const orders = await prisma.storeOrder.findMany({

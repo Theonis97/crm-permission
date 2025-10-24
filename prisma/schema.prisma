@@ -448,6 +448,7 @@ model DeliveryPerson {
   deliveryZones       DeliveryZone[] // Zones assignées au livreur
   stock               DeliveryPersonStock[] // Stock du livreur
   stockMovements      DeliveryStockMovement[] // Mouvements de stock du livreur
+  pushTokens          DeliveryPersonPushToken[] // Tokens de notification push
 
   @@map("delivery_persons")
 }
@@ -1107,3 +1108,24 @@ model DeliveryStockMovement {
   @@index([createdAt])
   @@map("delivery_stock_movements")
 }
+
+// Tokens de notification push pour les livreurs
+model DeliveryPersonPushToken {
+  id               String   @id @default(cuid())
+  deliveryPersonId String   @map("delivery_person_id")
+  token            String   @unique // Token Expo push
+  deviceId         String?  @map("device_id") // Identifiant unique du device
+  platform         String?  // "ios" ou "android"
+  isActive         Boolean  @default(true) @map("is_active")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryPersonId])
+  @@index([token])
+  @@index([isActive])
+  @@map("delivery_person_push_tokens")
+}
+

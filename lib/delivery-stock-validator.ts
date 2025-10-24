@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 export interface OrderItem {
   productId: string
@@ -163,18 +164,21 @@ export async function releaseDeliveryPersonStock(
 
 /**
  * Consomme le stock du livreur après livraison (dé-réserve et réduit la quantité)
+ * @param tx - Client de transaction Prisma optionnel pour éviter les transactions imbriquées
  */
 export async function consumeDeliveryPersonStock(
   deliveryPersonId: string,
   orderId: string,
   items: OrderItem[],
-  userId: string
+  userId: string,
+  tx?: Prisma.TransactionClient
 ) {
   try {
-    await prisma.$transaction(async (tx) => {
+    // Fonction qui effectue les opérations
+    const executeOperations = async (client: any) => {
       for (const item of items) {
         // Réduire le stock et la réservation
-        await tx.deliveryPersonStock.updateMany({
+        await client.deliveryPersonStock.updateMany({
           where: {
             deliveryPersonId,
             productId: item.productId,
@@ -191,7 +195,7 @@ export async function consumeDeliveryPersonStock(
         })
 
         // Créer un mouvement de stock (SALE)
-        await tx.deliveryStockMovement.create({
+        await client.deliveryStockMovement.create({
           data: {
             deliveryPersonId,
             productId: item.productId,
@@ -199,11 +203,21 @@ export async function consumeDeliveryPersonStock(
             type: "SALE",
             quantity: -item.quantity,
             storeOrderId: orderId,
-            createdById: userId,
+            createdById: userId || null, // userId doit être un User, pas un DeliveryPerson. Si absent, null.
           },
         })
       }
-    })
+    }
+
+    // Si un client de transaction est fourni, l'utiliser directement
+    // Sinon, créer une nouvelle transaction
+    if (tx) {
+      await executeOperations(tx)
+    } else {
+      await prisma.$transaction(async (newTx) => {
+        await executeOperations(newTx)
+      })
+    }
   } catch (error) {
     console.error("[CONSUME_DELIVERY_STOCK]", error)
     throw new Error("Erreur lors de la consommation du stock")
