@@ -89,7 +89,7 @@ Si l'API fonctionne, **remettre la commande en PENDING** avant de tester sur mob
 ### 2. Vérifier que les données se chargent
 Logs console attendus :
 ```
-Fetching from: http://192.168.1.115:3000/api/delivery/driver-map
+Fetching from: http://https://crm.sambatechpro.com':3000/api/delivery/driver-map
 Map data received: {orders: Array(1), zones: Array(2), ...}
 ```
 

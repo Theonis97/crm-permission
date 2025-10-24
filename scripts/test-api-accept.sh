@@ -13,7 +13,7 @@ echo "📍 Zone ID: $ZONE_ID"
 echo ""
 
 # Appel à l'API
-curl -X POST http://192.168.1.115:3000/api/delivery/orders/$ORDER_ID/accept \
+curl -X POST http://https://crm.sambatechpro.com':3000/api/delivery/orders/$ORDER_ID/accept \
   -H "Content-Type: application/json" \
   -d "{\"driverId\":\"$DRIVER_ID\",\"zoneId\":\"$ZONE_ID\"}" \
   | jq '.'
