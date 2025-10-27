@@ -440,6 +440,13 @@ model DeliveryPerson {
   rating          Float? // Note moyenne
   totalDeliveries Int                  @default(0) @map("total_deliveries")
   isActive        Boolean              @default(true) @map("is_active")
+  
+  // Réinitialisation de mot de passe
+  resetPasswordToken       String?              @map("reset_password_token")
+  resetPasswordTokenExpiry DateTime?            @map("reset_password_token_expiry")
+  resetPasswordCode        String?              @map("reset_password_code") // Code à 6 chiffres
+  resetPasswordCodeExpiry  DateTime?            @map("reset_password_code_expiry") // Expiration du code
+  
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
@@ -450,6 +457,7 @@ model DeliveryPerson {
   stock               DeliveryPersonStock[] // Stock du livreur
   stockMovements      DeliveryStockMovement[] // Mouvements de stock du livreur
   pushTokens          DeliveryPersonPushToken[] // Tokens de notification push
+  dayShifts           DayShift[] // Clôtures de journée
 
   @@map("delivery_persons")
 }
@@ -1128,5 +1136,26 @@ model DeliveryPersonPushToken {
   @@index([token])
   @@index([isActive])
   @@map("delivery_person_push_tokens")
+}
+
+// Clôtures de journée des livreurs
+model DayShift {
+  id               String   @id @default(cuid())
+  deliveryPersonId String   @map("delivery_person_id")
+  date             DateTime @default(now()) // Date de clôture
+  commission       Float    @default(0) // Commission totale
+  totalOrders      Int      @default(0) @map("total_orders") // Nombre total de commandes
+  deliveredOrders  Int      @default(0) @map("delivered_orders") // Livraisons livrées
+  cancelledOrders  Int      @default(0) @map("cancelled_orders") // Livraisons annulées
+  reportedOrders   Int      @default(0) @map("reported_orders") // Livraisons reportées
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryPersonId, date])
+  @@index([deliveryPersonId])
+  @@index([date])
+  @@map("day_shifts")
 }
 
