@@ -1,12 +1,32 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { MapIcon, User, Package, Phone, ChevronRight } from "lucide-react"
+import { useState } from "react"
+import { MapIcon, User, Package, Phone, ChevronRight, RefreshCw, AlertCircle } from "lucide-react"
 import dynamic from 'next/dynamic'
+import useSWR from 'swr'
 import { DriverStatsModal } from "@/components/delivery/driver-stats-modal"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+
+// Fetcher pour SWR
+const fetcher = async (url: string) => {
+  console.log('🗺️ SWR fetching map data from:', url)
+  const response = await fetch(url)
+  const data = await response.json()
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Erreur lors du chargement des données')
+  }
+  
+  console.log('🗺️ SWR map data loaded:', {
+    ordersCount: data.data.orders.length,
+    zonesCount: data.data.zones.length,
+    driversCount: data.data.drivers.length,
+  })
+  
+  return data.data
+}
 
 // Importer la carte V2 de manière dynamique pour éviter les erreurs SSR
 const DeliveryMapV2 = dynamic(() => import('@/components/delivery').then(mod => ({ default: mod.DeliveryMapV2 })), {
@@ -76,48 +96,31 @@ interface MapData {
 }
 
 export default function DeliveryMapPage() {
-  const [mapData, setMapData] = useState<MapData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [selectedDriver, setSelectedDriver] = useState<{ id: string; name: string } | null>(null)
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false)
 
-  // Récupérer uniquement les commandes du jour
-  const fetchMapData = async () => {
-    try {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      
-      const response = await fetch(`/api/delivery/map?date=${today.toISOString()}`)
-      const data = await response.json()
-
-      if (data.success) {
-        // Filtrer côté client pour s'assurer qu'on a uniquement les commandes du jour
-        const todayOrders = data.data.orders.filter((order: Order) => {
-          const orderDate = new Date(order.createdAt)
-          orderDate.setHours(0, 0, 0, 0)
-          return orderDate.getTime() === today.getTime()
-        })
-        
-        setMapData({
-          ...data.data,
-          orders: todayOrders
-        })
-      }
-    } catch (error) {
-      console.error('Erreur chargement carte:', error)
-    } finally {
-      setLoading(false)
+  // Utiliser SWR pour la récupération en temps réel
+  const { 
+    data: mapData, 
+    error, 
+    isLoading, 
+    mutate,
+    isValidating 
+  } = useSWR<MapData>(
+    '/api/delivery/driver-map',
+    fetcher,
+    {
+      refreshInterval: 10000, // Rafraîchir toutes les 10 secondes
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000, // Éviter les requêtes dupliquées
+      errorRetryCount: 3,
+      errorRetryInterval: 5000,
     }
-  }
+  )
 
-  useEffect(() => {
-    fetchMapData()
-    // Rafraîchir toutes les 30 secondes
-    const interval = setInterval(fetchMapData, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  if (loading) {
+  // Affichage du loading initial uniquement
+  if (isLoading && !mapData) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
@@ -128,6 +131,27 @@ export default function DeliveryMapPage() {
     )
   }
 
+  // Affichage d'erreur
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <p className="text-red-600 font-medium">Erreur de chargement</p>
+          <p className="text-gray-500 text-sm mt-2">{error.message}</p>
+          <Button 
+            onClick={() => mutate()} 
+            className="mt-4"
+            variant="outline"
+          >
+            Réessayer
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Affichage si aucune donnée
   if (!mapData) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -145,10 +169,40 @@ export default function DeliveryMapPage() {
   }
 
   return (
-    <div className="h-screen w-full flex">
-      {/* Sidebar liste des livreurs */}
-      <div className="w-80 border-r bg-white flex flex-col shadow-lg">
-        <div className="p-4 border-b bg-gray-50">
+    <div className="h-screen w-full flex flex-col">
+      {/* Header avec informations de debug */}
+      <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold">Carte de livraison</h1>
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            {isValidating && (
+              <div className="flex items-center gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                <span>Mise à jour...</span>
+              </div>
+            )}
+            <span>Auto-refresh: 10s</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => mutate()}
+            disabled={isValidating}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isValidating ? 'animate-spin' : ''}`} />
+            Rafraîchir
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex">
+        {/* Sidebar liste des livreurs */}
+        <div className="w-80 border-r bg-white flex flex-col shadow-lg">
+          <div className="p-4 border-b bg-gray-50">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <User className="h-5 w-5" />
             Livreurs actifs
@@ -159,6 +213,32 @@ export default function DeliveryMapPage() {
           <p className="text-sm text-gray-500 mt-1">
             Cliquez sur un livreur pour voir ses statistiques
           </p>
+          
+          {/* Statistiques des commandes */}
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-blue-50 p-2 rounded">
+              <div className="font-medium text-blue-800">Total</div>
+              <div className="text-blue-600">{mapData.orders.length}</div>
+            </div>
+            <div className="bg-orange-50 p-2 rounded">
+              <div className="font-medium text-orange-800">En attente</div>
+              <div className="text-orange-600">
+                {mapData.orders.filter(o => o.status === 'PENDING').length}
+              </div>
+            </div>
+            <div className="bg-green-50 p-2 rounded">
+              <div className="font-medium text-green-800">Confirmées</div>
+              <div className="text-green-600">
+                {mapData.orders.filter(o => o.status === 'CONFIRMED').length}
+              </div>
+            </div>
+            <div className="bg-purple-50 p-2 rounded">
+              <div className="font-medium text-purple-800">En cours</div>
+              <div className="text-purple-600">
+                {mapData.orders.filter(o => o.status === 'DELIVERING').length}
+              </div>
+            </div>
+          </div>
         </div>
 
         <ScrollArea className="flex-1">
@@ -226,15 +306,16 @@ export default function DeliveryMapPage() {
             )}
           </div>
         </ScrollArea>
-      </div>
+        </div>
 
-      {/* Carte */}
-      <div className="flex-1">
-        <DeliveryMapV2
-          orders={mapData.orders}
-          zones={mapData.zones}
-          drivers={mapData.drivers}
-        />
+        {/* Carte */}
+        <div className="flex-1">
+          <DeliveryMapV2
+            orders={mapData.orders}
+            zones={mapData.zones}
+            drivers={mapData.drivers}
+          />
+        </div>
       </div>
 
       {/* Modal des statistiques */}

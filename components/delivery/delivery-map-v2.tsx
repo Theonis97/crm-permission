@@ -111,6 +111,9 @@ const getStatusColor = (status: string): string => {
     PREPARING: '#8b5cf6',
     READY: '#10b981',
     DELIVERING: '#9c27b0',
+    DELIVERED: '#22c55e',
+    CANCELLED: '#ef4444',
+    REPORTED: '#f97316',
   }
   return colors[status] || '#6b7280'
 }
@@ -118,10 +121,13 @@ const getStatusColor = (status: string): string => {
 const getStatusLabel = (status: string): string => {
   const labels: Record<string, string> = {
     PENDING: 'En attente',
-    CONFIRMED: 'Confirmée',
+    CONFIRMED: 'Acceptée',  // Confirmée = Acceptée
     PREPARING: 'En préparation',
     READY: 'Prête',
-    DELIVERING: 'En livraison',
+    DELIVERING: 'En cours de livraison',
+    DELIVERED: 'Livrée',
+    CANCELLED: 'Annulée',
+    REPORTED: 'Reportée',
   }
   return labels[status] || status
 }
@@ -154,13 +160,14 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
     }, new Map<string, Store>()).values()
   )
 
-  // Tous les statuts possibles
+  // Tous les statuts possibles (sans PREPARING et READY)
   const statuses = [
     { value: 'PENDING', label: 'En attente', color: '#f59e0b' },
-    { value: 'CONFIRMED', label: 'Confirmée', color: '#3b82f6' },
-    { value: 'PREPARING', label: 'En préparation', color: '#8b5cf6' },
-    { value: 'READY', label: 'Prête', color: '#10b981' },
-    { value: 'DELIVERING', label: 'En livraison', color: '#9c27b0' },
+    { value: 'CONFIRMED', label: 'Acceptée', color: '#3b82f6' },
+    { value: 'DELIVERING', label: 'En cours de livraison', color: '#9c27b0' },
+    { value: 'DELIVERED', label: 'Livrée', color: '#22c55e' },
+    { value: 'CANCELLED', label: 'Annulée', color: '#ef4444' },
+    { value: 'REPORTED', label: 'Reportée', color: '#f97316' },
   ]
 
   // Filtrer les commandes

@@ -272,6 +272,7 @@ enum OrderStatus {
   DELIVERING
   DELIVERED
   CANCELLED
+  REPORTED
 }
 
 enum OrderPriority {
