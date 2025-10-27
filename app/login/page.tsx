@@ -106,20 +106,10 @@ export default function LoginPage() {
         
         <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-white">
           <div className="max-w-md space-y-6 text-center">
-            {/* Logo */}
-            <div className="mb-8">
-              <Image 
-                src="/logo.jpeg" 
-                alt="Logo" 
-                width={180} 
-                height={180}
-                className="mx-auto rounded-2xl shadow-2xl"
-                priority
-              />
-            </div>
+           
             
             <h1 className="text-4xl font-bold mb-4">
-              Bienvenue sur INTECH ERP
+              Bienvenue sur ERP-CRM
             </h1>
             <p className="text-xl text-blue-100">
               Gérez votre entreprise de manière intelligente et efficace
@@ -142,17 +132,7 @@ export default function LoginPage() {
       {/* Section droite - Formulaire */}
       <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
         <div className="w-full max-w-md">
-          {/* Logo mobile */}
-          <div className="lg:hidden flex justify-center mb-8">
-            <Image 
-              src="/logo.jpeg" 
-              alt="Logo" 
-              width={100} 
-              height={100}
-              className="rounded-xl shadow-lg"
-              priority
-            />
-          </div>
+          
 
           <Card className="shadow-xl border-0">
             <CardHeader className="space-y-3 pb-6">
@@ -279,7 +259,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-sm text-gray-500 mt-6">
-            © 2025 INTECH ERP. Tous droits réservés.
+            © 2025 ERP-CRM. Tous droits réservés.
           </p>
         </div>
       </div>

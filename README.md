@@ -1,6 +1,6 @@
-# 🚀 INTECH ERP
+# 🚀 ERP-CRM
 
-**INTECH ERP** est une plateforme complète de gestion d'entreprise (ERP/CRM) développée avec Next.js 15, React 19, TypeScript et Prisma. Le système offre une gestion avancée des utilisateurs, des contacts, des produits, des ventes, des opportunités et bien plus encore, avec un système de rôles et permissions granulaire.
+**ERP-CRM** est une plateforme complète de gestion d'entreprise (ERP/CRM) développée avec Next.js 15, React 19, TypeScript et Prisma. Le système offre une gestion avancée des utilisateurs, des contacts, des produits, des ventes, des opportunités et bien plus encore, avec un système de rôles et permissions granulaire.
 
 ---
 

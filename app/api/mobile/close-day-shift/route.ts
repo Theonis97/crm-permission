@@ -155,7 +155,7 @@ async function sendDayReportEmail(
     const transporter = createTransporter();
 
     const mailOptions = {
-      from: `"${process.env.APP_NAME || 'Inotech Delivery'}" <${process.env.SMTP_USER}>`,
+      from: `"${process.env.APP_NAME || 'ERP-CRM'}" <${process.env.SMTP_USER}>`,
       to: manager.email,
       subject: `Rapport de journée - ${deliveryPerson.name}`,
       html: `
@@ -217,7 +217,7 @@ async function sendDayReportEmail(
               
               <div class="footer">
                 <p>Date de clôture : ${dayShift.date.toLocaleString('fr-FR')}</p>
-                <p>Cet email a été envoyé automatiquement par le système Inotech Delivery.</p>
+                <p>Cet email a été envoyé automatiquement par le système ERP-CRM.</p>
               </div>
             </div>
           </div>

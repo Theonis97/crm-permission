@@ -96,7 +96,7 @@ export default function HomeLayout({
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold bg-blue-950 bg-clip-text text-transparent">
-                    INTECH ERP
+                    ERP-CRM
                   </h1>
                   <p className="text-xs text-gray-500">Plateforme de gestion</p>
                 </div>
@@ -108,7 +108,7 @@ export default function HomeLayout({
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Rechercher dans INTECH ERP..."
+                  placeholder="Rechercher dans ERP-CRM..."
                   className="pl-10 bg-gray-50 border-gray-200 focus:bg-white"
                 />
               </div>

@@ -22,7 +22,7 @@ async function main() {
       storeId: store.id,
       name: 'Test Livreur',
       phone: '+24106123456',
-      email: 'test-livreur@inotech.com',
+      email: 'test-livreur@erp-crm.com',
       password: 'password', // Mot de passe par défaut
       vehicle: 'Moto',
       plateNumber: 'LBV-123',

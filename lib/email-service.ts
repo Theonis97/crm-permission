@@ -68,7 +68,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     const transporter = createTransporter();
     
     const mailOptions = {
-      from: `"${process.env.APP_NAME || 'Inotech Delivery'}" <${process.env.SMTP_USER}>`,
+      from: `"${process.env.APP_NAME || 'ERP-CRM'}" <${process.env.SMTP_USER}>`,
       to: deliveryPerson.email,
       subject: 'Code de réinitialisation de mot de passe',
       html: `
@@ -94,7 +94,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
             <div class="content">
               <p>Bonjour <strong>${deliveryPerson.name}</strong>,</p>
               
-              <p>Vous avez demandé à réinitialiser votre mot de passe pour votre compte livreur Inotech.</p>
+              <p>Vous avez demandé à réinitialiser votre mot de passe pour votre compte livreur ERP-CRM.</p>
               
               <div style="text-align: center;">
                 <div style="margin: 30px 0;">
@@ -113,7 +113,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
               </div>
               
               <div class="footer">
-                <p>Cet email a été envoyé automatiquement par le système Inotech Delivery.</p>
+                <p>Cet email a été envoyé automatiquement par le système ERP-CRM.</p>
                 <p>Pour toute question, contactez votre administrateur.</p>
               </div>
             </div>
@@ -126,7 +126,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
         
         Bonjour ${deliveryPerson.name},
         
-        Vous avez demandé à réinitialiser votre mot de passe pour votre compte livreur Inotech.
+        Vous avez demandé à réinitialiser votre mot de passe pour votre compte livreur ERP-CRM.
         
         Votre code de réinitialisation : ${resetCode}
         
@@ -137,7 +137,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
         - Si vous n'avez pas demandé cette réinitialisation, ignorez cet email
         - Ne partagez jamais ce code avec personne
         
-        Cet email a été envoyé automatiquement par le système Inotech Delivery.
+        Cet email a été envoyé automatiquement par le système ERP-CRM.
       `,
     };
 

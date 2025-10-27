@@ -1,4 +1,4 @@
-# Configuration d'INTECH ERP
+# Configuration d'ERP-CRM
 
 ## Prérequis
 
