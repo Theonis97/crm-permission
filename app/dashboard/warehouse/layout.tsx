@@ -29,6 +29,7 @@ import {
   LogOut,
   ShoppingCart,
   Store,
+  Map,
 } from "lucide-react"
 
 interface MenuItem {
@@ -45,6 +46,12 @@ const menuItems: MenuItem[] = [
     label: "Vue d'ensemble",
     icon: LayoutGrid,
     href: "/dashboard/warehouse",
+  },
+  {
+    id: "maps",
+    label: "Carte",
+    icon: Map,
+    href: "/dashboard/delivery-map",
   },
   {
     id: "orders",

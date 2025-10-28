@@ -1,13 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { MapIcon, User, Package, Phone, ChevronRight, RefreshCw, AlertCircle } from "lucide-react"
+import { MapIcon, User, Package, Phone, ChevronRight, RefreshCw, AlertCircle, ArrowLeft } from "lucide-react"
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import { DriverStatsModal } from "@/components/delivery/driver-stats-modal"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useRouter } from "next/navigation"
 
 // Fetcher pour SWR
 const fetcher = async (url: string) => {
@@ -98,6 +99,7 @@ interface MapData {
 export default function DeliveryMapPage() {
   const [selectedDriver, setSelectedDriver] = useState<{ id: string; name: string } | null>(null)
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false)
+  const router = useRouter()
 
   // Utiliser SWR pour la récupération en temps réel
   const { 
@@ -173,6 +175,9 @@ export default function DeliveryMapPage() {
       {/* Header avec informations de debug */}
       <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <h1 className="text-lg font-semibold">Carte de livraison</h1>
           <div className="flex items-center gap-2 text-sm text-gray-500">
             {isValidating && (

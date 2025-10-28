@@ -440,10 +440,10 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
 
       {/* Panel Magasins */}
       <div 
-        className="absolute top-4 left-4 z-[1000] bg-white rounded-lg shadow-lg"
+        className="absolute top-4 right-4 z-[1000] bg-white rounded-lg"
         style={{ maxHeight: 'calc(100vh - 200px)' }}
       >
-        <Card className="w-80 border-0">
+        <Card className="w-80 border-0 shadow-none">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
