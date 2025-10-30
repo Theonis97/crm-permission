@@ -85,9 +85,9 @@ export async function POST(request: NextRequest) {
 
     try {
       const geocodeResult = await geocodeAddressWithCache(deliveryAddress);
-      if (geocodeResult) {
-        latitude = geocodeResult.latitude;
-        longitude = geocodeResult.longitude;
+      if (geocodeResult.success && geocodeResult.coordinates) {
+        latitude = geocodeResult.coordinates.lat;
+        longitude = geocodeResult.coordinates.lng;
 
         // Trouver la zone de livraison correspondante
         const zones = await prisma.deliveryZone.findMany({
@@ -95,16 +95,13 @@ export async function POST(request: NextRequest) {
             deliveryPersonId: user.id,
             isActive: true,
           },
-          include: {
-            polygon: true,
-          },
         });
 
         // Chercher si l'adresse est dans une zone
         for (const zone of zones) {
-          if (zone.polygon && geocodeResult.latitude && geocodeResult.longitude) {
+          if (zone.coordinates && geocodeResult.coordinates) {
             // Vérifier si les coordonnées sont dans la zone
-            const isInZone = checkPointInZone(geocodeResult.latitude, geocodeResult.longitude, zone.polygon);
+            const isInZone = checkPointInZone(geocodeResult.coordinates.lat, geocodeResult.coordinates.lng, zone.coordinates);
             if (isInZone) {
               deliveryZoneId = zone.id;
               break;
@@ -159,13 +156,14 @@ export async function POST(request: NextRequest) {
         deliveryLatitude: latitude || null,
         deliveryLongitude: longitude || null,
         deliveryZoneId: deliveryZoneId,
-        deliveryNotes: notes || null,
+        notes: notes || null,
         status: status || 'PENDING',
         subtotal,
         total,
         paymentMethod: 'CASH',
         paymentStatus: 'PENDING',
         deliveryPersonId: user.id, // Auto-assigner le livreur
+        createdById: user.id, // Créé par le livreur
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,

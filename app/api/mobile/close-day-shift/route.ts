@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateMobileUser } from '@/lib/auth-mobile';
 import { prisma } from '@/lib/prisma';
 import { createTransporter } from '@/lib/email-service';
+import { calculateCommission } from '@/lib/commission-calculator';
 
 /**
  * POST /api/mobile/close-day-shift
@@ -68,12 +69,12 @@ export async function POST(request: NextRequest) {
     const totalOrders = dayOrders.length;
     const deliveredOrders = dayOrders.filter(o => o.status === 'DELIVERED').length;
     const cancelledOrders = dayOrders.filter(o => o.status === 'CANCELLED').length;
-    const reportedOrders = dayOrders.filter(o => o.status === 'REPORTED').length;
+    const reportedOrders = dayOrders.filter(o => o.status === 'PENDING').length; // PENDING = reportée
 
     // Calculer la commission totale
     const commission = dayOrders
       .filter(o => o.status === 'DELIVERED')
-      .reduce((sum, order) => sum + (order.commission || 0), 0);
+      .reduce((sum, order) => sum + calculateCommission(order.total), 0);
 
     // Vérifier si la journée a déjà été clôturée
     const existingShift = await prisma.dayShift.findFirst({

@@ -33,7 +33,6 @@ export async function GET(request: NextRequest) {
         product: {
           include: {
             category: true,
-            images: true,
           },
         },
         variant: true,
@@ -63,7 +62,7 @@ export async function GET(request: NextRequest) {
         name: item.product.name,
         sku: item.product.sku,
         description: item.product.description,
-        price: item.variant?.price || item.product.prixVente,
+        price: item.variant?.prixVente || item.product.prixVente,
         category: categoryName,
         quantity: item.quantity,
         reserved: item.reserved,
@@ -86,7 +85,7 @@ export async function GET(request: NextRequest) {
           name: item.product.name,
           sku: item.product.sku,
           description: item.product.description,
-          price: item.variant?.price || item.product.prixVente,
+          price: item.variant?.prixVente || item.product.prixVente,
           category: item.product.category?.name || 'Sans catégorie',
           quantity: item.quantity,
           reserved: item.reserved,
