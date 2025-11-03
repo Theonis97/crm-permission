@@ -26,20 +26,34 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
     const {
       deliveryAddress,
-      productCode,
-      quantity,
-      price,
+      customerName,
+      products,
+      totalAmount,
       phone,
+      orderSource = 'whatsapp',
+      rawMessage,
+      senderId,
+      timestamp,
+      isValid = true,
+      errors = []
     } = data
 
-    console.log('📦 Données reçues:', { deliveryAddress, productCode, quantity, price, phone })
+    console.log('📦 Données reçues:', { 
+      deliveryAddress, 
+      customerName, 
+      products: products?.length || 0, 
+      totalAmount, 
+      phone, 
+      isValid,
+      errors 
+    })
 
     // Validation des champs requis
-    if (!deliveryAddress || !productCode || !quantity || !price || !phone) {
+    if (!phone || !products || products.length === 0 || !totalAmount) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Champs requis manquants (deliveryAddress, productCode, quantity, price, phone)" 
+          error: "Champs requis manquants (phone, products, totalAmount)" 
         },
         { status: 400 }
       )
@@ -107,52 +121,86 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Rechercher le produit dans la base de données
-    console.log(`🔍 Recherche du produit avec code: "${productCode}"...`)
+    // 4. Rechercher et valider les produits
+    console.log(`🔍 Recherche de ${products.length} produit(s)...`)
     
-    // Recherche par SKU exact d'abord
-    let product = await prisma.product.findFirst({
-      where: {
-        sku: productCode
-      }
-    })
+    const orderItems = []
+    const productNotFoundErrors = []
+    let subtotal = 0
 
-    // Si pas trouvé, recherche par nom partiel (productCode peut être dans le nom)
-    if (!product) {
-      console.log(`🔍 SKU non trouvé, recherche par nom contenant "${productCode}"...`)
-      product = await prisma.product.findFirst({
+    for (const productData of products) {
+      const { productCode, quantity, unitPrice, total } = productData
+      console.log(`🔍 Recherche produit: "${productCode}"`)
+      
+      // Recherche par SKU exact d'abord
+      let product = await prisma.product.findFirst({
         where: {
-          OR: [
-            { name: { contains: productCode, mode: 'insensitive' } },
-            { sku: { contains: productCode, mode: 'insensitive' } }
-          ]
+          sku: productCode
         }
       })
-    }
 
-    if (!product) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: `Produit "${productCode}" introuvable dans le système` 
-        },
-        { status: 404 }
-      )
-    }
-
-    console.log(`✅ Produit trouvé: ${product.name} (${product.id})`)
-
-    // Vérifier le stock du produit dans le magasin
-    const storeProduct = await prisma.storeProduct.findFirst({
-      where: {
-        storeId: store.id,
-        productId: product.id
+      // Si pas trouvé, recherche par nom partiel
+      if (!product) {
+        console.log(`🔍 SKU non trouvé, recherche par nom contenant "${productCode}"...`)
+        product = await prisma.product.findFirst({
+          where: {
+            OR: [
+              { name: { contains: productCode, mode: 'insensitive' } },
+              { sku: { contains: productCode, mode: 'insensitive' } }
+            ]
+          }
+        })
       }
-    })
 
-    if (!storeProduct || storeProduct.stock < quantity) {
-      console.warn(`⚠️ Stock insuffisant. Disponible: ${storeProduct?.stock || 0}, Demandé: ${quantity}`)
-      // On continue quand même la création de commande
+      if (!product) {
+        console.warn(`❌ Produit "${productCode}" introuvable`)
+        productNotFoundErrors.push(productCode)
+        
+        // Créer un item avec produit null pour traçabilité
+        orderItems.push({
+          productId: null,
+          name: productCode,
+          sku: null,
+          quantity: quantity || 1,
+          unitPrice: unitPrice || 0,
+          taxRate: 0,
+          discount: 0,
+          total: total || 0
+        })
+        subtotal += total || 0
+        continue
+      }
+
+      console.log(`✅ Produit trouvé: ${product.name} (${product.id})`)
+
+      // Vérifier le stock du produit dans le magasin
+      const storeProduct = await prisma.storeProduct.findFirst({
+        where: {
+          storeId: store.id,
+          productId: product.id
+        }
+      })
+
+      if (!storeProduct || storeProduct.stock < quantity) {
+        console.warn(`⚠️ Stock insuffisant pour ${product.name}. Disponible: ${storeProduct?.stock || 0}, Demandé: ${quantity}`)
+      }
+
+      // Utiliser le prix du message ou le prix du produit
+      const finalUnitPrice = unitPrice || product.prixVente
+      const finalTotal = total || (finalUnitPrice * quantity)
+
+      orderItems.push({
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        quantity: quantity || 1,
+        unitPrice: finalUnitPrice,
+        taxRate: product.tva || 0,
+        discount: 0,
+        total: finalTotal
+      })
+
+      subtotal += finalTotal
     }
 
     // 5. Vérifier/créer le client avec le numéro de téléphone
@@ -180,8 +228,8 @@ export async function POST(request: NextRequest) {
     if (!contact) {
       console.log('➕ Client non trouvé, création d\'un nouveau contact...')
       
-      // Extraire un nom du téléphone ou utiliser un générique
-      const customerName = `Client ${phone.slice(-4)}`
+      // Utiliser le nom fourni ou générer un nom générique
+      const finalCustomerName = customerName || `Client ${phone.slice(-4)}`
       
       contact = await prisma.contact.create({
         data: {
@@ -215,54 +263,90 @@ export async function POST(request: NextRequest) {
       update: {}
     })
 
-    // 6. Créer la commande
+    // 6. Déterminer le statut de la commande et créer les notes
     console.log('📝 Création de la commande...')
     
     // Générer un numéro de commande unique
     const orderCount = await prisma.storeOrder.count()
     const orderNumber = `WA-${new Date().getFullYear()}-${String(orderCount + 1).padStart(6, "0")}`
 
-    const unitPrice = price / quantity
-    const subtotal = price
-    const totalTax = (subtotal * product.tva) / 100
+    // Déterminer le statut selon la validité
+    const orderStatus = isValid ? 'PENDING' : 'TOBEVALIDATED' as any
+    
+    // Calculer les totaux
     const deliveryFee = deliveryZoneId ? 
       (await prisma.deliveryZone.findUnique({ where: { id: deliveryZoneId } }))?.deliveryFee || 0 
       : 0
-    const total = subtotal + totalTax + deliveryFee
+    
+    const totalTax = subtotal * 0.05 // 5% de TVA par défaut
+    const finalTotal = totalAmount || (subtotal + totalTax + deliveryFee)
+
+    // Créer les notes détaillées
+    const orderNotes = []
+    
+    // Ajouter les erreurs détectées
+    if (errors.length > 0) {
+      orderNotes.push(`🏷️ ERREURS DÉTECTÉES: ${errors.join(', ')}`)
+    }
+    
+    // Ajouter les produits non trouvés
+    if (productNotFoundErrors.length > 0) {
+      orderNotes.push(`❌ PRODUITS NON TROUVÉS: ${productNotFoundErrors.join(', ')}`)
+    }
+    
+    // Ajouter les spécificités des produits (couleurs, tailles, etc.)
+    const productSpecifics: string[] = []
+    products.forEach((p: any) => {
+      if (p.productCode.includes('vert') || p.productCode.includes('rose') || p.productCode.includes('violet')) {
+        const colors: string[] = []
+        if (p.productCode.includes('vert')) colors.push('vert')
+        if (p.productCode.includes('rose')) colors.push('rose')
+        if (p.productCode.includes('violet')) colors.push('violet')
+        productSpecifics.push(`${p.productCode}: couleur(s) ${colors.join(', ')}`)
+      }
+      if (p.productCode.includes('12L') || p.productCode.includes('32g')) {
+        const specs = p.productCode.match(/\d+[LGlg]/g) || []
+        if (specs.length > 0) {
+          productSpecifics.push(`${p.productCode}: spécifications ${specs.join(', ')}`)
+        }
+      }
+    })
+    
+    if (productSpecifics.length > 0) {
+      orderNotes.push(`🎨 SPÉCIFICITÉS: ${productSpecifics.join(' | ')}`)
+    }
+    
+    // Ajouter le message brut pour référence
+    if (rawMessage) {
+      orderNotes.push(`📱 MESSAGE ORIGINAL: ${rawMessage.substring(0, 200)}${rawMessage.length > 200 ? '...' : ''}`)
+    }
 
     const order = await prisma.storeOrder.create({
       data: {
         number: orderNumber,
         storeId: store.id,
         contactId: contact.id,
-        customerName: contact.firstName || contact.lastName || `Client ${phone}`,
+        customerName: customerName || contact.firstName || contact.lastName || `Client ${phone}`,
         customerPhone: phone,
         customerEmail: contact.email,
-        deliveryAddress: deliveryAddress,
+        deliveryAddress: deliveryAddress || 'Adresse non précisée',
         deliveryLatitude: deliveryLatitude,
         deliveryLongitude: deliveryLongitude,
         deliveryZoneId: deliveryZoneId,
-        status: 'PENDING',
+        status: orderStatus,
         priority: 'NORMAL',
         subtotal: subtotal,
         totalDiscount: 0,
         totalTax: totalTax,
         deliveryFee: deliveryFee,
-        total: total,
+        total: finalTotal,
         paymentMethod: 'CASH',
         paymentStatus: 'PENDING',
+        orderSource: orderSource,
+        notes: orderNotes.join('\n'),
         createdById: systemUser.id,
         items: {
-          create: [{
-            productId: product.id,
-            name: product.name,
-            sku: product.sku,
-            quantity: quantity,
-            unitPrice: unitPrice,
-            taxRate: product.tva,
-            discount: 0,
-            total: subtotal + totalTax
-          }]
+          create: orderItems as any
         }
       },
       include: {
@@ -283,27 +367,31 @@ export async function POST(request: NextRequest) {
       },
       data: {
         totalOrders: { increment: 1 },
-        totalSpent: { increment: total },
+        totalSpent: { increment: finalTotal },
         lastOrderAt: new Date()
       }
     })
 
-    console.log('🎉 Commande WhatsApp créée avec succès!')
+    console.log(`🎉 Commande WhatsApp créée avec succès! Statut: ${orderStatus}`)
 
     return NextResponse.json({
       success: true,
       orderId: order.id,
       orderNumber: order.number,
       message: `Commande ${order.number} créée avec succès`,
+      status: orderStatus,
+      needsValidation: !isValid,
       details: {
         store: store.name,
-        product: product.name,
-        quantity: quantity,
-        total: total,
-        deliveryZone: order.deliveryZone?.name || 'Non définie',
+        productsCount: products.length,
+        validProducts: orderItems.filter(item => item.productId !== null).length,
+        invalidProducts: productNotFoundErrors.length,
+        total: finalTotal,
+        deliveryZone: deliveryZoneId ? 'Zone trouvée' : 'Non définie',
         coordinates: geocodingResult.success ? 
           `${deliveryLatitude}, ${deliveryLongitude}` : 
-          'Non géocodée'
+          'Non géocodée',
+        errors: errors.length > 0 ? errors : undefined
       }
     })
 

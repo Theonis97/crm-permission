@@ -265,6 +265,7 @@ enum StockType {
 }
 
 enum OrderStatus {
+  TOBEVALIDATED // Commande à valider (données incomplètes)
   PENDING
   CONFIRMED
   PREPARING
@@ -384,6 +385,7 @@ model StoreOrder {
 
   notes        String?
   cancelReason String? @map("cancel_reason")
+  orderSource  String?  @map("order_source") // Source de la commande (whatsapp, pos, etc.)
 
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
