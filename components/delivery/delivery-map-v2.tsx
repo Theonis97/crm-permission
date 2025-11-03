@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { MapPin, Truck, Package, X, Filter, Store, CheckSquare, Square } from 'lucide-react'
+import { MapPin, Truck, Package, X, Filter, Store, CheckSquare, Square, Edit } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { UnassignedOrdersModal } from './unassigned-orders-modal'
 
 interface Order {
   id: string
@@ -18,13 +19,22 @@ interface Order {
   customerName: string
   customerPhone: string
   deliveryAddress: string
-  coordinates: { lat: number; lng: number }
+  coordinates: { lat: number; lng: number } | null
   total: number
   priority: string
   deliveryZone: { id: string; name: string; color: string } | null
   deliveryPerson: { id: string; name: string } | null
   store: { id: string; name: string }
   createdAt: string
+  requestedDeliveryDate?: string
+  items?: Array<{
+    id: string
+    productName: string
+    quantity: number
+    unitPrice: number
+    total: number
+  }>
+  notes?: string
 }
 
 interface Zone {
@@ -58,6 +68,7 @@ interface DeliveryMapV2Props {
   orders: Order[]
   zones: Zone[]
   drivers: Driver[]
+  onOrderUpdated?: () => void
 }
 
 // Créer des icônes customisées
@@ -132,7 +143,7 @@ const getStatusLabel = (status: string): string => {
   return labels[status] || status
 }
 
-export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2Props) {
+export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }: DeliveryMapV2Props) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
   
@@ -141,6 +152,9 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [showStorePanel, setShowStorePanel] = useState(true)
   const [showStatusPanel, setShowStatusPanel] = useState(true)
+  
+  // État pour le modal des commandes sans zone
+  const [isUnassignedModalOpen, setIsUnassignedModalOpen] = useState(false)
 
   // Extraire les magasins uniques avec compteur de commandes
   const stores: Store[] = Array.from(
@@ -278,6 +292,9 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
 
     // 2. Ajouter les markers de commandes filtrées
     filteredOrders.forEach(order => {
+      // Ignorer les commandes sans coordonnées (elles seront affichées dans une liste séparée)
+      if (!order.coordinates) return;
+      
       const marker = L.marker(
         [order.coordinates.lat, order.coordinates.lng],
         { icon: createCustomIcon(getStatusColor(order.status), 'pin') }
@@ -410,7 +427,9 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
       const bounds = L.latLngBounds([])
       
       filteredOrders.forEach(order => {
-        bounds.extend([order.coordinates.lat, order.coordinates.lng])
+        if (order.coordinates) {
+          bounds.extend([order.coordinates.lat, order.coordinates.lng])
+        }
       })
       
       zones.forEach(zone => {
@@ -562,6 +581,38 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
             )}
           </CardContent>
         </Card>
+
+        {/* Panel Commandes sans zone */}
+        {(() => {
+          const ordersWithoutZone = filteredOrders.filter(order => !order.coordinates);
+          if (ordersWithoutZone.length === 0) return null;
+          
+          return (
+            <Card className="w-80 border-0 mt-4 border-orange-200 bg-orange-50">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="font-bold text-base text-orange-800">Zone non assignée</h3>
+                 
+                </div>
+                <p className="text-xs text-orange-700 mb-3">
+                  Commandes sans zone de livraison définie
+                </p>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mb-3 border-orange-300 text-orange-700 hover:bg-orange-100"
+                  onClick={() => setIsUnassignedModalOpen(true)}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Gérer toutes ({ordersWithoutZone.length})
+                </Button>
+                
+               
+              </CardContent>
+            </Card>
+          );
+        })()}
       </div>
 
       {/* Compteur de commandes filtrées */}
@@ -570,7 +621,35 @@ export default function DeliveryMapV2({ orders, zones, drivers }: DeliveryMapV2P
           <Package className="inline h-4 w-4 mr-2 text-blue-600" />
           {filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''} affichée{filteredOrders.length > 1 ? 's' : ''}
         </p>
+        {(() => {
+          const withoutZone = filteredOrders.filter(order => !order.coordinates).length;
+          if (withoutZone > 0) {
+            return (
+              <p className="text-xs text-orange-600 mt-1">
+                ⚠️ {withoutZone} sans zone assignée
+              </p>
+            );
+          }
+        })()}
       </div>
+
+      {/* Modal des commandes sans zone */}
+      <UnassignedOrdersModal
+        open={isUnassignedModalOpen}
+        onOpenChange={setIsUnassignedModalOpen}
+        orders={filteredOrders
+          .filter(order => !order.coordinates && order.items)
+          .map(order => ({
+            ...order,
+            items: order.items || []
+          }))
+        }
+        onOrderUpdated={() => {
+          if (onOrderUpdated) {
+            onOrderUpdated()
+          }
+        }}
+      />
     </div>
   )
 }

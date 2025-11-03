@@ -49,7 +49,7 @@ interface Order {
   customerName: string
   customerPhone: string
   deliveryAddress: string
-  coordinates: { lat: number; lng: number }
+  coordinates: { lat: number; lng: number } | null
   total: number
   priority: string
   deliveryZone: { id: string; name: string; color: string } | null
@@ -319,6 +319,7 @@ export default function DeliveryMapPage() {
             orders={mapData.orders}
             zones={mapData.zones}
             drivers={mapData.drivers}
+            onOrderUpdated={() => mutate()}
           />
         </div>
       </div>

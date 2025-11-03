@@ -170,7 +170,6 @@ export async function GET(request: NextRequest) {
     const ordersWithCoordinates = await Promise.all(geocodingPromises);
 
     const formattedOrders = ordersWithCoordinates
-      .filter(order => order.deliveryLatitude && order.deliveryLongitude) // Ne garder que celles avec coordonnées
       .map(order => ({
       id: order.id,
       number: order.number,
@@ -178,18 +177,20 @@ export async function GET(request: NextRequest) {
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       deliveryAddress: order.deliveryAddress,
-      coordinates: {
-        lat: order.deliveryLatitude!,
-        lng: order.deliveryLongitude!,
-      },
+      coordinates: order.deliveryLatitude && order.deliveryLongitude ? {
+        lat: order.deliveryLatitude,
+        lng: order.deliveryLongitude,
+      } : null,
       total: order.total,
       priority: order.priority,
+      requestedDeliveryDate: order.requestedDeliveryDate,
+      notes: order.notes,
       items: order.items.map((item: any) => ({
         id: item.id,
-        productName: item.product.name,
+        productName: item.product?.name || item.name || 'Produit inconnu',
         quantity: item.quantity,
-        price: item.unitPrice || 0,
-        subtotal: item.total || (item.quantity * (item.unitPrice || 0)),
+        unitPrice: item.unitPrice || 0,
+        total: item.total || (item.quantity * (item.unitPrice || 0)),
       })),
       deliveryZone: order.deliveryZone ? {
         id: order.deliveryZone.id,
