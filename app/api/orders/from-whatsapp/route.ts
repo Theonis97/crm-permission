@@ -125,7 +125,6 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 Recherche de ${products.length} produit(s)...`)
     
     const orderItems = []
-    const productNotFoundErrors = []
     let subtotal = 0
 
     for (const productData of products) {
@@ -153,22 +152,20 @@ export async function POST(request: NextRequest) {
       }
 
       if (!product) {
-        console.warn(`❌ Produit "${productCode}" introuvable`)
-        productNotFoundErrors.push(productCode)
+        console.error(`❌ Produit "${productCode}" introuvable dans la base de données`)
         
-        // Créer un item avec produit null pour traçabilité
-        orderItems.push({
-          productId: null,
-          name: productCode,
-          sku: null,
-          quantity: quantity || 1,
-          unitPrice: unitPrice || 0,
-          taxRate: 0,
-          discount: 0,
-          total: total || 0
-        })
-        subtotal += total || 0
-        continue
+        // Retourner immédiatement une erreur au lieu de continuer
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Produit "${productCode}" non trouvé dans la base de données. Impossible d'enregistrer la commande.`,
+            details: {
+              productNotFound: productCode,
+              availableProducts: "Vérifiez le nom ou le code du produit dans le catalogue"
+            }
+          },
+          { status: 400 }
+        )
       }
 
       console.log(`✅ Produit trouvé: ${product.name} (${product.id})`)
@@ -289,10 +286,7 @@ export async function POST(request: NextRequest) {
       orderNotes.push(`🏷️ ERREURS DÉTECTÉES: ${errors.join(', ')}`)
     }
     
-    // Ajouter les produits non trouvés
-    if (productNotFoundErrors.length > 0) {
-      orderNotes.push(`❌ PRODUITS NON TROUVÉS: ${productNotFoundErrors.join(', ')}`)
-    }
+    // Note: Les produits non trouvés causent maintenant un arrêt immédiat de l'API
     
     // Ajouter les spécificités des produits (couleurs, tailles, etc.)
     const productSpecifics: string[] = []
@@ -385,7 +379,7 @@ export async function POST(request: NextRequest) {
         store: store.name,
         productsCount: products.length,
         validProducts: orderItems.filter(item => item.productId !== null).length,
-        invalidProducts: productNotFoundErrors.length,
+        invalidProducts: 0, // Produits non trouvés causent maintenant un arrêt immédiat
         total: finalTotal,
         deliveryZone: deliveryZoneId ? 'Zone trouvée' : 'Non définie',
         coordinates: geocodingResult.success ? 
