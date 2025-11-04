@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { MapPin, Truck, Package, X, Filter, Store, CheckSquare, Square, Edit } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UnassignedOrdersModal } from './unassigned-orders-modal'
+import { OrderEditModal } from './order-edit-modal'
 
 interface Order {
   id: string
@@ -147,6 +148,23 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
   
+  // Fonction globale pour éditer une commande depuis la carte
+  useEffect(() => {
+    (window as any).editOrderFromMap = (orderId: string) => {
+      const order = orders.find(o => o.id === orderId)
+      if (order && order.items) {
+        setSelectedOrderForEdit({
+          ...order,
+          items: order.items || []
+        })
+        setIsEditModalOpen(true)
+      }
+    }
+    return () => {
+      delete (window as any).editOrderFromMap
+    }
+  }, [orders])
+  
   // États pour les filtres
   const [selectedStores, setSelectedStores] = useState<string[]>([])
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
@@ -155,6 +173,15 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
   
   // État pour le modal des commandes sans zone
   const [isUnassignedModalOpen, setIsUnassignedModalOpen] = useState(false)
+  
+  // État pour l'édition d'une commande depuis la carte
+  const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<Order | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  
+  // États pour préserver la position de la carte et les popups (temporairement désactivés)
+  // const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
+  // const [mapZoom, setMapZoom] = useState<number>(13)
+  // const [openPopupId, setOpenPopupId] = useState<string | null>(null)
 
   // Extraire les magasins uniques avec compteur de commandes
   const stores: Store[] = Array.from(
@@ -184,43 +211,45 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
     { value: 'REPORTED', label: 'Reportée', color: '#f97316' },
   ]
 
-  // Filtrer les commandes
-  const filteredOrders = orders.filter(order => {
-    // Filtrer par magasin
-    if (selectedStores.length > 0 && !selectedStores.includes(order.store.id)) {
-      return false
-    }
-    // Filtrer par statut
-    if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
-      return false
-    }
-    return true
-  })
+  // Filtrer les commandes avec useMemo pour éviter les recalculs
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      // Filtrer par magasin
+      if (selectedStores.length > 0 && !selectedStores.includes(order.store.id)) {
+        return false
+      }
+      // Filtrer par statut
+      if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
+        return false
+      }
+      return true
+    })
+  }, [orders, selectedStores, selectedStatuses])
 
-  // Toggle magasin
-  const toggleStore = (storeId: string) => {
+  // Toggle magasin avec useCallback
+  const toggleStore = useCallback((storeId: string) => {
     setSelectedStores(prev => 
       prev.includes(storeId) 
         ? prev.filter(id => id !== storeId)
         : [...prev, storeId]
     )
-  }
+  }, [])
 
-  // Toggle statut
-  const toggleStatus = (status: string) => {
+  // Toggle statut avec useCallback
+  const toggleStatus = useCallback((status: string) => {
     setSelectedStatuses(prev => 
       prev.includes(status) 
         ? prev.filter(s => s !== status)
         : [...prev, status]
     )
-  }
+  }, [])
 
   // Initialiser la carte
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return
 
     // Initialiser la carte centrée sur Abidjan, Côte d'Ivoire
-    const map = L.map(mapRef.current).setView([5.3600, -4.0083], 12)
+    const map = L.map(mapRef.current).setView([5.3600, -4.0083], 13)
 
     // Ajouter la couche de tuiles OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -234,9 +263,9 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
       map.remove()
       mapInstanceRef.current = null
     }
-  }, [])
+  }, []) // Pas de dépendances pour éviter les re-rendus
 
-  // Mettre à jour les markers
+  // Mettre à jour les markers avec dépendances optimisées
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map) return
@@ -290,76 +319,129 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
       }
     })
 
-    // 2. Ajouter les markers de commandes filtrées
+    // 2. Grouper les commandes par coordonnées pour éviter la superposition
+    const groupedOrders = new Map<string, Order[]>()
     filteredOrders.forEach(order => {
-      // Ignorer les commandes sans coordonnées (elles seront affichées dans une liste séparée)
       if (!order.coordinates) return;
       
+      const key = `${order.coordinates.lat.toFixed(6)},${order.coordinates.lng.toFixed(6)}`
+      if (!groupedOrders.has(key)) {
+        groupedOrders.set(key, [])
+      }
+      groupedOrders.get(key)!.push(order)
+    })
+
+    // 3. Ajouter les markers de commandes groupées
+    groupedOrders.forEach((orders, coordKey) => {
+      const [lat, lng] = coordKey.split(',').map(Number)
+      const mainOrder = orders[0]
+      
+      // Créer un marqueur avec une couleur basée sur le statut principal
       const marker = L.marker(
-        [order.coordinates.lat, order.coordinates.lng],
-        { icon: createCustomIcon(getStatusColor(order.status), 'pin') }
+        [lat, lng],
+        { icon: createCustomIcon(getStatusColor(mainOrder.status), 'pin') }
       ).addTo(map)
 
-      // Popup amélioré pour la commande
-      const popupContent = `
-        <div style="padding: 12px; min-width: 260px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 2px solid ${getStatusColor(order.status)}; padding-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #111827;">
-              📦 ${order.number}
-            </h3>
-            <span style="background: ${getStatusColor(order.status)}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">
-              ${getStatusLabel(order.status)}
-            </span>
-          </div>
-          
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="background: #f9fafb; padding: 8px; border-radius: 6px;">
-              <p style="margin: 0 0 4px 0; font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: 600;">Client</p>
-              <p style="margin: 0; font-size: 14px; font-weight: 600; color: #111827;">${order.customerName}</p>
-              <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">📞 ${order.customerPhone || 'N/A'}</p>
+      // Popup pour les commandes (simple ou groupées)
+      let popupContent = ''
+      
+      if (orders.length === 1) {
+        // Une seule commande
+        const order = orders[0]
+        popupContent = `
+          <div style="padding: 16px; min-width: 280px; background: white;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #111827;">
+                ${order.number}
+              </h3>
+              <span style="background: ${getStatusColor(order.status)}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 500;">
+                ${getStatusLabel(order.status)}
+              </span>
             </div>
-            
-            <div style="background: #f9fafb; padding: 8px; border-radius: 6px;">
-              <p style="margin: 0 0 4px 0; font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: 600;">Adresse</p>
-              <p style="margin: 0; font-size: 13px; color: #111827; line-height: 1.4;">${order.deliveryAddress}</p>
+            <div style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: #6b7280; font-size: 13px;">Client:</span>
+                <span style="color: #111827; font-size: 13px; font-weight: 500;">${order.customerName}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: #6b7280; font-size: 13px;">Téléphone:</span>
+                <span style="color: #111827; font-size: 13px;">${order.customerPhone}</span>
+              </div>
+              <div style="display: flex; align-items: start; gap: 8px;">
+                <span style="color: #6b7280; font-size: 13px;">Adresse:</span>
+                <span style="color: #111827; font-size: 12px; line-height: 1.4;">${order.deliveryAddress}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid #f3f4f6;">
+                <span style="color: #6b7280; font-size: 13px;">Total:</span>
+                <span style="color: #111827; font-size: 15px; font-weight: 600;">${order.total.toLocaleString()} FCFA</span>
+              </div>
             </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #ecfdf5; padding: 8px; border-radius: 6px; border-left: 3px solid #059669;">
-              <span style="font-size: 12px; color: #047857; font-weight: 600;">Total</span>
-              <span style="font-size: 16px; font-weight: 700; color: #059669;">${order.total.toLocaleString()} FCFA</span>
-            </div>
-            
-            ${order.deliveryZone ? `
-              <div style="background: #f0f9ff; padding: 8px; border-radius: 6px; border-left: 3px solid #3b82f6;">
-                <p style="margin: 0; font-size: 12px; color: #1e40af;">
-                  <strong>Zone:</strong> ${order.deliveryZone.name}
-                </p>
+            ${order.deliveryPerson ? `
+              <div style="background: #f9fafb; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                <span style="color: #6b7280; font-size: 12px;">Livreur: </span>
+                <span style="color: #111827; font-size: 12px; font-weight: 500;">${order.deliveryPerson.name}</span>
               </div>
             ` : ''}
-            
-            ${order.deliveryPerson ? `
-              <div style="background: #fef3c7; padding: 8px; border-radius: 6px; border-left: 3px solid #f59e0b;">
-                <p style="margin: 0; font-size: 12px; color: #92400e;">
-                  <strong>🚚 Livreur:</strong> ${order.deliveryPerson.name}
-                </p>
+            ${order.deliveryZone ? `
+              <div style="background: #f9fafb; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                <span style="color: #6b7280; font-size: 12px;">Zone: </span>
+                <span style="color: #111827; font-size: 12px; font-weight: 500;">${order.deliveryZone.name}</span>
               </div>
-            ` : `
-              <div style="background: #fee2e2; padding: 8px; border-radius: 6px; border-left: 3px solid #dc2626;">
-                <p style="margin: 0; font-size: 12px; color: #991b1b;">
-                  <strong>⚠️ Aucun livreur assigné</strong>
-                </p>
-              </div>
-            `}
-            
-            <div style="background: #f3f4f6; padding: 6px; border-radius: 6px;">
-              <p style="margin: 0; font-size: 11px; color: #6b7280;">
-                <strong>Magasin:</strong> ${order.store.name}
-              </p>
-            </div>
+            ` : ''}
+            <button 
+              onclick="window.editOrderFromMap('${order.id}')"
+              style="width: 100%; background: #111827; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 8px;"
+              onmouseover="this.style.background='#374151'"
+              onmouseout="this.style.background='#111827'"
+            >
+              Modifier la commande
+            </button>
           </div>
-        </div>
-      `
-      marker.bindPopup(popupContent, { maxWidth: 300 })
+        `
+      } else {
+        // Plusieurs commandes groupées
+        const ordersList = orders.map(order => `
+          <div style="margin-bottom: 8px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: white;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-weight: 600; color: #111827; font-size: 13px;">${order.number}</span>
+              <span style="background: ${getStatusColor(order.status)}; color: white; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 500;">
+                ${getStatusLabel(order.status)}
+              </span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;">
+              <span style="font-size: 12px; color: #111827;">${order.customerName}</span>
+              <span style="font-size: 11px; color: #6b7280;">${order.customerPhone}</span>
+              <span style="font-size: 13px; font-weight: 600; color: #111827; margin-top: 4px; padding-top: 4px; border-top: 1px solid #f3f4f6;">
+                ${order.total.toLocaleString()} FCFA
+              </span>
+            </div>
+            <button 
+              onclick="window.editOrderFromMap('${order.id}')"
+              style="width: 100%; background: #111827; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer;"
+              onmouseover="this.style.background='#374151'"
+              onmouseout="this.style.background='#111827'"
+            >
+              Modifier
+            </button>
+          </div>
+        `).join('')
+        
+        popupContent = `
+          <div style="padding: 16px; min-width: 300px; max-height: 400px; overflow-y: auto; background: white;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+              <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #111827;">
+                ${orders.length} commandes groupées
+              </h3>
+              <span style="background: #f3f4f6; color: #374151; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;">
+                ${orders.length}
+              </span>
+            </div>
+            ${ordersList}
+          </div>
+        `
+      }
+      
+      marker.bindPopup(popupContent, { maxWidth: 350, maxHeight: 450 })
     })
 
     // 3. Ajouter les markers des livreurs
@@ -522,7 +604,7 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
         </Card>
 
         {/* Panel Statuts */}
-        <Card className="w-80 border-0 mt-4">
+        <Card className="w-80 border-0 shadow-none mt-4">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -650,6 +732,22 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
           }
         }}
       />
+
+      {/* Modal d'édition depuis la carte */}
+      {selectedOrderForEdit && selectedOrderForEdit.items && (
+        <OrderEditModal
+          open={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen}
+          order={selectedOrderForEdit as any}
+          onOrderSaved={() => {
+            if (onOrderUpdated) {
+              onOrderUpdated()
+            }
+            setIsEditModalOpen(false)
+            setSelectedOrderForEdit(null)
+          }}
+        />
+      )}
     </div>
   )
 }

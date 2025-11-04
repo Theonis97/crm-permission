@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { geocodeAddress, isPointInPolygon } from "@/lib/geocoding"
 
 /**
  * PATCH /api/orders/[id]
@@ -7,10 +8,10 @@ import { prisma } from "@/lib/prisma"
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const orderId = params.id
+    const orderId = (await params).id
     console.log(`📝 Modification de la commande ${orderId}...`)
     
     const data = await request.json()
@@ -21,6 +22,7 @@ export async function PATCH(
       requestedDeliveryDate,
       status,
       deliveryPersonId,
+      deliveryZoneId: manualZoneId,
       items,
       total
     } = data
@@ -38,6 +40,87 @@ export async function PATCH(
       )
     }
 
+    // Déterminer la zone à assigner et géocoder l'adresse si elle a changé
+    let coordinates = null
+    let newZoneId = null
+    let geocodingMessage = ''
+    
+    // Toujours géocoder si l'adresse a changé (pour avoir les coordonnées)
+    if (deliveryAddress !== existingOrder.deliveryAddress) {
+      console.log('📍 Nouvelle adresse détectée, géocodage en cours...')
+      console.log(`   Ancienne: "${existingOrder.deliveryAddress}"`)
+      console.log(`   Nouvelle: "${deliveryAddress}"`)
+      
+      const geocodingResult = await geocodeAddress(deliveryAddress)
+      
+      if (geocodingResult.success && geocodingResult.coordinates) {
+        coordinates = geocodingResult.coordinates
+        console.log(`✅ Coordonnées trouvées: ${coordinates.lat}, ${coordinates.lng}`)
+        
+        // Si une zone est assignée manuellement, l'utiliser directement
+        if (manualZoneId && manualZoneId !== 'none') {
+          newZoneId = manualZoneId
+          const zone = await prisma.deliveryZone.findUnique({
+            where: { id: manualZoneId },
+            select: { name: true }
+          })
+          console.log(`✅ Zone assignée manuellement: ${zone?.name}`)
+          geocodingMessage = ` La zone "${zone?.name}" a été assignée manuellement.`
+        }
+        // Sinon, trouver automatiquement la zone correspondante
+        else {
+          const zones = await prisma.deliveryZone.findMany({
+            where: { isActive: true }
+          })
+          
+          for (const zone of zones) {
+            if (zone.coordinates && Array.isArray(zone.coordinates)) {
+              const polygon = (zone.coordinates as any[]).map((point: any) => ({
+                lat: typeof point.lat === 'number' ? point.lat : parseFloat(point.lat),
+                lng: typeof point.lng === 'number' ? point.lng : parseFloat(point.lng)
+              }))
+              
+              if (isPointInPolygon(coordinates, polygon)) {
+                newZoneId = zone.id
+                console.log(`✅ Zone trouvée automatiquement: ${zone.name}`)
+                geocodingMessage = ` La commande a été assignée automatiquement à la zone "${zone.name}".`
+                break
+              }
+            }
+          }
+          
+          if (!newZoneId) {
+            console.log('⚠️ Aucune zone trouvée pour ces coordonnées')
+            geocodingMessage = ' L\'adresse a été géocodée mais n\'appartient à aucune zone de livraison.'
+          }
+        }
+      } else {
+        console.log(`❌ Géocodage échoué: ${geocodingResult.error}`)
+        geocodingMessage = ' Géocodage automatique échoué. Vous pouvez assigner une zone manuellement.'
+        
+        // Si le géocodage échoue mais qu'une zone est assignée manuellement, l'utiliser quand même
+        if (manualZoneId && manualZoneId !== 'none') {
+          newZoneId = manualZoneId
+          const zone = await prisma.deliveryZone.findUnique({
+            where: { id: manualZoneId },
+            select: { name: true }
+          })
+          console.log(`✅ Zone assignée manuellement (géocodage échoué): ${zone?.name}`)
+          geocodingMessage = ` La zone "${zone?.name}" a été assignée manuellement (géocodage échoué).`
+        }
+      }
+    }
+    // Si l'adresse n'a pas changé mais qu'une zone manuelle est sélectionnée
+    else if (manualZoneId && manualZoneId !== 'none') {
+      newZoneId = manualZoneId
+      const zone = await prisma.deliveryZone.findUnique({
+        where: { id: manualZoneId },
+        select: { name: true }
+      })
+      console.log(`✅ Zone assignée manuellement: ${zone?.name}`)
+      geocodingMessage = ` La zone "${zone?.name}" a été assignée manuellement.`
+    }
+
     // Commencer une transaction pour modifier la commande et ses items
     const updatedOrder = await prisma.$transaction(async (tx) => {
       // 1. Supprimer les anciens items
@@ -45,16 +128,19 @@ export async function PATCH(
         where: { storeOrderId: orderId }
       })
 
-      // 2. Mettre à jour la commande
+      // 2. Mettre à jour la commande avec les coordonnées si géocodées
       const order = await tx.storeOrder.update({
         where: { id: orderId },
         data: {
           customerName,
           customerPhone,
           deliveryAddress,
+          deliveryLatitude: coordinates?.lat || undefined,
+          deliveryLongitude: coordinates?.lng || undefined,
           requestedDeliveryDate: requestedDeliveryDate ? new Date(requestedDeliveryDate) : null,
           status,
           deliveryPersonId: deliveryPersonId || undefined,
+          deliveryZoneId: newZoneId !== null ? newZoneId : undefined,
           total,
           updatedAt: new Date()
         }
@@ -130,7 +216,7 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       data: updatedOrder,
-      message: 'Commande modifiée avec succès'
+      message: `Commande modifiée avec succès.${geocodingMessage}`
     })
 
   } catch (error) {
@@ -151,10 +237,10 @@ export async function PATCH(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const orderId = params.id
+    const orderId = (await params).id
     console.log(`📋 Récupération de la commande ${orderId}...`)
     
     const order = await prisma.storeOrder.findUnique({

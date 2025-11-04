@@ -62,15 +62,32 @@ export function UnassignedOrdersModal({
     return ORDER_STATUSES.find(s => s.value === status) || ORDER_STATUSES[0]
   }
 
-  const handleEditOrder = (order: Order) => {
+  const handleEdit = (order: Order) => {
     setSelectedOrder(order)
     setIsEditModalOpen(true)
+    // Fermer le modal parent pour éviter les conflits d'overlay
+    onOpenChange(false)
   }
 
   const handleOrderSaved = () => {
     onOrderUpdated()
     setIsEditModalOpen(false)
     setSelectedOrder(null)
+    // Rouvrir le modal parent après la sauvegarde
+    setTimeout(() => {
+      onOpenChange(true)
+    }, 100)
+  }
+
+  const handleEditModalClose = (isOpen: boolean) => {
+    setIsEditModalOpen(isOpen)
+    if (!isOpen) {
+      setSelectedOrder(null)
+      // Rouvrir le modal parent quand on ferme le sheet
+      setTimeout(() => {
+        onOpenChange(true)
+      }, 100)
+    }
   }
 
   return (
@@ -153,7 +170,7 @@ export function UnassignedOrdersModal({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditOrder(order)}
+                              onClick={() => handleEdit(order)}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -173,7 +190,7 @@ export function UnassignedOrdersModal({
       {selectedOrder && (
         <OrderEditModal
           open={isEditModalOpen}
-          onOpenChange={setIsEditModalOpen}
+          onOpenChange={handleEditModalClose}
           order={selectedOrder}
           onOrderSaved={handleOrderSaved}
         />

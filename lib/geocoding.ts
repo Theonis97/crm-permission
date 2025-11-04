@@ -1,6 +1,6 @@
 /**
  * Service de géocodage et vérification de zone
- * Utilise OpenStreetMap/Nominatim pour le géocodage d'adresses
+ * Utilise Mapbox Geocoding API pour le géocodage d'adresses
  */
 
 interface Coordinates {
@@ -15,7 +15,7 @@ interface GeocodingResult {
 }
 
 /**
- * Géocode une adresse en utilisant Nominatim (OpenStreetMap)
+ * Géocode une adresse en utilisant Mapbox Geocoding API
  * Essaie plusieurs variantes de l'adresse si la première échoue
  * @param address L'adresse à géocoder
  * @returns Les coordonnées lat/lng ou une erreur
@@ -29,6 +29,20 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
       };
     }
 
+    // Lire la clé API au moment de l'exécution (pas au moment de l'import)
+    const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+    
+    if (!MAPBOX_ACCESS_TOKEN) {
+      console.error('❌ Clé API Mapbox manquante');
+      console.error('❌ Valeur actuelle:', process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
+      return {
+        success: false,
+        error: 'Configuration Mapbox manquante',
+      };
+    }
+    
+    console.log('🔑 Clé Mapbox trouvée (longueur:', MAPBOX_ACCESS_TOKEN.length, 'caractères)');
+
     // Préparer plusieurs variantes de l'adresse à essayer
     const addressVariants = [];
     
@@ -40,11 +54,6 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
     if (parts.length > 1) {
       // Essayer juste la ville/zone principale
       addressVariants.push(`${parts[parts.length - 1]}, Gabon`);
-      
-      // Essayer la première partie (quartier) + dernière partie (ville)
-      if (parts.length > 2) {
-        addressVariants.push(`${parts[0]}, ${parts[parts.length - 1]}, Gabon`);
-      }
     }
     
     // Variante 3: Villes principales du Gabon si détectées
@@ -57,7 +66,7 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
       }
     }
 
-    console.log(`🔍 Tentatives de géocodage pour: ${address}`);
+    console.log(`🔍 Tentatives de géocodage avec Mapbox pour: ${address}`);
     console.log(`   Variantes à essayer: ${addressVariants.length}`);
 
     // Essayer chaque variante jusqu'à en trouver une qui fonctionne
@@ -66,55 +75,59 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
       console.log(`   ${i + 1}. Essai: "${variant}"`);
       
       const encodedAddress = encodeURIComponent(variant);
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodedAddress}&format=json&limit=3&countrycodes=ga`;
+      // API Mapbox Geocoding : https://docs.mapbox.com/api/search/geocoding/
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_ACCESS_TOKEN}&country=GA&limit=3`;
 
-      const response = await fetch(url, {
-        headers: {
-            'User-Agent': 'ERP-CRM/1.0',
-        },
-      });
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
 
-      if (!response.ok) {
-        console.log(`      ⚠️ Erreur HTTP`);
+        if (!response.ok) {
+          console.log(`      ⚠️ Erreur HTTP ${response.status}: ${response.statusText}`);
+          continue;
+        }
+
+        const data = await response.json();
+
+        if (data.features && data.features.length > 0) {
+          const result = data.features[0];
+          const [lng, lat] = result.center; // Mapbox retourne [lng, lat]
+          
+          console.log(`      ✅ Trouvé: ${result.place_name}`);
+          console.log(`      📍 Coordonnées: ${lat}, ${lng}`);
+          console.log(`      📊 Pertinence: ${result.relevance}`);
+          
+          return {
+            success: true,
+            coordinates: {
+              lat: lat,
+              lng: lng,
+            },
+          };
+        } else {
+          console.log(`      ❌ Aucun résultat`);
+        }
+      } catch (fetchError) {
+        console.log(`      ❌ Erreur réseau: ${fetchError}`);
         continue;
       }
-
-      const data = await response.json();
-
-      if (data && data.length > 0) {
-        // Prioriser les résultats au Gabon
-        const gabonResults = data.filter((result: any) => 
-          result.address?.country_code === 'ga' || 
-          result.display_name?.toLowerCase().includes('gabon')
-        );
-
-        const result = gabonResults.length > 0 ? gabonResults[0] : data[0];
-        
-        console.log(`      ✅ Trouvé: ${result.display_name}`);
-        
-        return {
-          success: true,
-          coordinates: {
-            lat: parseFloat(result.lat),
-            lng: parseFloat(result.lon),
-          },
-        };
-      } else {
-        console.log(`      ❌ Aucun résultat`);
-      }
       
-      // Délai pour respecter la limite de Nominatim (1 req/sec)
+      // Petit délai entre les requêtes (Mapbox n'a pas de limite stricte)
       if (i < addressVariants.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1100));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
+    console.log(`❌ Échec du géocodage pour: ${address}`);
     return {
       success: false,
-      error: 'Adresse introuvable après toutes les tentatives',
+      error: 'Adresse introuvable. Vérifiez que l\'adresse est correcte et au Gabon.',
     };
   } catch (error) {
-    console.error('Erreur géocodage:', error);
+    console.error('❌ Erreur géocodage:', error);
     return {
       success: false,
       error: 'Erreur lors du géocodage',

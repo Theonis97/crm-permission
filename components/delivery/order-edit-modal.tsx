@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Save, X, Plus, Trash2, Calendar, Phone, Package, DollarSign, User, Truck } from "lucide-react"
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useToast } from "@/hooks/use-toast"
 
 // Fetcher pour SWR
 const fetcher = async (url: string) => {
@@ -41,12 +42,24 @@ interface Order {
   items: OrderItem[]
   createdAt: string
   notes?: string
+  deliveryPerson?: {
+    id: string
+    name: string
+    phone: string
+  }
+  deliveryPersonId?: string
 }
 
 interface DeliveryPerson {
   id: string
   name: string
   phone: string
+}
+
+interface DeliveryZone {
+  id: string
+  name: string
+  color: string
 }
 
 interface EditingOrder {
@@ -57,6 +70,7 @@ interface EditingOrder {
   requestedDeliveryDate: string
   status: string
   deliveryPersonId: string
+  deliveryZoneId: string
   items: OrderItem[]
   total: number
 }
@@ -87,10 +101,18 @@ export function OrderEditModal({
 }: OrderEditModalProps) {
   const [editingOrder, setEditingOrder] = useState<EditingOrder | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const { mutate } = useSWRConfig()
+  const { toast } = useToast()
 
   // Récupérer les livreurs disponibles
   const { data: deliveryPersons } = useSWR<DeliveryPerson[]>(
     '/api/delivery/persons',
+    fetcher
+  )
+
+  // Récupérer les zones de livraison
+  const { data: deliveryZones } = useSWR<DeliveryZone[]>(
+    '/api/delivery/zones',
     fetcher
   )
 
@@ -105,7 +127,8 @@ export function OrderEditModal({
         requestedDeliveryDate: order.requestedDeliveryDate ? 
           new Date(order.requestedDeliveryDate).toISOString().split('T')[0] : '',
         status: order.status,
-        deliveryPersonId: 'none',
+        deliveryPersonId: order.deliveryPersonId || order.deliveryPerson?.id || 'none',
+        deliveryZoneId: (order as any).deliveryZoneId || (order as any).deliveryZone?.id || 'none',
         items: [...order.items],
         total: order.total
       })
@@ -116,31 +139,79 @@ export function OrderEditModal({
     if (!editingOrder) return
 
     setIsSaving(true)
+
+    const payload = {
+      customerName: editingOrder.customerName,
+      customerPhone: editingOrder.customerPhone,
+      deliveryAddress: editingOrder.deliveryAddress,
+      requestedDeliveryDate: editingOrder.requestedDeliveryDate || null,
+      status: editingOrder.status,
+      deliveryPersonId: editingOrder.deliveryPersonId === "none" ? null : editingOrder.deliveryPersonId || null,
+      deliveryZoneId: editingOrder.deliveryZoneId === "none" ? null : editingOrder.deliveryZoneId || null,
+      items: editingOrder.items,
+      total: editingOrder.total
+    }
+
+    console.log('🔄 ======= DÉBUT MODIFICATION COMMANDE =======')
+    console.log('📦 Commande ID:', editingOrder.id)
+    console.log('📍 Adresse:', payload.deliveryAddress)
+    console.log('🗺️ Zone manuelle:', payload.deliveryZoneId || 'Aucune (géocodage auto)')
+    console.log('📋 Payload complet:', payload)
+
     try {
       const response = await fetch(`/api/orders/${editingOrder.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          customerName: editingOrder.customerName,
-          customerPhone: editingOrder.customerPhone,
-          deliveryAddress: editingOrder.deliveryAddress,
-          requestedDeliveryDate: editingOrder.requestedDeliveryDate || null,
-          status: editingOrder.status,
-          deliveryPersonId: editingOrder.deliveryPersonId === "none" ? null : editingOrder.deliveryPersonId || null,
-          items: editingOrder.items,
-          total: editingOrder.total
-        }),
+        body: JSON.stringify(payload),
       })
 
-      if (response.ok) {
+      console.log('📡 Statut HTTP:', response.status, response.statusText)
+
+      const data = await response.json()
+      console.log('📥 Réponse serveur:', data)
+
+      if (response.ok && data.success) {
+        console.log('✅ ======= MODIFICATION RÉUSSIE =======')
+        console.log('📊 Données retournées:', data.data)
+        console.log('💬 Message:', data.message)
+        
+        toast({
+          title: "✅ Succès",
+          description: data.message || "La commande a été modifiée avec succès",
+          variant: "default",
+        })
+        
+        console.log('🔄 Revalidation des caches en cours...')
+        // Revalider tous les caches pour récupérer les données à jour (avec la nouvelle zone si trouvée)
+        await Promise.all([
+          mutate('/api/delivery/map'),
+          mutate('/api/delivery/driver-map'),
+          mutate('/api/orders/unassigned')
+        ])
+        console.log('✅ Caches revalidés')
+        console.log('🏁 ======= FIN MODIFICATION =======')
+        
         onOrderSaved()
       } else {
-        console.error('Erreur lors de la sauvegarde')
+        console.error('❌ ======= ERREUR MODIFICATION =======')
+        console.error('❌ Erreur:', data.error)
+        console.error('📥 Réponse complète:', data)
+        toast({
+          title: "❌ Erreur",
+          description: data.error || 'Impossible de sauvegarder la commande',
+          variant: "destructive",
+        })
       }
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('❌ ======= ERREUR RÉSEAU =======')
+      console.error('❌ Erreur réseau:', error)
+      toast({
+        title: "❌ Erreur réseau",
+        description: 'Impossible de sauvegarder la commande',
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -201,136 +272,187 @@ export function OrderEditModal({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[800px] sm:w-[900px] z-[2000]">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Modifier la commande {order.number}
-          </SheetTitle>
-        </SheetHeader>
+      <SheetContent side="right" className="!w-[35vw] !max-w-[35vw] z-[2000] p-0">
+        {/* Header simple et propre */}
+        <div className="bg-white border-b p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Commande #{order.number}</h1>
+              <p className="text-sm text-gray-500 mt-1">Modification des détails</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+          </div>
+        </div>
         
-        <ScrollArea className="h-[calc(100vh-120px)] pr-4 mt-6">
-          <div className="space-y-6">
+        <ScrollArea className="h-[calc(100vh-180px)] px-6">
+          <div className="py-6 space-y-8">
             {/* Informations client */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="customerName" className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Nom du client
-                </Label>
-                <Input
-                  id="customerName"
-                  value={editingOrder.customerName}
-                  onChange={(e) => setEditingOrder({
-                    ...editingOrder,
-                    customerName: e.target.value
-                  })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="customerPhone" className="flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Téléphone
-                </Label>
-                <Input
-                  id="customerPhone"
-                  value={editingOrder.customerPhone}
-                  onChange={(e) => setEditingOrder({
-                    ...editingOrder,
-                    customerPhone: e.target.value
-                  })}
-                />
-              </div>
-            </div>
-
-            {/* Adresse et date */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="deliveryAddress">Adresse de livraison</Label>
-                <Textarea
-                  id="deliveryAddress"
-                  value={editingOrder.deliveryAddress}
-                  onChange={(e) => setEditingOrder({
-                    ...editingOrder,
-                    deliveryAddress: e.target.value
-                  })}
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="requestedDeliveryDate" className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Date de livraison souhaitée
-                </Label>
-                <Input
-                  id="requestedDeliveryDate"
-                  type="date"
-                  value={editingOrder.requestedDeliveryDate}
-                  onChange={(e) => setEditingOrder({
-                    ...editingOrder,
-                    requestedDeliveryDate: e.target.value
-                  })}
-                />
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold text-gray-900 border-b pb-2">Client</h2>
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <Label htmlFor="customerName" className="text-sm font-medium text-gray-700">
+                    Nom du client
+                  </Label>
+                  <Input
+                    id="customerName"
+                    value={editingOrder.customerName}
+                    onChange={(e) => setEditingOrder({
+                      ...editingOrder,
+                      customerName: e.target.value
+                    })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="customerPhone" className="text-sm font-medium text-gray-700">
+                    Téléphone
+                  </Label>
+                  <Input
+                    id="customerPhone"
+                    value={editingOrder.customerPhone}
+                    onChange={(e) => setEditingOrder({
+                      ...editingOrder,
+                      customerPhone: e.target.value
+                    })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="status" className="text-sm font-medium text-gray-700">
+                    Statut
+                  </Label>
+                  <Select
+                    value={editingOrder.status}
+                    onValueChange={(value) => setEditingOrder({
+                      ...editingOrder,
+                      status: value
+                    })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Choisir un statut" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999]" position="popper" sideOffset={5}>
+                      <SelectItem value="PENDING">En attente</SelectItem>
+                      <SelectItem value="CONFIRMED">Confirmée</SelectItem>
+                      <SelectItem value="PREPARING">En préparation</SelectItem>
+                      <SelectItem value="READY">Prête</SelectItem>
+                      <SelectItem value="DELIVERING">En livraison</SelectItem>
+                      <SelectItem value="DELIVERED">Livrée</SelectItem>
+                      <SelectItem value="CANCELLED">Annulée</SelectItem>
+                      <SelectItem value="REPORTED">Reportée</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
-            {/* Statut et livreur */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="status">Statut</Label>
-                <Select
-                  value={editingOrder.status}
-                  onValueChange={(value) => setEditingOrder({
-                    ...editingOrder,
-                    status: value
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ORDER_STATUSES.map((status) => (
-                      <SelectItem key={status.value} value={status.value}>
-                        {status.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="deliveryPerson" className="flex items-center gap-2">
-                  <Truck className="h-4 w-4" />
-                  Livreur
-                </Label>
-                <Select
-                  value={editingOrder.deliveryPersonId}
-                  onValueChange={(value) => setEditingOrder({
-                    ...editingOrder,
-                    deliveryPersonId: value
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un livreur" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucun livreur</SelectItem>
-                    {deliveryPersons?.map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name} - {person.phone}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Livraison */}
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold text-gray-900 border-b pb-2">Livraison</h2>
+              <div className="grid grid-cols-3 gap-6">
+                <div className="col-span-2">
+                  <Label htmlFor="deliveryAddress" className="text-sm font-medium text-gray-700">
+                    Adresse de livraison
+                  </Label>
+                  <Textarea
+                    id="deliveryAddress"
+                    value={editingOrder.deliveryAddress}
+                    onChange={(e) => setEditingOrder({
+                      ...editingOrder,
+                      deliveryAddress: e.target.value
+                    })}
+                    rows={3}
+                    className="mt-1"
+                    placeholder="Adresse complète..."
+                  />
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="requestedDeliveryDate" className="text-sm font-medium text-gray-700">
+                      Date souhaitée
+                    </Label>
+                    <Input
+                      id="requestedDeliveryDate"
+                      type="date"
+                      value={editingOrder.requestedDeliveryDate}
+                      onChange={(e) => setEditingOrder({
+                        ...editingOrder,
+                        requestedDeliveryDate: e.target.value
+                      })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="deliveryPerson" className="text-sm font-medium text-gray-700">
+                      Livreur
+                    </Label>
+                    <Select
+                      value={editingOrder.deliveryPersonId}
+                      onValueChange={(value) => setEditingOrder({
+                        ...editingOrder,
+                        deliveryPersonId: value
+                      })}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Choisir un livreur" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]" position="popper" sideOffset={5}>
+                        <SelectItem value="none">Aucun livreur</SelectItem>
+                        {deliveryPersons?.map((person) => (
+                          <SelectItem key={person.id} value={person.id}>
+                            {person.name} - {person.phone}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="deliveryZone" className="text-sm font-medium text-gray-700">
+                      Zone de livraison (manuel)
+                    </Label>
+                    <Select
+                      value={editingOrder.deliveryZoneId}
+                      onValueChange={(value) => setEditingOrder({
+                        ...editingOrder,
+                        deliveryZoneId: value
+                      })}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Choisir une zone" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]" position="popper" sideOffset={5}>
+                        <SelectItem value="none">Aucune zone (géocodage auto)</SelectItem>
+                        {deliveryZones?.map((zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: zone.color }} />
+                              {zone.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Si une zone est sélectionnée, elle remplacera le géocodage automatique
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
+
 
             {/* Produits */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <Label className="flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Produits
-                </Label>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900 border-b pb-2">Produits</h2>
                 <Button
                   type="button"
                   variant="outline"
@@ -341,54 +463,57 @@ export function OrderEditModal({
                   Ajouter un produit
                 </Button>
               </div>
-              
               <div className="space-y-3">
                 {editingOrder.items.map((item, index) => (
-                  <div key={item.id} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
-                    <div className="flex-1">
+                  <div key={item.id} className="grid grid-cols-12 gap-4 items-center p-4 border rounded-lg bg-gray-50">
+                    <div className="col-span-5">
                       <Input
                         placeholder="Nom du produit"
                         value={item.productName}
                         onChange={(e) => updateItem(index, 'productName', e.target.value)}
                       />
                     </div>
-                    <div className="w-24">
+                    <div className="col-span-2">
                       <Input
                         type="number"
                         placeholder="Qté"
                         value={item.quantity}
                         onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                        className="text-center"
                       />
                     </div>
-                    <div className="w-32">
+                    <div className="col-span-2">
                       <Input
                         type="number"
-                        placeholder="Prix unitaire"
+                        placeholder="Prix"
                         value={item.unitPrice}
                         onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        className="text-center"
                       />
                     </div>
-                    <div className="w-32 text-right font-medium">
+                    <div className="col-span-2 text-right font-semibold">
                       {item.total.toLocaleString()} FCFA
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeItem(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="col-span-1 text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeItem(index)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
-
+              
               {/* Total */}
-              <div className="flex justify-end mt-4 p-4 bg-blue-50 rounded-lg border">
+              <div className="flex justify-end pt-4 border-t">
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Total de la commande</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    <DollarSign className="inline h-5 w-5 mr-1" />
+                  <p className="text-2xl font-bold text-gray-900">
                     {editingOrder.total.toLocaleString()} FCFA
                   </p>
                 </div>
@@ -397,23 +522,35 @@ export function OrderEditModal({
           </div>
         </ScrollArea>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-6 mt-6 border-t bg-white sticky bottom-0">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
-            <X className="h-4 w-4 mr-2" />
-            Annuler
-          </Button>
-          <Button 
-            onClick={handleSaveOrder}
-            disabled={isSaving}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? 'Sauvegarde...' : 'Sauvegarder'}
-          </Button>
+        {/* Actions - Toujours visible en bas */}
+        <div className="absolute bottom-0 left-0 right-0 border-t bg-gray-200 p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Button 
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSaving}
+              className="bg-white"
+            >
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleSaveOrder}
+              disabled={isSaving}
+              className="relative"
+            >
+              {isSaving ? (
+                <>
+                  <div className="h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
