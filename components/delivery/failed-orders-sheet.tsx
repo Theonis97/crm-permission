@@ -211,7 +211,7 @@ export function FailedOrdersSheet({ open, onOpenChange, onOrderResolved }: Faile
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col z-[2000]">
         <SheetHeader className="px-6 py-4 border-b">
           <div className="flex items-center justify-between">
             <div>
