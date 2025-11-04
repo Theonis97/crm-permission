@@ -123,7 +123,7 @@ export default function DeliveryMapPage() {
     }
   )
 
-  // Récupérer le nombre de commandes échouées
+  // Récupérer les commandes échouées
   const { data: failedOrdersData } = useSWR(
     '/api/orders/failed-whatsapp?status=PENDING',
     fetcher,
@@ -134,6 +134,7 @@ export default function DeliveryMapPage() {
   )
 
   const failedOrdersCount = failedOrdersData?.count || 0
+  const failedOrders = failedOrdersData?.data || []
 
   // Affichage du loading initial uniquement
   if (isLoading && !mapData) {
@@ -274,6 +275,79 @@ export default function DeliveryMapPage() {
               </div>
             </div>
           </div>
+
+          {/* Section commandes échouées */}
+          {failedOrdersCount > 0 && (
+            <div className="mt-3 bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <span className="text-sm font-semibold text-orange-800">
+                    Erreurs WhatsApp
+                  </span>
+                </div>
+                <Badge variant="destructive" className="text-xs">
+                  {failedOrdersCount}
+                </Badge>
+              </div>
+              <p className="text-xs text-orange-700 mb-2">
+                Produits non trouvés
+              </p>
+              
+              {/* Liste des commandes échouées */}
+              <div className="space-y-2 mb-2 max-h-60 overflow-y-auto">
+                {failedOrders.slice(0, 5).map((order: any) => (
+                  <div 
+                    key={order.id}
+                    className="bg-white rounded p-2 border border-orange-200 cursor-pointer hover:bg-orange-50 transition-colors"
+                    onClick={() => setIsFailedOrdersOpen(true)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-900 truncate">
+                          {order.customerName || 'Client inconnu'}
+                        </p>
+                        <p className="text-xs text-gray-600 truncate">
+                          {order.customerPhone}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {order.missingProducts.slice(0, 2).map((product: string, idx: number) => (
+                            <span 
+                              key={idx}
+                              className="text-xs bg-red-100 text-red-700 px-1 py-0.5 rounded"
+                            >
+                              {product}
+                            </span>
+                          ))}
+                          {order.missingProducts.length > 2 && (
+                            <span className="text-xs text-gray-500">
+                              +{order.missingProducts.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-3 w-3 text-orange-400 flex-shrink-0 ml-1" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {failedOrdersCount > 5 && (
+                <p className="text-xs text-orange-600 text-center mb-2">
+                  +{failedOrdersCount - 5} autres commande(s)
+                </p>
+              )}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFailedOrdersOpen(true)}
+                className="w-full text-xs border-orange-300 hover:bg-orange-100"
+              >
+                Tout voir et corriger
+              </Button>
+            </div>
+          )}
         </div>
 
         <ScrollArea className="flex-1">
