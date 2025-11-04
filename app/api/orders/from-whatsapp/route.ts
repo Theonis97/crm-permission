@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { geocodeAddress, isPointInPolygon } from "@/lib/geocoding"
+import { notifyAdminFailedOrder } from "@/lib/whatsapp-notifications"
 
 /**
  * Route API pour créer une commande depuis WhatsApp Bot
@@ -217,6 +218,18 @@ export async function POST(request: NextRequest) {
       })
 
       console.log(`💾 Commande avec erreurs enregistrée: ${failedOrder.id}`)
+
+      // Envoyer une notification WhatsApp à l'admin
+      await notifyAdminFailedOrder({
+        customerName: customerName,
+        customerPhone: phone,
+        deliveryAddress: deliveryAddress,
+        totalAmount: totalAmount,
+        missingProducts: missingProducts,
+        failedOrderId: failedOrder.id
+      }).catch(err => {
+        console.error('⚠️ Erreur notification admin (non bloquante):', err)
+      })
 
       return NextResponse.json({
         success: false,
