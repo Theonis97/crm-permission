@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { MapIcon, User, Package, Phone, ChevronRight, RefreshCw, AlertCircle, ArrowLeft } from "lucide-react"
+import { MapIcon, User, Package, Phone, ChevronRight, RefreshCw, AlertCircle, ArrowLeft, AlertTriangle } from "lucide-react"
 import dynamic from 'next/dynamic'
 import useSWR from 'swr'
 import { DriverStatsModal } from "@/components/delivery/driver-stats-modal"
+import { FailedOrdersSheet } from "@/components/delivery/failed-orders-sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -99,6 +100,7 @@ interface MapData {
 export default function DeliveryMapPage() {
   const [selectedDriver, setSelectedDriver] = useState<{ id: string; name: string } | null>(null)
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false)
+  const [isFailedOrdersOpen, setIsFailedOrdersOpen] = useState(false)
   const router = useRouter()
 
   // Utiliser SWR pour la récupération en temps réel
@@ -120,6 +122,18 @@ export default function DeliveryMapPage() {
       errorRetryInterval: 5000,
     }
   )
+
+  // Récupérer le nombre de commandes échouées
+  const { data: failedOrdersData } = useSWR(
+    '/api/orders/failed-whatsapp?status=PENDING',
+    fetcher,
+    {
+      refreshInterval: 30000, // Rafraîchir toutes les 30 secondes
+      revalidateOnFocus: true,
+    }
+  )
+
+  const failedOrdersCount = failedOrdersData?.count || 0
 
   // Affichage du loading initial uniquement
   if (isLoading && !mapData) {
@@ -191,6 +205,22 @@ export default function DeliveryMapPage() {
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Bouton commandes échouées */}
+          {failedOrdersCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsFailedOrdersOpen(true)}
+              className="flex items-center gap-2 border-orange-500 text-orange-600 hover:bg-orange-50"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              Erreurs WhatsApp
+              <Badge variant="destructive" className="ml-1">
+                {failedOrdersCount}
+              </Badge>
+            </Button>
+          )}
+          
           <Button
             variant="outline"
             size="sm"
@@ -333,6 +363,16 @@ export default function DeliveryMapPage() {
           onOpenChange={setIsStatsModalOpen}
         />
       )}
+
+      {/* Sheet des commandes échouées */}
+      <FailedOrdersSheet
+        open={isFailedOrdersOpen}
+        onOpenChange={setIsFailedOrdersOpen}
+        onOrderResolved={() => {
+          // Rafraîchir les données après résolution d'une commande
+          mutate()
+        }}
+      />
     </div>
   )
 }

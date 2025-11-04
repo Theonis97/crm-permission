@@ -427,6 +427,46 @@ model StoreOrderItem {
   @@map("store_order_items")
 }
 
+// Commandes WhatsApp avec erreurs de produits
+model FailedWhatsAppOrder {
+  id                String    @id @default(cuid())
+  rawMessage        String    @db.Text // Message WhatsApp original
+  senderId          String?   @map("sender_id") // ID WhatsApp du vendeur
+  senderPhone       String?   @map("sender_phone") // Téléphone du vendeur
+  timestamp         DateTime? // Timestamp du message original
+  
+  // Données extraites
+  customerName      String?   @map("customer_name")
+  customerPhone     String?   @map("customer_phone")
+  deliveryAddress   String?   @map("delivery_address")
+  totalAmount       Float?    @map("total_amount")
+  
+  // Produits demandés (JSON)
+  requestedProducts Json      @map("requested_products") // Liste des produits avec leurs codes
+  
+  // Erreur détaillée
+  errorType         String    @map("error_type") // "PRODUCT_NOT_FOUND", "MULTIPLE_ERRORS", etc.
+  errorDetails      String    @db.Text @map("error_details") // Description détaillée
+  missingProducts   Json      @map("missing_products") // Liste des codes produits non trouvés
+  
+  // Statut de traitement
+  status            String    @default("PENDING") // PENDING, RESOLVED, REJECTED
+  resolvedAt        DateTime? @map("resolved_at")
+  resolvedBy        String?   @map("resolved_by") // User ID qui a résolu
+  resolvedOrderId   String?   @map("resolved_order_id") // ID de la commande créée si résolu
+  resolutionNotes   String?   @db.Text @map("resolution_notes")
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  resolvedByUser    User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([customerPhone])
+  @@index([createdAt])
+  @@map("failed_whatsapp_orders")
+}
+
 // Livreurs
 model DeliveryPerson {
   id              String               @id @default(cuid())
@@ -721,6 +761,7 @@ model User {
   requestedOrders        Order[]                   @relation("OrderRequester")
   approvedOrders         Order[]                   @relation("OrderApprover")
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
+  resolvedFailedOrders   FailedWhatsAppOrder[] // Commandes WhatsApp avec erreurs résolues par cet utilisateur
 
   @@map("users")
 }

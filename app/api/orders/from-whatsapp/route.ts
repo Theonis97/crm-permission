@@ -118,6 +118,10 @@ export async function POST(request: NextRequest) {
 
       if (!deliveryZoneId) {
         console.warn('⚠️ Aucune zone de livraison ne correspond aux coordonnées')
+        console.warn('⚠️ Les coordonnées seront annulées car hors zone de service')
+        // Annuler les coordonnées car hors des zones de livraison
+        deliveryLatitude = null
+        deliveryLongitude = null
       }
     }
 
@@ -125,6 +129,7 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 Recherche de ${products.length} produit(s)...`)
     
     const orderItems = []
+    const missingProducts: string[] = []
     let subtotal = 0
 
     for (const productData of products) {
@@ -153,19 +158,8 @@ export async function POST(request: NextRequest) {
 
       if (!product) {
         console.error(`❌ Produit "${productCode}" introuvable dans la base de données`)
-        
-        // Retourner immédiatement une erreur au lieu de continuer
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: `Produit "${productCode}" non trouvé dans la base de données. Impossible d'enregistrer la commande.`,
-            details: {
-              productNotFound: productCode,
-              availableProducts: "Vérifiez le nom ou le code du produit dans le catalogue"
-            }
-          },
-          { status: 400 }
-        )
+        missingProducts.push(productCode)
+        continue // Continuer au lieu de retourner une erreur
       }
 
       console.log(`✅ Produit trouvé: ${product.name} (${product.id})`)
@@ -198,6 +192,42 @@ export async function POST(request: NextRequest) {
       })
 
       subtotal += finalTotal
+    }
+
+    // 4.1. Si des produits sont manquants, enregistrer dans la table des commandes échouées
+    if (missingProducts.length > 0) {
+      console.log(`🚨 ${missingProducts.length} produit(s) non trouvé(s), enregistrement dans failed_whatsapp_orders...`)
+      
+      const failedOrder = await prisma.failedWhatsAppOrder.create({
+        data: {
+          rawMessage: rawMessage || JSON.stringify(data),
+          senderId: senderId,
+          senderPhone: phone,
+          timestamp: timestamp ? new Date(timestamp) : new Date(),
+          customerName: customerName,
+          customerPhone: phone,
+          deliveryAddress: deliveryAddress,
+          totalAmount: totalAmount,
+          requestedProducts: products,
+          errorType: 'PRODUCT_NOT_FOUND',
+          errorDetails: `Les produits suivants n'ont pas été trouvés dans la base de données : ${missingProducts.join(', ')}`,
+          missingProducts: missingProducts,
+          status: 'PENDING'
+        }
+      })
+
+      console.log(`💾 Commande avec erreurs enregistrée: ${failedOrder.id}`)
+
+      return NextResponse.json({
+        success: false,
+        error: `Produit(s) non trouvé(s): ${missingProducts.join(', ')}`,
+        failedOrderId: failedOrder.id,
+        details: {
+          missingProducts: missingProducts,
+          totalProducts: products.length,
+          message: 'La commande a été enregistrée dans les commandes à traiter manuellement'
+        }
+      }, { status: 400 })
     }
 
     // 5. Vérifier/créer le client avec le numéro de téléphone
