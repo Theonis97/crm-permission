@@ -102,6 +102,21 @@ export async function authenticateMobileUser(
 }
 
 /**
+ * Vérifie l'authentification mobile (wrapper pour compatibilité)
+ * Retourne l'objet complet avec authenticated et user
+ */
+export async function verifyMobileAuth(
+  request: NextRequest
+): Promise<{ authenticated: boolean; user: AuthenticatedUser | null; error?: string }> {
+  const { user, error } = await authenticateMobileUser(request);
+  return {
+    authenticated: user !== null,
+    user,
+    error: error || undefined,
+  };
+}
+
+/**
  * Vérifie qu'un utilisateur a un rôle spécifique
  */
 export function hasRole(user: AuthenticatedUser, roleName: string): boolean {

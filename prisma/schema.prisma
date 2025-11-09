@@ -500,6 +500,7 @@ model DeliveryPerson {
   stockMovements      DeliveryStockMovement[] // Mouvements de stock du livreur
   pushTokens          DeliveryPersonPushToken[] // Tokens de notification push
   dayShifts           DayShift[] // Clôtures de journée
+  notifications       DeliveryNotification[] // Notifications du livreur
 
   @@map("delivery_persons")
 }
@@ -1203,5 +1204,32 @@ model DayShift {
   @@index([deliveryPersonId])
   @@index([date])
   @@map("day_shifts")
+}
+
+// Notifications pour les livreurs
+enum NotificationType {
+  ORDER      // Notification de commande
+  SYSTEM     // Notification système
+  INFO       // Notification informative
+}
+
+model DeliveryNotification {
+  id               String           @id @default(cuid())
+  deliveryPersonId String           @map("delivery_person_id")
+  title            String
+  body             String
+  type             NotificationType @default(INFO)
+  isRead           Boolean          @default(false) @map("is_read")
+  data             Json?            // Données additionnelles (orderId, zoneId, etc.)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  readAt           DateTime?        @map("read_at")
+
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryPersonId])
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+  @@map("delivery_notifications")
 }
 

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
-import { PushNotificationService } from "@/lib/push-notifications"
+import { ExpoPushService } from "@/lib/notifications/expo-push-service"
 
 export async function POST(request: NextRequest) {
   try {
@@ -300,35 +300,57 @@ export async function POST(request: NextRequest) {
       deliveryZoneName: storeOrder.deliveryZone?.name,
     })
 
-    // Envoyer notification push si la commande a une zone de livraison
+    // Envoyer notification push FCM si la commande a une zone de livraison
     if (storeOrder.deliveryZoneId && storeOrder.deliveryZone) {
       try {
-        console.log(`📱 Envoi notification push pour zone ${storeOrder.deliveryZone.name}`)
+        console.log(`📱 Envoi notification FCM pour zone ${storeOrder.deliveryZone.name}`)
         
-        await PushNotificationService.sendNewOrderNotification(
+        // Envoyer notification à tous les livreurs de la zone
+        await ExpoPushService.notifyDriversInZone(
           storeOrder.deliveryZoneId,
+          '🚚 Nouvelle commande !',
+          `Commande ${storeOrder.number} - ${storeOrder.total.toLocaleString()} FCFA - ${storeOrder.customerName}`,
           {
+            type: 'NEW_ORDER',
             orderId: storeOrder.id,
             orderNumber: storeOrder.number,
+            amount: storeOrder.total.toString(),
+            zone: storeOrder.deliveryZone.name,
             customerName: storeOrder.customerName,
-            deliveryAddress: storeOrder.deliveryAddress || 'Adresse non spécifiée',
-            total: storeOrder.total,
-            zoneId: storeOrder.deliveryZoneId,
-            zoneName: storeOrder.deliveryZone.name,
+            action: 'VIEW_ORDER',
           }
         )
         
-        console.log(`✅ Notification envoyée pour commande ${storeOrder.number}`)
+        console.log(`✅ Notification FCM envoyée pour commande ${storeOrder.number}`)
       } catch (notificationError) {
         // Ne pas faire échouer la création de commande si la notification échoue
-        console.error('❌ Erreur envoi notification push:', notificationError)
+        console.error('❌ Erreur envoi notification FCM:', notificationError)
+      }
+    } else if (storeOrder.deliveryPersonId) {
+      // Si pas de zone mais un livreur assigné directement
+      try {
+        console.log(`📱 Envoi notification FCM au livreur ${storeOrder.deliveryPersonId}`)
+        
+        await ExpoPushService.notifyDriver(
+          storeOrder.deliveryPersonId,
+          '📦 Nouvelle commande assignée',
+          `Commande ${storeOrder.number} - ${storeOrder.total.toLocaleString()} FCFA`,
+          {
+            type: 'ORDER_ASSIGNED',
+            orderId: storeOrder.id,
+            orderNumber: storeOrder.number,
+            amount: storeOrder.total.toString(),
+            customerName: storeOrder.customerName,
+            action: 'VIEW_ORDER',
+          }
+        )
+        
+        console.log(`✅ Notification FCM envoyée au livreur`)
+      } catch (notificationError) {
+        console.error('❌ Erreur envoi notification FCM:', notificationError)
       }
     } else {
-      console.log('⚠️ Pas de notification envoyée - Raison:', {
-        hasDeliveryZoneId: !!storeOrder.deliveryZoneId,
-        hasDeliveryZone: !!storeOrder.deliveryZone,
-        deliveryZoneId: storeOrder.deliveryZoneId,
-      })
+      console.log('⚠️ Pas de notification envoyée - Aucune zone ni livreur assigné')
     }
 
     return NextResponse.json(storeOrder, { status: 201 })

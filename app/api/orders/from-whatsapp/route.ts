@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { geocodeAddress, isPointInPolygon } from "@/lib/geocoding"
 import { notifyAdminFailedOrder } from "@/lib/whatsapp-notifications"
+import { PushNotificationService } from "@/lib/push-notifications"
 
 /**
  * Route API pour créer une commande depuis WhatsApp Bot
@@ -411,6 +412,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`🎉 Commande WhatsApp créée avec succès! Statut: ${orderStatus}`)
 
+    // 7. Envoyer une notification push aux livreurs de la zone (non-bloquant)
+    if (deliveryZoneId && order.deliveryZone) {
+      console.log(`📱 Envoi de notification push aux livreurs de la zone ${order.deliveryZone.name}...`)
+      
+      PushNotificationService.sendNewOrderNotification(deliveryZoneId, {
+        orderId: order.id,
+        orderNumber: order.number,
+        customerName: order.customerName,
+        deliveryAddress: order.deliveryAddress || 'Adresse non spécifiée',
+        total: finalTotal,
+        zoneId: deliveryZoneId,
+        zoneName: order.deliveryZone.name
+      }).catch(err => {
+        // Ne pas bloquer la réponse si la notification échoue
+        console.error('⚠️ Erreur envoi notification push (non bloquante):', err)
+      })
+    } else {
+      console.log('⚠️ Pas de zone de livraison définie, notification push non envoyée')
+    }
+
     return NextResponse.json({
       success: true,
       orderId: order.id,
@@ -428,7 +449,8 @@ export async function POST(request: NextRequest) {
         coordinates: geocodingResult.success ? 
           `${deliveryLatitude}, ${deliveryLongitude}` : 
           'Non géocodée',
-        errors: errors.length > 0 ? errors : undefined
+        errors: errors.length > 0 ? errors : undefined,
+        notificationSent: !!deliveryZoneId // Indiquer si une notification a été envoyée
       }
     })
 
