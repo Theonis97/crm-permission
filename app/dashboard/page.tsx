@@ -75,7 +75,7 @@ const modules = [
     permission: "opportunities.view",
     href: "/dashboard/opportunities",
     stats: "15 opportunités",
-    clickable: false,
+    clickable: true,
   },
   {
     id: "sales",
@@ -86,7 +86,7 @@ const modules = [
     permission: "quotes.view",
     href: "/dashboard/sales",
     stats: "XAF 45,230 ce mois",
-    clickable: false,
+    clickable: true,
   },
   {
     id: "tasks",
@@ -97,7 +97,7 @@ const modules = [
     permission: "tasks.view",
     href: "/dashboard/tasks",
     stats: "8 en cours",
-    clickable: false,
+    clickable: true,
   },
   {
     id: "reports",
@@ -107,8 +107,8 @@ const modules = [
     color: "from-pink-500 to-pink-600",
     permission: "reports.view",
     href: "/dashboard/reports",
-    stats: "12 rapports",
-    clickable: false,
+    stats: "6 KPIs actifs",
+    clickable: true,
   },
 ]
 

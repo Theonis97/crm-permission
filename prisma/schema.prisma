@@ -623,14 +623,16 @@ model InvoiceItem {
 }
 
 model Opportunity {
-  id          String            @id @default(cuid())
-  title       String
-  description String?
-  status      OpportunityStatus @default(NEW)
-  contactId   String            @map("contact_id")
-  ownerId     String            @map("owner_id")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
+  id               String            @id @default(cuid())
+  title            String
+  description      String?
+  status           OpportunityStatus @default(NEW)
+  globalAmount     Float?            @map("global_amount")
+  finalAmount      Float?            @map("final_amount")
+  contactId        String            @map("contact_id")
+  ownerId          String            @map("owner_id")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
 
   contact      Contact                  @relation(fields: [contactId], references: [id])
   owner        User                     @relation(fields: [ownerId], references: [id])
@@ -687,6 +689,7 @@ model Task {
   title         String
   description   String?
   status        TaskStatus @default(TODO)
+  isImportant   Boolean    @default(false) @map("is_important")
   userId        String     @map("user_id")
   opportunityId String?    @map("opportunity_id")
   startDate     DateTime?

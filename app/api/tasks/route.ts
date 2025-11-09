@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, status, userId, opportunityId, startDate, dueDate } = body
+    const { title, description, status, isImportant, userId, opportunityId, startDate, dueDate } = body
 
     if (!title) {
       return NextResponse.json({ error: "Le titre est requis" }, { status: 400 })
@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
         title,
         description: description || null,
         status: status || TaskStatus.TODO,
+        isImportant: isImportant || false,
         userId: assignedUserId,
         opportunityId: opportunityId && opportunityId !== "noOpportunity" ? opportunityId : null,
         startDate: startDate ? new Date(startDate) : null,

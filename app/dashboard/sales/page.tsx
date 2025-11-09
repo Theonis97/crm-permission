@@ -1,140 +1,130 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { usePermissions } from "@/hooks/use-permissions"
-import { ModuleNavbar } from "@/components/navigation/module-navbar"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TrendingUp, FileText, Receipt, Plus, Euro, Clock, AlertTriangle, CheckCircle, Eye, Send } from "lucide-react"
+import { toast } from "sonner"
 import type { SalesStats } from "@/types/sales"
-import { QuotesList } from "@/components/sales/quotes-list"
-import { InvoicesList } from "@/components/sales/invoices-list"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-
+import { SalesHeader } from "@/components/sales/sales-header"
+import { SalesFilters } from "@/components/sales/sales-filters"
+import { SalesTable } from "@/components/sales/sales-table"
+import { CreateQuoteSheet } from "@/components/sales/create-quote-sheet-v2"
+import { CreateInvoiceSheet } from "@/components/sales/create-invoice-sheet-v2"
+import { useSales } from "@/hooks/use-sales"
 
 export default function SalesPage() {
   const { hasPermission } = usePermissions()
-  const [stats, setStats] = useState<SalesStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [showCreateQuote, setShowCreateQuote] = useState(false)
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [typeFilter, setTypeFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
 
-  const [activeTab, setActiveTab] = useState("quotes")
+  // Utiliser le hook SWR pour gérer les données
+  const {
+    quotes,
+    invoices,
+    stats,
+    isLoading: loading,
+    deleteQuote,
+    deleteInvoice,
+    sendQuote,
+    sendInvoice,
+  } = useSales()
 
-  useEffect(() => {
-    fetchStats()
-  }, [])
+  const handleCreateQuote = () => {
+    setShowCreateQuote(true)
+  }
 
-  const fetchStats = async () => {
-    try {
-      const response = await fetch("/api/sales/stats")
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data)
-      }
-    } catch (error) {
-      console.error("Error fetching sales stats:", error)
-    } finally {
-      setLoading(false)
+  const handleCreateInvoice = () => {
+    setShowCreateInvoice(true)
+  }
+
+  const handleView = (item: any) => {
+    const route = item.type === 'quote' 
+      ? `/dashboard/sales/quotes/${item.id}` 
+      : `/dashboard/sales/invoices/${item.id}`
+    window.open(route, '_blank')
+  }
+
+  const handleEdit = (item: any) => {
+    toast.info(`Modification de ${item.type === 'quote' ? 'devis' : 'facture'} ${item.number}`)
+  }
+
+  const handleSend = async (item: any) => {
+    const result = item.type === 'quote' 
+      ? await sendQuote(item.id)
+      : await sendInvoice(item.id)
+    
+    if (result.success) {
+      toast.success(result.message)
+    } else {
+      toast.error("Erreur lors de l'envoi")
     }
   }
 
+  const handleDelete = async (item: any) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${item.type === 'quote' ? 'le devis' : 'la facture'} ${item.number} ?`)) {
+      return
+    }
+
+    const result = item.type === 'quote' 
+      ? await deleteQuote(item.id)
+      : await deleteInvoice(item.id)
+    
+    if (result.success) {
+      toast.success(result.message)
+    } else {
+      toast.error("Erreur lors de la suppression")
+    }
+  }
 
   return (
     <PermissionGuard permission="quotes.view">
-      <ModuleNavbar
-        title="Ventes"
-        description="Gestion des devis et factures"
-        icon={TrendingUp}
-      />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">l
-        {/* Statistiques */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Chiffre d'affaires</CardTitle>
-              <Euro className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : `XAF ${stats?.totalRevenue?.toLocaleString() || 0}`}
-              </div>
-              <p className="text-xs text-muted-foreground">+12% par rapport au mois dernier</p>
-            </CardContent>
-          </Card>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header avec stats intégrées */}
+        <SalesHeader
+          stats={stats}
+          loading={loading}
+          onCreateQuote={handleCreateQuote}
+          onCreateInvoice={handleCreateInvoice}
+        />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Devis en attente</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : `XAF ${stats?.pendingAmount?.toLocaleString() || 0}`}
-              </div>
-              <p className="text-xs text-muted-foreground">{stats?.totalQuotes || 0} devis actifs</p>
-            </CardContent>
-          </Card>
+        {/* Barre de recherche et filtres */}
+        <SalesFilters
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+        />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Factures en retard</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {loading ? "..." : `XAF ${stats?.overdueAmount?.toLocaleString() || 0}`}
-              </div>
-              <p className="text-xs text-muted-foreground">Nécessite un suivi</p>
-            </CardContent>
-          </Card>
+        {/* Tableau unifié */}
+        <SalesTable
+          quotes={quotes}
+          invoices={invoices}
+          loading={loading}
+          searchQuery={searchQuery}
+          typeFilter={typeFilter}
+          statusFilter={statusFilter}
+          onView={handleView}
+          onEdit={handleEdit}
+          onSend={handleSend}
+          onDelete={handleDelete}
+        />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Taux de conversion</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {loading ? "..." : `${stats?.conversionRate?.toFixed(1) || 0}%`}
-              </div>
-              <p className="text-xs text-muted-foreground">Devis → Factures</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Sheets de création avec design document */}
+        <CreateQuoteSheet
+          open={showCreateQuote}
+          onOpenChange={setShowCreateQuote}
+        />
 
-        {/* Onglets Devis/Factures */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="flex items-center justify-between">
-            <TabsList className="grid w-fit grid-cols-2">
-              <TabsTrigger value="quotes" className="flex items-center space-x-2">
-                <FileText className="h-4 w-4" />
-                <span>Devis</span>
-                <Badge variant="secondary" className="ml-2">
-                  {stats?.totalQuotes || 0}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="invoices" className="flex items-center space-x-2">
-                <Receipt className="h-4 w-4" />
-                <span>Factures</span>
-                <Badge variant="secondary" className="ml-2">
-                  {stats?.totalInvoices || 0}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-
-            
-          </div>
-
-          <TabsContent value="quotes" className="space-y-6">
-            <QuotesList onRefresh={fetchStats} />
-          </TabsContent>
-
-          <TabsContent value="invoices" className="space-y-6">
-            <InvoicesList onRefresh={fetchStats} />
-          </TabsContent>
-        </Tabs>
+        <CreateInvoiceSheet
+          open={showCreateInvoice}
+          onOpenChange={setShowCreateInvoice}
+        />
       </div>
     </PermissionGuard>
-
   )
 }

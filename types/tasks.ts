@@ -10,6 +10,7 @@ export interface Task {
   title: string
   description?: string
   status: TaskStatus
+  isImportant?: boolean
   userId: string
   opportunityId?: string
   startDate?: Date

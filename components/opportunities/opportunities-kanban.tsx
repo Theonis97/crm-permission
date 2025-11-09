@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { CreateOpportunitySheet } from "./create-opportunity-sheet"
 import { EditOpportunitySheet } from "./edit-opportunity-sheet"
 import { DeleteOpportunityDialog } from "./delete-opportunity-dialog"
+import { OpportunityDetailModal } from "./opportunity-detail-modal"
 import type { Opportunity, OpportunityStatus } from "@/types/opportunities"
 import {
   Plus,
@@ -25,6 +26,7 @@ import {
   Building,
   Edit,
   Trash2,
+  Euro,
 } from "lucide-react"
 
 interface OpportunitiesKanbanProps {
@@ -33,6 +35,8 @@ interface OpportunitiesKanbanProps {
   canCreate: boolean
   canEdit: boolean
   canDelete: boolean
+  createSheetOpen: boolean
+  setCreateSheetOpen: (open: boolean) => void
 }
 
 const statusConfig = {
@@ -68,19 +72,21 @@ export function OpportunitiesKanban({
   canCreate,
   canEdit,
   canDelete,
+  createSheetOpen,
+  setCreateSheetOpen,
 }: OpportunitiesKanbanProps) {
-  const [createSheetOpen, setCreateSheetOpen] = useState(false)
   const [editSheetOpen, setEditSheetOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null)
   const [draggedOpportunity, setDraggedOpportunity] = useState<Opportunity | null>(null)
 
-  // Auto-ouvrir le formulaire si aucune opportunité et permission de créer
-  useEffect(() => {
-    if (opportunities.length === 0 && canCreate) {
-      setCreateSheetOpen(true)
-    }
-  }, [opportunities.length, canCreate])
+  // Suppression de l'auto-ouverture du formulaire
+  // useEffect(() => {
+  //   if (opportunities.length === 0 && canCreate) {
+  //     setCreateSheetOpen(true)
+  //   }
+  // }, [opportunities.length, canCreate])
 
   const handleStatusChange = async (opportunityId: string, newStatus: OpportunityStatus) => {
     try {
@@ -122,6 +128,14 @@ export function OpportunitiesKanban({
     return opportunities.filter((opp) => opp.status === status)
   }
 
+  const getAmountByStatus = (status: OpportunityStatus) => {
+    const statusOpportunities = getOpportunitiesByStatus(status)
+    if (status === 'WON') {
+      return statusOpportunities.reduce((sum, opp) => sum + (opp.finalAmount || opp.globalAmount || 0), 0)
+    }
+    return statusOpportunities.reduce((sum, opp) => sum + (opp.globalAmount || 0), 0)
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("fr-FR", {
       day: "numeric",
@@ -129,29 +143,23 @@ export function OpportunitiesKanban({
     })
   }
 
-  const getInitials = (firstName: string, lastName: string) => {
+  const getInitials = (firstName: string | null, lastName: string | null) => {
     return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase()
+  }
+
+  const formatAmount = (amount: number | null) => {
+    if (!amount) return null
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "XAF",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
 
   return (
     <TooltipProvider>
       <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Opportunités</h1>
-            <p className="text-gray-600">
-              {opportunities.length} opportunité{opportunities.length > 1 ? "s" : ""} au total
-            </p>
-          </div>
-          {canCreate && (
-            <Button onClick={() => setCreateSheetOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouvelle opportunité
-            </Button>
-          )}
-        </div>
-
         {/* Kanban Board */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 overflow-auto">
           {(Object.keys(statusConfig) as OpportunityStatus[]).map((status) => {
@@ -174,6 +182,12 @@ export function OpportunitiesKanban({
                       {statusOpportunities.length}
                     </Badge>
                   </div>
+                  {getAmountByStatus(status) > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-gray-600">
+                      <Euro className="h-3 w-3" />
+                      <span className="font-medium">{formatAmount(getAmountByStatus(status))}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Cards */}
@@ -181,17 +195,33 @@ export function OpportunitiesKanban({
                   {statusOpportunities.map((opportunity) => (
                     <Card
                       key={opportunity.id}
-                      className={`cursor-move hover:shadow-md transition-shadow ${config.borderColor} border-l-4`}
+                      className="group cursor-pointer hover:shadow-md transition-shadow border-0 shadow-sm"
                       draggable={canEdit}
                       onDragStart={(e) => handleDragStart(e, opportunity)}
+                      onClick={() => {
+                        setSelectedOpportunity(opportunity)
+                        setDetailModalOpen(true)
+                      }}
                     >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
-                          <CardTitle className="text-sm font-medium line-clamp-2">{opportunity.title}</CardTitle>
+                      <CardContent className="px-4 py-0">
+                        <div className="flex items-start justify-between mb-3 pt-4">
+                          {/* Titre */}
+                          <div className="flex-1 pr-2">
+                            <h3 className="font-semibold text-gray-900 line-clamp-2 leading-tight">
+                              {opportunity.title}
+                            </h3>
+                          </div>
+                          
+                          {/* Menu actions */}
                           {(canEdit || canDelete) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <MoreHorizontal className="h-3 w-3" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -223,102 +253,52 @@ export function OpportunitiesKanban({
                             </DropdownMenu>
                           )}
                         </div>
-                      </CardHeader>
-                      <CardContent className="pt-0 space-y-3">
-                        {/* Contact Info */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-sm">
-                            <User className="h-3 w-3 text-gray-500" />
-                            <span className="font-medium">
-                              {opportunity.contact.firstName} {opportunity.contact.lastName}
-                            </span>
-                          </div>
-                          {opportunity.contact.email && (
-                            <div className="flex items-center gap-2 text-xs text-gray-600">
-                              <Mail className="h-3 w-3" />
-                              <span className="truncate">{opportunity.contact.email}</span>
-                            </div>
-                          )}
-                          {opportunity.contact.job && (
-                            <div className="flex items-center gap-2 text-xs text-gray-600">
-                              <Building className="h-3 w-3" />
-                              <span className="truncate">{opportunity.contact.job}</span>
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Owner */}
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarFallback className="text-xs">
-                              {getInitials(opportunity.owner.firstName, opportunity.owner.lastName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs text-gray-600">
-                            {opportunity.owner.firstName} {opportunity.owner.lastName}
-                          </span>
-                        </div>
-
-                        {/* Participants */}
-                        {opportunity.participants.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <Users className="h-3 w-3 text-gray-500" />
-                            <div className="flex -space-x-1">
-                              {opportunity.participants.slice(0, 3).map((participant) => (
-                                <Tooltip key={participant.id}>
-                                  <TooltipTrigger>
-                                    <Avatar className="h-5 w-5 border-2 border-white">
-                                      <AvatarFallback className="text-xs">
-                                        {getInitials(participant.user.firstName, participant.user.lastName)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>
-                                      {participant.user.firstName} {participant.user.lastName}
-                                    </p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
-                              {opportunity.participants.length > 3 && (
-                                <div className="h-5 w-5 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center">
-                                  <span className="text-xs text-gray-600">+{opportunity.participants.length - 3}</span>
+                        {/* Montant - Plus grand avec arrière-plan */}
+                        <div className="mb-4">
+                          {(opportunity.finalAmount || opportunity.globalAmount) && (
+                            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                              <div className="text-2xl font-bold text-green-600">
+                                {formatAmount(opportunity.globalAmount)}
+                              </div>
+                              {opportunity.finalAmount && opportunity.globalAmount && opportunity.finalAmount !== opportunity.globalAmount && (
+                                <div className="text-sm text-gray-500 mt-1">
+                                  Négocié : {formatAmount(opportunity.finalAmount)}
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
 
-                        {/* Stats */}
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <div className="flex items-center gap-3">
-                            {opportunity._count && (
-                              <>
-                                {opportunity._count.tasks > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <CheckSquare className="h-3 w-3" />
-                                    <span>{opportunity._count.tasks}</span>
-                                  </div>
+                        {/* Client avec avatar et tooltip */}
+                        <div className="flex items-center justify-between pb-4">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-2 cursor-pointer">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-sm bg-blue-100 text-blue-700">
+                                    {getInitials(opportunity.contact.firstName, opportunity.contact.lastName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <div className="space-y-1">
+                                <p className="font-medium">
+                                  {opportunity.contact.firstName} {opportunity.contact.lastName}
+                                </p>
+                                {opportunity.contact.email && (
+                                  <p className="text-xs text-gray-600">{opportunity.contact.email}</p>
                                 )}
-                                {opportunity._count.invoices > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <FileText className="h-3 w-3" />
-                                    <span>{opportunity._count.invoices}</span>
-                                  </div>
+                                {opportunity.contact.job && (
+                                  <p className="text-xs text-gray-600">{opportunity.contact.job}</p>
                                 )}
-                                {opportunity._count.documents > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <FileText className="h-3 w-3" />
-                                    <span>{opportunity._count.documents}</span>
-                                  </div>
+                                {opportunity.contact.phone && (
+                                  <p className="text-xs text-gray-600">{opportunity.contact.phone}</p>
                                 )}
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            <span>{formatDate(opportunity.createdAt)}</span>
-                          </div>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                       </CardContent>
                     </Card>
@@ -352,6 +332,14 @@ export function OpportunitiesKanban({
               onOpenChange={setDeleteDialogOpen}
               opportunity={selectedOpportunity}
               onSuccess={onRefresh}
+            />
+
+            {/* Modale de détail */}
+            <OpportunityDetailModal
+              opportunity={selectedOpportunity}
+              open={detailModalOpen}
+              onOpenChange={setDetailModalOpen}
+              onRefresh={onRefresh}
             />
           </>
         )}

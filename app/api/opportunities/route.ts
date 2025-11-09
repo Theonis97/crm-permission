@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, contactId, participantIds } = body
+    const { title, description, globalAmount, finalAmount, contactId, participantIds } = body
 
     // Validation
     if (!title?.trim()) {
@@ -135,6 +135,8 @@ export async function POST(request: NextRequest) {
       data: {
         title: title.trim(),
         description: description?.trim() || null,
+        globalAmount: globalAmount ? parseFloat(globalAmount) : null,
+        finalAmount: finalAmount ? parseFloat(finalAmount) : null,
         contactId,
         ownerId: session.user.id,
         status: "NEW",

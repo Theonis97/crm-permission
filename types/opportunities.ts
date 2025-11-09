@@ -42,6 +42,8 @@ export interface Opportunity {
   title: string
   description: string | null
   status: OpportunityStatus
+  globalAmount: number | null
+  finalAmount: number | null
   contactId: string
   ownerId: string
   createdAt: string
@@ -60,6 +62,8 @@ export interface Opportunity {
 export interface CreateOpportunityData {
   title: string
   description?: string
+  globalAmount?: number
+  finalAmount?: number
   contactId: string
   participantIds: string[]
 }
@@ -67,6 +71,8 @@ export interface CreateOpportunityData {
 export interface UpdateOpportunityData {
   title?: string
   description?: string
+  globalAmount?: number
+  finalAmount?: number
   status?: OpportunityStatus
   contactId?: string
   participantIds?: string[]

@@ -42,7 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const body = await request.json()
-    const { title, description, status, userId, opportunityId, startDate, dueDate } = body
+    const { title, description, status, isImportant, userId, opportunityId, startDate, dueDate } = body
     const {id} = await params
 
     // Vérifier que la tâche existe
@@ -82,6 +82,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         title: title || existingTask.title,
         description: description !== undefined ? description : existingTask.description,
         status: status || existingTask.status,
+        isImportant: isImportant !== undefined ? isImportant : existingTask.isImportant,
         userId: userId || existingTask.userId,
         opportunityId: opportunityId === "noOpportunity" ? null : opportunityId || existingTask.opportunityId,
         startDate: startDate ? new Date(startDate) : existingTask.startDate,

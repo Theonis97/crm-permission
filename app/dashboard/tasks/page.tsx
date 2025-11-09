@@ -2,67 +2,115 @@
 
 import { useState, useEffect } from "react"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { ModuleNavbar } from "@/components/navigation/module-navbar"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { TaskFiltersComponent } from "@/components/tasks/task-filters"
-import { TaskCard } from "@/components/tasks/task-card"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { 
+  Sun, 
+  Star, 
+  Calendar, 
+  CheckSquare, 
+  Plus, 
+  Search,
+  MoreHorizontal,
+  ChevronRight,
+  User,
+  Sparkles,
+  Edit
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { CreateTaskSheet } from "@/components/tasks/create-task-sheet"
 import { EditTaskSheet } from "@/components/tasks/edit-task-sheet"
-import { DeleteTaskDialog } from "@/components/tasks/delete-task-dialog"
-import type { Task, TaskFilters as TaskFiltersType, TaskStats, TaskStatus } from "@/types/tasks"
-import { CheckSquare, Plus, Loader2, AlertCircle, Grid3X3, List } from "lucide-react"
-import { TaskTable } from "@/components/tasks/task-table"
+import { useSession } from "next-auth/react"
+import { type Task, TaskStatus } from "@/types/tasks"
 
-export default function TasksPage() {
+type TaskPriority = "low" | "medium" | "high"
+
+interface TaskList {
+  id: string
+  name: string
+  icon: any
+  color: string
+  filter: (task: Task) => boolean
+  count?: number
+}
+
+export default function TasksPageV2() {
+  const { data: session } = useSession()
   const [tasks, setTasks] = useState<Task[]>([])
-  const [stats, setStats] = useState<TaskStats | null>(null)
+  const [selectedList, setSelectedList] = useState("my-day")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
   const [users, setUsers] = useState<Array<{ id: string; name: string }>>([])
   const [opportunities, setOpportunities] = useState<Array<{ id: string; title: string }>>([])
-  const [filters, setFilters] = useState<TaskFiltersType>({})
-  const [isLoading, setIsLoading] = useState(true)
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [deletingTask, setDeletingTask] = useState<Task | null>(null)
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards")
+  const [showCreateSheet, setShowCreateSheet] = useState(false)
+  const [showEditSheet, setShowEditSheet] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+
+  // Listes inspirées de Microsoft To Do
+  const taskLists: TaskList[] = [
+    {
+      id: "my-day",
+      name: "Ma journée",
+      icon: Sun,
+      color: "text-blue-600",
+      filter: (task) => {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const taskDate = task.dueDate ? new Date(task.dueDate) : null
+        return task.status !== TaskStatus.COMPLETED && (!taskDate || taskDate <= today)
+      },
+    },
+    {
+      id: "important",
+      name: "Important",
+      icon: Star,
+      color: "text-orange-500",
+      filter: (task) => task.isImportant === true && task.status !== TaskStatus.COMPLETED,
+    },
+    {
+      id: "planned",
+      name: "Planifié",
+      icon: Calendar,
+      color: "text-green-600",
+      filter: (task) => !!task.dueDate && task.status !== TaskStatus.COMPLETED,
+    },
+    {
+      id: "assigned",
+      name: "Qui m'est assigné",
+      icon: User,
+      color: "text-purple-600",
+      filter: (task) => task.status !== TaskStatus.COMPLETED,
+    },
+    {
+      id: "all",
+      name: "Toutes",
+      icon: CheckSquare,
+      color: "text-gray-600",
+      filter: () => true,
+    },
+    {
+      id: "completed",
+      name: "Terminées",
+      icon: Sparkles,
+      color: "text-emerald-600",
+      filter: (task) => task.status === TaskStatus.COMPLETED,
+    },
+  ]
 
   const fetchTasks = async () => {
     try {
-      const params = new URLSearchParams()
-
-      if (filters.status?.length) {
-        params.set("status", filters.status.join(","))
-      }
-      if (filters.userId?.length) {
-        params.set("userId", filters.userId.join(","))
-      }
-      if (filters.opportunityId) {
-        params.set("opportunityId", filters.opportunityId)
-      }
-      if (filters.search) {
-        params.set("search", filters.search)
-      }
-
-      const response = await fetch(`/api/tasks?${params}`)
+      const response = await fetch("/api/tasks")
       if (response.ok) {
         const data = await response.json()
-        setTasks(data.tasks)
+        setTasks(data.tasks || [])
       }
     } catch (error) {
-      console.error("Erreur lors du chargement des tâches:", error)
-    }
-  }
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch("/api/tasks/stats")
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data)
-      }
-    } catch (error) {
-      console.error("Erreur lors du chargement des statistiques:", error)
+      console.error("Erreur:", error)
+      toast.error("Impossible de charger les tâches")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -71,43 +119,54 @@ export default function TasksPage() {
       const response = await fetch("/api/users")
       if (response.ok) {
         const data = await response.json()
-        setUsers(data.users || [])
+        setUsers(data.map((u: any) => ({ id: u.id, name: u.name || u.email })))
       }
     } catch (error) {
-      console.error("Erreur lors du chargement des utilisateurs:", error)
+      console.error("Erreur:", error)
     }
   }
 
   const fetchOpportunities = async () => {
     try {
-      // Assuming we have an opportunities API
       const response = await fetch("/api/opportunities")
       if (response.ok) {
         const data = await response.json()
         setOpportunities(data.opportunities || [])
       }
     } catch (error) {
-      console.error("Erreur lors du chargement des opportunités:", error)
-      setOpportunities([]) // Set empty array if API doesn't exist yet
+      console.error("Erreur:", error)
     }
   }
 
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true)
-      await Promise.all([fetchTasks(), fetchStats(), fetchUsers(), fetchOpportunities()])
-      setIsLoading(false)
-    }
-
-    loadData()
+    fetchTasks()
+    fetchUsers()
+    fetchOpportunities()
   }, [])
 
-  useEffect(() => {
-    fetchTasks()
-  }, [filters])
+  const currentList = taskLists.find((l) => l.id === selectedList)!
+  const filteredTasks = tasks
+    .filter((task) => {
+      // Filtre de liste
+      if (!currentList.filter(task)) return false
+      
+      // Filtre "Qui m'est assigné"
+      if (selectedList === "assigned" && task.userId !== session?.user?.id) return false
+      
+      // Filtre de recherche
+      if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+      
+      return true
+    })
 
-  const handleStatusChange = async (task: Task, newStatus: TaskStatus) => {
+  const handleEditTask = (task: Task) => {
+    setSelectedTask(task)
+    setShowEditSheet(true)
+  }
+
+  const handleToggleComplete = async (task: Task) => {
     try {
+      const newStatus = task.status === TaskStatus.COMPLETED ? TaskStatus.TODO : TaskStatus.COMPLETED
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -116,197 +175,232 @@ export default function TasksPage() {
 
       if (response.ok) {
         await fetchTasks()
-        await fetchStats()
       }
     } catch (error) {
-      console.error("Erreur lors de la mise à jour du statut:", error)
+      toast.error("Erreur lors de la mise à jour")
     }
   }
 
-  const handleTaskCreated = async () => {
-    await fetchTasks()
-    await fetchStats()
-  }
+  const handleToggleImportant = async (task: Task) => {
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...task, isImportant: !task.isImportant }),
+      })
 
-  const handleTaskUpdated = async () => {
-    await fetchTasks()
-    await fetchStats()
-  }
-
-  const handleTaskDeleted = async () => {
-    await fetchTasks()
-    await fetchStats()
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Chargement des tâches...</span>
-        </div>
-      </div>
-    )
+      if (response.ok) {
+        await fetchTasks()
+      }
+    } catch (error) {
+      toast.error("Erreur")
+    }
   }
 
   return (
     <PermissionGuard permission="tasks.view">
-      <div className="min-h-screen bg-gray-50">
-        <ModuleNavbar
-          title="Tâches"
-          description="Gestion des activités et tâches"
-          icon={CheckSquare}
-          primaryAction={{
-            label: "Nouvelle tâche",
-            onClick: () => setIsCreateOpen(true),
-            icon: Plus,
-          }}
-      
-          secondaryActions = {
-            <Button variant={"outline"} onClick={() => setViewMode(viewMode === "cards" ? "table" : "cards")}>
-              {viewMode === "cards" ? "Vue table" : "Vue cartes"}
-              {viewMode === "cards" ? <List/> : <Grid3X3/>}
-            </Button>
-          }
-        />
+      <div className="flex h-screen bg-white">
+        {/* Sidebar */}
+        <aside className="w-72 border-r border-gray-200 flex flex-col">
+          <div className="p-6 border-b border-gray-200">
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <CheckSquare className="h-7 w-7 text-blue-600" />
+              Tâches
+            </h1>
+          </div>
 
-        <main className="py-8">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {/* Statistiques */}
-            {stats && (
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600">Total</p>
-                        <p className="text-2xl font-bold">{stats.total}</p>
-                      </div>
-                      <CheckSquare className="h-8 w-8 text-gray-400" />
-                    </div>
-                  </CardContent>
-                </Card>
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+            {taskLists.map((list) => {
+              const Icon = list.icon
+              const count = tasks.filter(list.filter).length
+              
+              return (
+                <button
+                  key={list.id}
+                  onClick={() => setSelectedList(list.id)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-colors",
+                    selectedList === list.id
+                      ? "bg-blue-50 text-blue-900"
+                      : "hover:bg-gray-50 text-gray-700"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={cn("h-5 w-5", list.color)} />
+                    <span className="font-medium">{list.name}</span>
+                  </div>
+                  {count > 0 && (
+                    <span className="text-sm text-gray-500">{count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600">À faire</p>
-                        <p className="text-2xl font-bold text-gray-900">{stats.todo}</p>
-                      </div>
-                      <Badge variant="outline" className="bg-gray-100">
-                        {stats.todo}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-blue-600">En cours</p>
-                        <p className="text-2xl font-bold text-blue-900">{stats.inProgress}</p>
-                      </div>
-                      <Badge variant="outline" className="bg-blue-100 text-blue-800">
-                        {stats.inProgress}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-green-600">Terminé</p>
-                        <p className="text-2xl font-bold text-green-900">{stats.completed}</p>
-                      </div>
-                      <Badge variant="outline" className="bg-green-100 text-green-800">
-                        {stats.completed}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-red-600">En retard</p>
-                        <p className="text-2xl font-bold text-red-900">{stats.overdue}</p>
-                      </div>
-                      <AlertCircle className="h-8 w-8 text-red-400" />
-                    </div>
-                  </CardContent>
-                </Card>
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+            <div className="p-8">
+              <div className="flex items-center gap-3 mb-6">
+                {(() => {
+                  const Icon = currentList.icon
+                  return <Icon className={cn("h-8 w-8", currentList.color)} />
+                })()}
+                <h2 className="text-3xl font-bold text-gray-900">
+                  {currentList.name}
+                </h2>
               </div>
-            )}
 
-            {/* Filtres */}
-            <div className="mb-6">
-              <TaskFiltersComponent filters={filters} onFiltersChange={setFilters} users={users} opportunities={opportunities} />
+              {/* Search */}
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Rechercher une tâche..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 bg-white"
+                />
+              </div>
             </div>
+          </header>
 
-            {/* Liste des tâches */}
-            {tasks.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <CheckSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune tâche trouvée</h3>
-                  <p className="text-gray-600 mb-4">Commencez par créer votre première tâche.</p>
-                  <Button onClick={() => setIsCreateOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nouvelle tâche
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : viewMode === "cards" ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onEdit={setEditingTask}
-                    onDelete={setDeletingTask}
-                    onStatusChange={handleStatusChange}
-                  />
-                ))}
+          {/* Task List */}
+          <div className="flex-1 overflow-y-auto p-8">
+            <div className="max-w-3xl">
+              {/* Add Task */}
+              <div className="mb-6">
+                <Button
+                  onClick={() => setShowCreateSheet(true)}
+                  className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nouvelle tâche
+                </Button>
               </div>
-            ) : (
-              <TaskTable
-                tasks={tasks}
-                onEdit={setEditingTask}
-                onDelete={setDeletingTask}
-                onStatusChange={handleStatusChange}
-              />
-            )}
+
+              {/* Tasks */}
+              {isLoading ? (
+                <div className="text-center py-12 text-gray-500">
+                  Chargement...
+                </div>
+              ) : filteredTasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckSquare className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">Aucune tâche pour le moment</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="group flex items-center gap-3 p-4 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200"
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => handleToggleComplete(task)}
+                        className="flex-shrink-0"
+                      >
+                        <div
+                          className={cn(
+                            "h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all",
+                            task.status === TaskStatus.COMPLETED
+                              ? "bg-blue-600 border-blue-600"
+                              : "border-gray-300 hover:border-blue-600"
+                          )}
+                        >
+                          {task.status === TaskStatus.COMPLETED && (
+                            <svg
+                              className="h-3 w-3 text-white"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={3}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Task Content */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={cn(
+                            "text-sm font-medium",
+                            task.status === TaskStatus.COMPLETED
+                              ? "line-through text-gray-400"
+                              : "text-gray-900"
+                          )}
+                        >
+                          {task.title}
+                        </p>
+                        {task.description && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {task.description}
+                          </p>
+                        )}
+                        {task.user && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <User className="h-3 w-3 text-gray-400" />
+                            <p className="text-xs text-gray-500">
+                              {task.user.name}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Star */}
+                      <button
+                        onClick={() => handleToggleImportant(task)}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Star
+                          className={cn(
+                            "h-5 w-5",
+                            task.isImportant
+                              ? "fill-orange-400 text-orange-400"
+                              : "text-gray-300 hover:text-orange-400"
+                          )}
+                        />
+                      </button>
+
+                      {/* Edit */}
+                      <button 
+                        onClick={() => handleEditTask(task)}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Edit className="h-5 w-5 text-gray-400 hover:text-blue-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </main>
 
-        {/* Modales */}
+        {/* Modals */}
         <CreateTaskSheet
-          open={isCreateOpen}
-          onOpenChange={setIsCreateOpen}
-          onTaskCreated={handleTaskCreated}
+          open={showCreateSheet}
+          onOpenChange={setShowCreateSheet}
+          onTaskCreated={fetchTasks}
           users={users}
           opportunities={opportunities}
         />
 
         <EditTaskSheet
-          task={editingTask}
-          open={!!editingTask}
-          onOpenChange={(open) => !open && setEditingTask(null)}
-          onTaskUpdated={handleTaskUpdated}
+          task={selectedTask}
+          open={showEditSheet}
+          onOpenChange={setShowEditSheet}
+          onTaskUpdated={fetchTasks}
           users={users}
           opportunities={opportunities}
-        />
-
-        <DeleteTaskDialog
-          task={deletingTask}
-          open={!!deletingTask}
-          onOpenChange={(open) => !open && setDeletingTask(null)}
-          onTaskDeleted={handleTaskDeleted}
         />
       </div>
     </PermissionGuard>

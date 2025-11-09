@@ -232,28 +232,6 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              {/* Test Accounts */}
-              <div className="mt-8 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
-                <p className="text-sm font-semibold text-blue-900 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-blue-600 rounded-full mr-2 animate-pulse"></span>
-                  Comptes de test disponibles
-                </p>
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div className="flex items-center justify-between py-1.5 px-2 bg-white/50 rounded-lg">
-                    <span className="font-medium text-blue-900">Admin</span>
-                    <span className="text-xs text-gray-600">admin@example.com</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5 px-2 bg-white/50 rounded-lg">
-                    <span className="font-medium text-green-900">Manager</span>
-                    <span className="text-xs text-gray-600">manager@example.com</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5 px-2 bg-white/50 rounded-lg">
-                    <span className="font-medium text-purple-900">Commercial</span>
-                    <span className="text-xs text-gray-600">commercial@example.com</span>
-                  </div>
-                  <p className="text-xs text-center text-gray-500 mt-3 italic">Mot de passe : password</p>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
