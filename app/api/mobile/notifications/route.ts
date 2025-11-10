@@ -54,17 +54,20 @@ export async function GET(request: NextRequest) {
     console.log(`✅ ${notifications.length} notifications récupérées (${unreadCount} non lues)`);
 
     return NextResponse.json({
-      notifications: notifications.map((n:any) => ({
-        id: n.id,
-        title: n.title,
-        body: n.body,
-        type: n.type.toLowerCase(), // order, system, info
-        isRead: n.isRead,
-        timestamp: n.createdAt,
-        data: n.data,
-        readAt: n.readAt,
-      })),
-      unreadCount,
+      success: true,
+      data: {
+        notifications: notifications.map((n:any) => ({
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          type: n.type.toLowerCase(), // order, system, info
+          isRead: n.isRead,
+          timestamp: n.createdAt,
+          data: n.data,
+          readAt: n.readAt,
+        })),
+        unreadCount,
+      },
     });
   } catch (error) {
     console.error('❌ Erreur récupération notifications:', error);
@@ -104,7 +107,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      deletedCount: result.count,
+      data: {
+        deletedCount: result.count,
+      },
     });
   } catch (error) {
     console.error('❌ Erreur suppression notifications:', error);

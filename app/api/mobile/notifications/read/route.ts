@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      updatedCount: result.count,
+      data: {
+        updatedCount: result.count,
+      },
     });
   } catch (error) {
     console.error('❌ Erreur marquage notifications:', error);

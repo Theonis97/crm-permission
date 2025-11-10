@@ -56,15 +56,17 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      notification: {
-        id: updated.id,
-        title: updated.title,
-        body: updated.body,
-        type: updated.type.toLowerCase(),
-        isRead: updated.isRead,
-        timestamp: updated.createdAt,
-        data: updated.data,
-        readAt: updated.readAt,
+      data: {
+        notification: {
+          id: updated.id,
+          title: updated.title,
+          body: updated.body,
+          type: updated.type.toLowerCase(),
+          isRead: updated.isRead,
+          timestamp: updated.createdAt,
+          data: updated.data,
+          readAt: updated.readAt,
+        },
       },
     });
   } catch (error) {
