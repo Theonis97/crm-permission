@@ -1,6 +1,7 @@
 import webpush from 'web-push';
+import { prisma } from './prisma';
 
-// Configuration VAPID (remplacez par vos clés)
+// Configuration VAPID
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa40HI2BbS9YS7_aqIaOWX8r9AUfQ1No_ZXJpqVLRaXvlkHVgeCNjjhMGPjjJQ';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'aUWqaB3S2d6KAeDbEUBm3aCOBpXgdDCcu_-bjHmTBJU';
 const VAPID_EMAIL = process.env.VAPID_EMAIL || 'admin@inotech-gabon.com';
@@ -34,52 +35,139 @@ export interface NotificationPayload {
 }
 
 class PWAPushNotificationService {
-  private subscriptions: Map<string, PWAPushSubscription> = new Map();
-
   /**
-   * Ajouter une subscription pour un livreur
+   * Ajouter ou mettre à jour une subscription pour un livreur
    */
-  addSubscription(driverId: string, subscription: PWAPushSubscription) {
-    this.subscriptions.set(driverId, subscription);
-    console.log(`📱 PWA Subscription ajoutée pour le livreur ${driverId}`);
+  async addSubscription(userId: string, subscription: PWAPushSubscription, userAgent?: string) {
+    try {
+      await prisma.pWAPushSubscription.upsert({
+        where: { userId },
+        update: {
+          endpoint: subscription.endpoint,
+          p256dhKey: subscription.keys.p256dh,
+          authKey: subscription.keys.auth,
+          userAgent: userAgent || null,
+          isActive: true,
+          updatedAt: new Date()
+        },
+        create: {
+          userId,
+          endpoint: subscription.endpoint,
+          p256dhKey: subscription.keys.p256dh,
+          authKey: subscription.keys.auth,
+          userAgent: userAgent || null,
+          isActive: true
+        }
+      });
+      
+      console.log(`📱 PWA Subscription sauvegardée pour l'utilisateur ${userId}`);
+    } catch (error) {
+      console.error(`❌ Erreur sauvegarde subscription pour ${userId}:`, error);
+      throw error;
+    }
   }
 
   /**
    * Supprimer une subscription
    */
-  removeSubscription(driverId: string) {
-    this.subscriptions.delete(driverId);
-    console.log(`📱 PWA Subscription supprimée pour le livreur ${driverId}`);
+  async removeSubscription(userId: string) {
+    try {
+      await prisma.pWAPushSubscription.updateMany({
+        where: { userId },
+        data: { isActive: false }
+      });
+      
+      console.log(`📱 PWA Subscription désactivée pour l'utilisateur ${userId}`);
+    } catch (error) {
+      console.error(`❌ Erreur suppression subscription pour ${userId}:`, error);
+      throw error;
+    }
   }
 
   /**
    * Obtenir une subscription
    */
-  getSubscription(driverId: string): PWAPushSubscription | undefined {
-    return this.subscriptions.get(driverId);
+  async getSubscription(userId: string): Promise<PWAPushSubscription | null> {
+    try {
+      const dbSubscription = await prisma.pWAPushSubscription.findFirst({
+        where: { 
+          userId,
+          isActive: true
+        }
+      });
+
+      if (!dbSubscription) {
+        return null;
+      }
+
+      return {
+        endpoint: dbSubscription.endpoint,
+        keys: {
+          p256dh: dbSubscription.p256dhKey,
+          auth: dbSubscription.authKey
+        }
+      };
+    } catch (error) {
+      console.error(`❌ Erreur récupération subscription pour ${userId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtenir toutes les subscriptions actives
+   */
+  async getAllActiveSubscriptions(): Promise<Array<{ userId: string; subscription: PWAPushSubscription }>> {
+    try {
+      const dbSubscriptions = await prisma.pWAPushSubscription.findMany({
+        where: { isActive: true }
+      });
+
+      return dbSubscriptions.map(db => ({
+        userId: db.userId,
+        subscription: {
+          endpoint: db.endpoint,
+          keys: {
+            p256dh: db.p256dhKey,
+            auth: db.authKey
+          }
+        }
+      }));
+    } catch (error) {
+      console.error('❌ Erreur récupération toutes les subscriptions:', error);
+      return [];
+    }
   }
 
   /**
    * Envoyer une notification à un livreur spécifique
    */
-  async sendNotificationToDriver(driverId: string, payload: NotificationPayload): Promise<boolean> {
-    const subscription = this.getSubscription(driverId);
+  async sendNotificationToDriver(userId: string, payload: NotificationPayload): Promise<boolean> {
+    const subscription = await this.getSubscription(userId);
     
     if (!subscription) {
-      console.warn(`❌ Aucune PWA subscription trouvée pour le livreur ${driverId}`);
+      console.warn(`❌ Aucune PWA subscription trouvée pour l'utilisateur ${userId}`);
       return false;
     }
 
+    // Vérifier si c'est une subscription de test
+    if (subscription.endpoint.includes('test-endpoint')) {
+      console.log(`🧪 Simulation envoi notification à l'utilisateur de test ${userId}:`, payload.title);
+      return true;
+    }
+
     try {
+      console.log(`📤 Envoi notification PWA à l'utilisateur ${userId}...`);
+      console.log(`🔗 Endpoint:`, subscription.endpoint);
+      
       await webpush.sendNotification(subscription, JSON.stringify(payload));
-      console.log(`✅ Notification PWA envoyée au livreur ${driverId}:`, payload.title);
+      console.log(`✅ Notification PWA envoyée à l'utilisateur ${userId}:`, payload.title);
       return true;
     } catch (error) {
-      console.error(`❌ Erreur envoi notification PWA au livreur ${driverId}:`, error);
+      console.error(`❌ Erreur envoi notification PWA à l'utilisateur ${userId}:`, error);
       
-      // Si l'endpoint n'est plus valide, supprimer la subscription
-      if (error instanceof Error && error.message.includes('410')) {
-        this.removeSubscription(driverId);
+      if (error instanceof Error && (error.message.includes('410') || error.message.includes('invalid'))) {
+        console.log(`🗑️ Suppression subscription invalide pour ${userId}`);
+        await this.removeSubscription(userId);
       }
       
       return false;
@@ -90,9 +178,11 @@ class PWAPushNotificationService {
    * Envoyer une notification à tous les livreurs connectés
    */
   async sendNotificationToAllDrivers(payload: NotificationPayload): Promise<number> {
+    const activeSubscriptions = await this.getAllActiveSubscriptions();
+    
     const results = await Promise.allSettled(
-      Array.from(this.subscriptions.keys()).map(driverId => 
-        this.sendNotificationToDriver(driverId, payload)
+      activeSubscriptions.map(({ userId }) => 
+        this.sendNotificationToDriver(userId, payload)
       )
     );
 
@@ -100,7 +190,7 @@ class PWAPushNotificationService {
       result.status === 'fulfilled' && result.value === true
     ).length;
 
-    console.log(`📊 Notifications PWA envoyées: ${successCount}/${this.subscriptions.size}`);
+    console.log(`📊 Notifications PWA envoyées: ${successCount}/${activeSubscriptions.length}`);
     return successCount;
   }
 
@@ -138,7 +228,6 @@ class PWAPushNotificationService {
       ]
     };
 
-    // Si des livreurs spécifiques sont ciblés
     if (targetDriverIds && targetDriverIds.length > 0) {
       const results = await Promise.allSettled(
         targetDriverIds.map(driverId => this.sendNotificationToDriver(driverId, payload))
@@ -152,7 +241,6 @@ class PWAPushNotificationService {
       return successCount;
     }
 
-    // Sinon, envoyer à tous les livreurs connectés
     return await this.sendNotificationToAllDrivers(payload);
   }
 
@@ -190,7 +278,6 @@ class PWAPushNotificationService {
       ]
     };
 
-    // Si des livreurs spécifiques sont ciblés
     if (targetDriverIds && targetDriverIds.length > 0) {
       const results = await Promise.allSettled(
         targetDriverIds.map(driverId => this.sendNotificationToDriver(driverId, payload))
@@ -204,17 +291,17 @@ class PWAPushNotificationService {
       return successCount;
     }
 
-    // Sinon, envoyer à tous les livreurs connectés
     return await this.sendNotificationToAllDrivers(payload);
   }
 
   /**
    * Obtenir les statistiques des subscriptions
    */
-  getStats() {
+  async getStats() {
+    const activeSubscriptions = await this.getAllActiveSubscriptions();
     return {
-      totalSubscriptions: this.subscriptions.size,
-      drivers: Array.from(this.subscriptions.keys())
+      totalSubscriptions: activeSubscriptions.length,
+      drivers: activeSubscriptions.map(sub => sub.userId)
     };
   }
 

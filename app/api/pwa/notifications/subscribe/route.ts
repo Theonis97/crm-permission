@@ -1,26 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pwaPushNotificationService } from '@/lib/pwa-push-notifications';
+import { verifyMobileAuth } from '@/lib/auth-mobile';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    // Vérifier l'authentification et obtenir l'utilisateur
+    const authResult = await verifyMobileAuth(request);
+    
+    if (!authResult.authenticated || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: 'Token d\'authentification requis' },
+        { success: false, error: authResult.error || 'Authentification échouée' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split(' ')[1];
+    const deliveryPersonId = authResult.user.id;
+    
+    console.log(`🔍 Tentative d'enregistrement PWA subscription pour deliveryPersonId: ${deliveryPersonId}`);
+    
+    // Récupérer l'utilisateur depuis le DeliveryPerson
+    const deliveryPerson = await prisma.deliveryPerson.findUnique({
+      where: { id: deliveryPersonId },
+      select: { 
+        id: true, 
+        name: true, 
+        email: true
+      }
+    });
+    
+    if (!deliveryPerson) {
+      console.error(`❌ DeliveryPerson ${deliveryPersonId} non trouvé en base de données`);
+      return NextResponse.json(
+        { success: false, error: 'Livreur non trouvé en base de données' },
+        { status: 404 }
+      );
+    }
+    
+    // Trouver l'utilisateur correspondant par email
+    const user = await prisma.user.findUnique({
+      where: { email: deliveryPerson.email },
+      select: { id: true, email: true, firstName: true, lastName: true }
+    });
+    
+    if (!user) {
+      console.error(`❌ Utilisateur avec email ${deliveryPerson.email} non trouvé`);
+      return NextResponse.json(
+        { success: false, error: 'Utilisateur correspondant non trouvé' },
+        { status: 404 }
+      );
+    }
+    
+    const userId = user.id;
+    console.log(`✅ Livreur trouvé: ${deliveryPerson.name} (${deliveryPerson.id})`);
+    console.log(`✅ Utilisateur correspondant: ${user.email} (${user.id})`);
     
     // Récupérer les données de la subscription
     const body = await request.json();
     const { subscription, driverId } = body;
 
-    if (!subscription || !driverId) {
+    // Vérifier que le driverId correspond au livreur authentifié (si fourni)
+    if (driverId && driverId !== deliveryPersonId && driverId !== userId) {
       return NextResponse.json(
-        { success: false, error: 'Subscription et driverId requis' },
+        { success: false, error: 'driverId ne correspond pas à l\'utilisateur authentifié' },
+        { status: 403 }
+      );
+    }
+
+    if (!subscription) {
+      return NextResponse.json(
+        { success: false, error: 'Subscription requise' },
         { status: 400 }
       );
     }
@@ -33,18 +82,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ajouter la subscription au service
-    pwaPushNotificationService.addSubscription(driverId, subscription);
+    // Récupérer le User-Agent
+    const userAgent = request.headers.get('user-agent') || undefined;
 
-    console.log(`📱 Nouvelle PWA subscription enregistrée pour le livreur ${driverId}`);
+    // Ajouter la subscription au service
+    await pwaPushNotificationService.addSubscription(userId, subscription, userAgent);
+
+    console.log(`📱 Nouvelle PWA subscription enregistrée pour l'utilisateur ${userId}`);
 
     return NextResponse.json({
       success: true,
       message: 'Subscription PWA enregistrée avec succès',
       data: {
-        driverId,
+        userId,
         subscribed: true,
-        stats: pwaPushNotificationService.getStats()
+        stats: await pwaPushNotificationService.getStats()
       }
     });
 
@@ -64,37 +116,30 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    // Vérifier l'authentification et obtenir l'utilisateur
+    const authResult = await verifyMobileAuth(request);
+    
+    if (!authResult.authenticated || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: 'Token d\'authentification requis' },
+        { success: false, error: authResult.error || 'Authentification échouée' },
         { status: 401 }
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const driverId = searchParams.get('driverId');
-
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: 'driverId requis' },
-        { status: 400 }
-      );
-    }
+    const userId = authResult.user.id;
 
     // Supprimer la subscription
-    pwaPushNotificationService.removeSubscription(driverId);
+    await pwaPushNotificationService.removeSubscription(userId);
 
-    console.log(`📱 PWA Subscription supprimée pour le livreur ${driverId}`);
+    console.log(`📱 PWA Subscription supprimée pour l'utilisateur ${userId}`);
 
     return NextResponse.json({
       success: true,
       message: 'Subscription PWA supprimée avec succès',
       data: {
-        driverId,
+        userId,
         subscribed: false,
-        stats: pwaPushNotificationService.getStats()
+        stats: await pwaPushNotificationService.getStats()
       }
     });
 
