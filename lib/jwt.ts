@@ -10,6 +10,10 @@ export interface JWTPayload {
   name: string;
   roles: string[];
   type: 'access' | 'refresh';
+  // Standard JWT claims
+  exp?: number; // Expiration time
+  iat?: number; // Issued at
+  nbf?: number; // Not before
 }
 
 /**

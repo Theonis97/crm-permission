@@ -4,11 +4,17 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 [AUTH_ME] Début de la vérification d\'authentification');
+    
     // Récupérer le token du header Authorization
     const authHeader = request.headers.get('authorization');
+    console.log('📡 [AUTH_ME] Header Authorization:', authHeader ? `${authHeader.substring(0, 20)}...` : 'MANQUANT');
+    
     const token = extractTokenFromHeader(authHeader);
+    console.log('🔑 [AUTH_ME] Token extrait:', token ? `${token.substring(0, 20)}...` : 'NULL');
 
     if (!token) {
+      console.log('❌ [AUTH_ME] ÉCHEC: Token manquant');
       return NextResponse.json(
         { 
           success: false,
@@ -19,9 +25,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Vérifier le token
+    console.log('🔐 [AUTH_ME] Vérification du token...');
     const payload = verifyToken(token);
+    console.log('📋 [AUTH_ME] Payload décodé:', payload ? { userId: payload.userId, type: payload.type, exp: payload.exp } : 'NULL');
 
     if (!payload || payload.type !== 'access') {
+      console.log('❌ [AUTH_ME] ÉCHEC: Token invalide ou mauvais type');
+      console.log('   - Payload exists:', !!payload);
+      console.log('   - Payload type:', payload?.type);
       return NextResponse.json(
         { 
           success: false,
@@ -32,6 +43,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Récupérer les informations complètes du livreur
+    console.log('👤 [AUTH_ME] Recherche du livreur avec ID:', payload.userId);
     const deliveryPerson = await prisma.deliveryPerson.findUnique({
       where: { id: payload.userId },
       include: {
@@ -45,6 +57,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!deliveryPerson) {
+      console.log('❌ [AUTH_ME] ÉCHEC: Livreur non trouvé en base de données');
       return NextResponse.json(
         { 
           success: false,
@@ -53,6 +66,13 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    console.log('✅ [AUTH_ME] Livreur trouvé:', {
+      id: deliveryPerson.id,
+      name: deliveryPerson.name,
+      email: deliveryPerson.email,
+      isActive: deliveryPerson.isActive
+    });
 
     if (!deliveryPerson.isActive) {
       return NextResponse.json(
@@ -65,6 +85,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Retourner les informations du livreur (sans le mot de passe)
+    console.log('✅ [AUTH_ME] SUCCÈS: Authentification réussie pour', deliveryPerson.name);
     return NextResponse.json({
       success: true,
       data: {

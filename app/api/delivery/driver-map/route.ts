@@ -75,6 +75,8 @@ export async function GET(request: NextRequest) {
                 select: {
                   id: true,
                   name: true,
+                  photos: true,
+                  sku: true,
                 },
               },
             },
@@ -120,6 +122,8 @@ export async function GET(request: NextRequest) {
                 select: {
                   id: true,
                   name: true,
+                  photos: true,
+                  sku: true,
                 },
               },
             },
@@ -131,6 +135,8 @@ export async function GET(request: NextRequest) {
         take: 100,
       });
     }
+
+    console.log('orders', orders);
 
     // Géocoder automatiquement les commandes sans coordonnées
     const geocodingPromises = orders.map(async (order) => {
@@ -185,13 +191,39 @@ export async function GET(request: NextRequest) {
       priority: order.priority,
       requestedDeliveryDate: order.requestedDeliveryDate,
       notes: order.notes,
-      items: order.items.map((item: any) => ({
-        id: item.id,
-        productName: item.product?.name || item.name || 'Produit inconnu',
-        quantity: item.quantity,
-        unitPrice: item.unitPrice || 0,
-        total: item.total || (item.quantity * (item.unitPrice || 0)),
-      })),
+      items: order.items.map((item: any) => {
+        // 🖼️ LOGS POUR DEBUG DES IMAGES
+        console.log(`📦 Item ${item.id} - ${item.name}:`);
+        console.log(`   - Product data:`, item.product ? 'EXISTS' : 'NULL');
+        
+        if (item.product) {
+          console.log(`   - Product ID: ${item.product.id}`);
+          console.log(`   - Product name: ${item.product.name}`);
+          console.log(`   - Photos array:`, item.product.photos);
+          console.log(`   - Photos length:`, item.product.photos?.length || 0);
+          console.log(`   - First photo:`, item.product.photos?.[0] || 'NONE');
+          console.log(`   - SKU:`, item.product.sku || 'NONE');
+        }
+
+        const formattedItem = {
+          id: item.id,
+          productName: item.product?.name || item.name || 'Produit inconnu',
+          quantity: item.quantity,
+          unitPrice: item.unitPrice || 0,
+          total: item.total || (item.quantity * (item.unitPrice || 0)),
+          product: item.product ? {
+            id: item.product.id,
+            name: item.product.name,
+            image: item.product.photos && item.product.photos.length > 0 ? item.product.photos[0] : null,
+            sku: item.product.sku,
+          } : null,
+        };
+
+        console.log(`   - Final image URL:`, formattedItem.product?.image || 'NULL');
+        console.log(`   ---`);
+        
+        return formattedItem;
+      }),
       deliveryZone: order.deliveryZone ? {
         id: order.deliveryZone.id,
         name: order.deliveryZone.name,
@@ -207,6 +239,18 @@ export async function GET(request: NextRequest) {
       },
       createdAt: order.createdAt,
     }));
+
+    // 📊 STATISTIQUES DES IMAGES
+    const totalItems = formattedOrders.reduce((sum, order) => sum + order.items.length, 0);
+    const itemsWithImages = formattedOrders.reduce((sum, order) => 
+      sum + order.items.filter(item => item.product?.image).length, 0
+    );
+    
+    console.log(`\n📊 RÉSUMÉ DES IMAGES:`);
+    console.log(`   Total items: ${totalItems}`);
+    console.log(`   Items avec images: ${itemsWithImages}`);
+    console.log(`   Pourcentage: ${totalItems > 0 ? Math.round(itemsWithImages/totalItems*100) : 0}%`);
+    console.log(`   ==================\n`);
 
     // 2. Récupérer toutes les zones actives avec polygones
     const zones = await prisma.deliveryZone.findMany({
@@ -371,6 +415,16 @@ export async function GET(request: NextRequest) {
       totalZones: formattedZones.length,
       activeDrivers: formattedDrivers.length,
     };
+
+    console.log('🚀 Driver map data:', {
+      orders: formattedOrders,
+      zones: formattedZones,
+      drivers: formattedDrivers,
+      currentDriverZoneId,
+      activeOrder,
+      canAcceptNewOrders,
+      stats,
+    });
 
     return NextResponse.json({
       success: true,
