@@ -6,7 +6,7 @@ export async function GET() {
     console.log('🧪 Test des notifications PWA');
     
     // Obtenir les statistiques
-    const stats = pwaPushNotificationService.getStats();
+    const stats = await pwaPushNotificationService.getStats();
     console.log('📊 Statistiques:', stats);
     
     // Ajouter une subscription de test si aucune n'existe
@@ -35,7 +35,7 @@ export async function GET() {
       }
     });
     
-    const newStats = pwaPushNotificationService.getStats();
+    const newStats = await pwaPushNotificationService.getStats();
     
     return NextResponse.json({
       success: true,
