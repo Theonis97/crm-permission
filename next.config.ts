@@ -18,7 +18,9 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Access-Control-Allow-Origin",
-            value: "*", // En production, remplacez par l'URL spécifique de votre PWA
+            value: process.env.NODE_ENV === "production" 
+              ? "https://livreur.inotech-gabon.com" 
+              : "*",
           },
           {
             key: "Access-Control-Allow-Methods",
@@ -31,6 +33,10 @@ const nextConfig: NextConfig = {
           {
             key: "Access-Control-Max-Age",
             value: "86400", // 24 heures
+          },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "false",
           },
         ],
       },
