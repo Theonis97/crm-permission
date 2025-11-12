@@ -314,6 +314,12 @@ export async function GET(request: NextRequest) {
         isActive: true,
       },
       include: {
+        store: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         deliveryZones: {
           where: {
             isActive: true,
@@ -341,31 +347,76 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const formattedDrivers = deliveryPersons
-      .filter(driver => driver.deliveryZones.length > 0)
-      .map(driver => {
-        const zone = driver.deliveryZones[0];
-        return {
-          id: driver.id,
-          name: driver.name,
-          phone: driver.phone,
-          coordinates: zone.centerLatitude && zone.centerLongitude ? {
-            lat: zone.centerLatitude,
-            lng: zone.centerLongitude,
-          } : null,
-          zone: {
-            id: zone.id,
-            name: zone.name,
-            color: zone.color,
-          },
-          activeOrders: driver.storeOrders.map(order => ({
-            id: order.id,
-            number: order.number,
-            status: order.status,
-          })),
+    console.log('🔍 DEBUG - Livreurs récupérés:', {
+      total: deliveryPersons.length,
+      details: deliveryPersons.map(d => ({
+        id: d.id,
+        name: d.name,
+        storeName: d.store.name,
+        zonesCount: d.deliveryZones.length,
+        zones: d.deliveryZones.map(z => ({
+          id: z.id,
+          name: z.name,
+          hasCoordinates: !!(z.centerLatitude && z.centerLongitude),
+        })),
+      })),
+    });
+
+    const formattedDrivers = deliveryPersons.map(driver => {
+      // Si le livreur a des zones, utiliser la première zone avec coordonnées
+      let zone = driver.deliveryZones.find(z => z.centerLatitude && z.centerLongitude) || driver.deliveryZones[0];
+      
+      // Si aucune zone avec coordonnées, utiliser la première zone disponible
+      if (!zone && driver.deliveryZones.length > 0) {
+        zone = driver.deliveryZones[0];
+      }
+
+      // Déterminer les coordonnées : zone > position par défaut (null pour l'instant)
+      let coordinates: { lat: number; lng: number } | null = null;
+      
+      if (zone && zone.centerLatitude && zone.centerLongitude) {
+        coordinates = {
+          lat: zone.centerLatitude,
+          lng: zone.centerLongitude,
         };
-      })
-      .filter(driver => driver.coordinates !== null);
+      }
+
+      return {
+        id: driver.id,
+        name: driver.name,
+        phone: driver.phone,
+        coordinates,
+        zone: zone ? {
+          id: zone.id,
+          name: zone.name,
+          color: zone.color,
+        } : null, // Permettre null si pas de zone
+        store: {
+          id: driver.store.id,
+          name: driver.store.name,
+        },
+        activeOrders: driver.storeOrders.map(order => ({
+          id: order.id,
+          number: order.number,
+          status: order.status,
+        })),
+      };
+    });
+
+    console.log('🔍 DEBUG - Livreurs formatés:', {
+      total: formattedDrivers.length,
+      withCoordinates: formattedDrivers.filter(d => d.coordinates !== null).length,
+      withoutCoordinates: formattedDrivers.filter(d => d.coordinates === null).length,
+      withZone: formattedDrivers.filter(d => d.zone !== null).length,
+      withoutZone: formattedDrivers.filter(d => d.zone === null).length,
+      details: formattedDrivers.map(d => ({
+        id: d.id,
+        name: d.name,
+        hasCoordinates: d.coordinates !== null,
+        hasZone: d.zone !== null,
+        zoneName: d.zone?.name || 'Aucune zone',
+      })),
+    });
 
     // Trouver la zone du livreur connecté
     let currentDriverZoneId = null;
@@ -402,6 +453,38 @@ export async function GET(request: NextRequest) {
     // Vérifier si le livreur peut accepter de nouvelles commandes
     const canAcceptNewOrders = !activeOrder;
 
+    // 4. Récupérer tous les magasins actifs
+    const stores = await prisma.store.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    // Compter les commandes actives par magasin
+    const storesWithCounts = stores.map(store => {
+      const activeOrdersCount = formattedOrders.filter(
+        order => order.store.id === store.id
+      ).length;
+      
+      return {
+        id: store.id,
+        name: store.name,
+        activeOrdersCount,
+      };
+    });
+
+    console.log('🔍 DEBUG - Magasins récupérés:', {
+      total: storesWithCounts.length,
+      details: storesWithCounts,
+    });
+
     // Statistiques
     const stats = {
       totalOrders: formattedOrders.length,
@@ -414,12 +497,14 @@ export async function GET(request: NextRequest) {
       cancelledOrders: formattedOrders.filter(o => o.status === 'CANCELLED').length,
       totalZones: formattedZones.length,
       activeDrivers: formattedDrivers.length,
+      totalStores: storesWithCounts.length,
     };
 
     console.log('🚀 Driver map data:', {
-      orders: formattedOrders,
-      zones: formattedZones,
-      drivers: formattedDrivers,
+      orders: formattedOrders.length,
+      zones: formattedZones.length,
+      drivers: formattedDrivers.length,
+      stores: storesWithCounts.length,
       currentDriverZoneId,
       activeOrder,
       canAcceptNewOrders,
@@ -432,6 +517,7 @@ export async function GET(request: NextRequest) {
         orders: formattedOrders,
         zones: formattedZones,
         drivers: formattedDrivers,
+        stores: storesWithCounts,
         currentDriverZoneId,
         activeOrder, // La commande en cours du livreur
         canAcceptNewOrders, // false si le livreur a déjà une commande active

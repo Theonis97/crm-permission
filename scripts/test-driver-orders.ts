@@ -1,12 +1,13 @@
 /**
- * Script de test pour vérifier les commandes d'un livreur
- * Usage: npx ts-node scripts/test-driver-orders.ts
+ * Script de debug pour diagnostiquer le problème des statistiques de livreur
+ * Usage: npx tsx scripts/test-driver-orders.ts
  */
 
 import { prisma } from '../lib/prisma';
+import { calculateTotalCommissions } from '../lib/commission-calculator';
 
-async function testDriverOrders() {
-  console.log('🔍 Test des commandes du livreur\n');
+async function debugDriverStats() {
+  console.log('🔍 DEBUG: Statistiques des livreurs\n');
 
   try {
     // 1. Lister tous les livreurs
@@ -16,115 +17,176 @@ async function testDriverOrders() {
         name: true,
         email: true,
         phone: true,
-        storeId: true,
+        isActive: true,
+        createdAt: true,
       },
     });
 
     console.log(`📋 ${drivers.length} livreur(s) trouvé(s):\n`);
     drivers.forEach((driver, index) => {
-      console.log(`${index + 1}. ${driver.name} (${driver.email})`);
-      console.log(`   ID: ${driver.id}`);
-      console.log(`   Store ID: ${driver.storeId}\n`);
+      console.log(`${index + 1}. ${driver.name} (${driver.id}) - ${driver.isActive ? '✅ Actif' : '❌ Inactif'}`);
     });
 
     if (drivers.length === 0) {
-      console.log('❌ Aucun livreur trouvé');
+      console.log('❌ Aucun livreur trouvé dans la base de données');
       return;
     }
 
-    // Prendre le premier livreur pour le test
-    const driver = drivers[0];
-    console.log(`\n🚚 Test avec le livreur: ${driver.name}\n`);
+    // 2. Prendre le premier livreur pour les tests
+    const testDriver = drivers[0];
+    console.log(`\n🎯 Test avec le livreur: ${testDriver.name} (${testDriver.id})\n`);
 
-    // 2. Vérifier la zone du livreur
-    const zone = await prisma.deliveryZone.findFirst({
+    // 3. Vérifier TOUTES les commandes avec deliveryPersonId
+    const allOrdersWithDriver = await prisma.storeOrder.findMany({
       where: {
-        deliveryPersonId: driver.id,
-        isActive: true,
-      },
-    });
-
-    if (zone) {
-      console.log(`📍 Zone assignée: ${zone.name} (${zone.id})`);
-      console.log(`   Couverture: ${zone.coverage || 'N/A'}\n`);
-    } else {
-      console.log(`⚠️  Aucune zone assignée au livreur\n`);
-    }
-
-    // 3. Lister toutes les commandes du magasin
-    const allOrders = await prisma.storeOrder.findMany({
-      where: {
-        storeId: driver.storeId,
+        deliveryPersonId: testDriver.id,
       },
       select: {
         id: true,
         number: true,
         status: true,
-        deliveryAddress: true,
-        deliveryPersonId: true,
-        deliveryZoneId: true,
-        customerName: true,
         total: true,
+        deliveredAt: true,
+        createdAt: true,
+        customerName: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    console.log(`📦 ${allOrders.length} commande(s) dans le magasin:\n`);
-
-    // 4. Classifier les commandes
-    const directlyAssigned = allOrders.filter(o => o.deliveryPersonId === driver.id);
-    const inZone = allOrders.filter(o => zone && o.deliveryZoneId === zone.id);
-    const matchedByAddress = allOrders.filter(o => {
-      if (!zone || !o.deliveryAddress) return false;
-      const address = o.deliveryAddress.toLowerCase();
-      const zoneName = zone.name.toLowerCase();
-      const zoneCoverage = zone.coverage?.toLowerCase() || '';
-      return address.includes(zoneName) || (zoneCoverage && address.includes(zoneCoverage));
-    });
-
-    console.log(`📊 Classification des commandes:\n`);
-    console.log(`   ✅ Assignées directement: ${directlyAssigned.length}`);
-    console.log(`   ✅ Dans la zone: ${inZone.length}`);
-    console.log(`   ✅ Matchées par adresse: ${matchedByAddress.length}\n`);
-
-    // Afficher les commandes directement assignées
-    if (directlyAssigned.length > 0) {
-      console.log(`📋 Commandes directement assignées:\n`);
-      directlyAssigned.forEach(order => {
-        console.log(`   - ${order.number} | ${order.status} | ${order.customerName}`);
-        console.log(`     Adresse: ${order.deliveryAddress || 'N/A'}\n`);
+    console.log(`📦 ${allOrdersWithDriver.length} commandes assignées au livreur:`);
+    if (allOrdersWithDriver.length === 0) {
+      console.log('❌ PROBLÈME: Aucune commande assignée à ce livreur!');
+      console.log('💡 Vérifiez que les commandes ont bien deliveryPersonId renseigné\n');
+      
+      // Vérifier s'il y a des commandes sans livreur assigné
+      const ordersWithoutDriver = await prisma.storeOrder.count({
+        where: {
+          deliveryPersonId: null,
+          status: { not: 'PENDING' }
+        }
+      });
+      console.log(`⚠️ ${ordersWithoutDriver} commandes sans livreur assigné\n`);
+      
+    } else {
+      allOrdersWithDriver.forEach((order, index) => {
+        console.log(`  ${index + 1}. ${order.number} - ${order.status} - ${order.total} FCFA - ${order.customerName}`);
       });
     }
 
-    // Afficher les commandes matchées par adresse
-    if (matchedByAddress.length > 0) {
-      console.log(`📋 Commandes matchées par adresse:\n`);
-      matchedByAddress.forEach(order => {
-        console.log(`   - ${order.number} | ${order.status} | ${order.customerName}`);
-        console.log(`     Adresse: ${order.deliveryAddress || 'N/A'}\n`);
+    // 4. Tester EXACTEMENT les requêtes de l'API driver-stats
+    console.log('\n🔍 Test des requêtes API (comme dans /api/delivery/driver-stats):\n');
+    
+    // Commandes acceptées (CONFIRMED ou plus)
+    const acceptedOrders = await prisma.storeOrder.count({
+      where: {
+        deliveryPersonId: testDriver.id,
+        status: {
+          in: ["CONFIRMED", "PREPARING", "READY", "DELIVERING", "DELIVERED"],
+        },
+      },
+    });
+    console.log(`✅ Commandes acceptées: ${acceptedOrders}`);
+
+    // Commandes livrées avec détails
+    const deliveredOrders = await prisma.storeOrder.findMany({
+      where: {
+        deliveryPersonId: testDriver.id,
+        status: "DELIVERED",
+      },
+      select: {
+        id: true,
+        number: true,
+        total: true,
+        deliveredAt: true,
+        customerName: true,
+      },
+    });
+    console.log(`🚚 Commandes livrées: ${deliveredOrders.length}`);
+    
+    if (deliveredOrders.length > 0) {
+      console.log('Détail des commandes livrées:');
+      deliveredOrders.forEach((order, index) => {
+        console.log(`  ${index + 1}. ${order.number} - ${order.total} FCFA - ${order.customerName} - ${order.deliveredAt}`);
       });
     }
 
-    // 5. Compter par statut
-    const statusCount = allOrders.reduce((acc, order) => {
-      acc[order.status] = (acc[order.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Commandes annulées
+    const cancelledOrders = await prisma.storeOrder.count({
+      where: {
+        deliveryPersonId: testDriver.id,
+        status: "CANCELLED",
+      },
+    });
+    console.log(`❌ Commandes annulées: ${cancelledOrders}`);
 
-    console.log(`📈 Répartition par statut (toutes commandes):\n`);
-    Object.entries(statusCount).forEach(([status, count]) => {
-      console.log(`   ${status}: ${count}`);
+    // 5. Tester le calcul des commissions
+    console.log('\n💰 Test du calcul des commissions:');
+    const commissionStats = calculateTotalCommissions(deliveredOrders);
+    console.log(`Commission totale: ${commissionStats.totalCommission} FCFA`);
+    console.log(`Nombre de livraisons: ${commissionStats.deliveriesCount}`);
+    console.log(`Panier moyen: ${commissionStats.averageOrderAmount} FCFA`);
+    
+    if (commissionStats.commissionDetails.length > 0) {
+      console.log('Détail des commissions:');
+      commissionStats.commissionDetails.forEach((detail, index) => {
+        console.log(`  ${index + 1}. ${detail.orderAmount} FCFA → ${detail.commission} FCFA commission`);
+      });
+    }
+
+    // 6. Vérifier les zones assignées
+    const assignedZones = await prisma.deliveryZone.findMany({
+      where: {
+        deliveryPersonId: testDriver.id,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+      },
+    });
+    console.log(`\n🗺️ ${assignedZones.length} zones assignées:`);
+    assignedZones.forEach((zone, index) => {
+      console.log(`${index + 1}. ${zone.name} (${zone.color})`);
     });
 
-    console.log('\n✅ Test terminé');
+    // 7. Simuler EXACTEMENT la réponse de l'API
+    console.log('\n📡 Simulation de la réponse API:');
+    const apiResponse = {
+      success: true,
+      data: {
+        driver: {
+          id: testDriver.id,
+          name: testDriver.name,
+          phone: testDriver.phone,
+          email: testDriver.email,
+          isActive: testDriver.isActive,
+          joinedAt: testDriver.createdAt,
+        },
+        stats: {
+          revenue: commissionStats.totalCommission,
+          acceptedOrders: acceptedOrders,
+          deliveredOrders: deliveredOrders.length,
+          cancelledOrders: cancelledOrders,
+          averageOrderAmount: commissionStats.averageOrderAmount,
+          totalDeliveries: commissionStats.deliveriesCount,
+        },
+        assignedZones,
+        period: 'all',
+      },
+    };
+    
+    console.log(JSON.stringify(apiResponse, null, 2));
+
+    console.log('\n✅ Debug terminé');
 
   } catch (error) {
-    console.error('❌ Erreur:', error);
+    console.error('❌ Erreur lors du debug:', error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-testDriverOrders();
+debugDriverStats();

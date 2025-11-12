@@ -54,8 +54,9 @@ interface Driver {
   id: string
   name: string
   phone: string
-  coordinates: { lat: number; lng: number }
-  zone: { id: string; name: string; color: string }
+  coordinates: { lat: number; lng: number } | null
+  zone: { id: string; name: string; color: string } | null
+  store: { id: string; name: string }
   activeOrders: Array<{ id: string; number: string; status: string }>
 }
 
@@ -69,6 +70,7 @@ interface DeliveryMapV2Props {
   orders: Order[]
   zones: Zone[]
   drivers: Driver[]
+  stores?: Store[]
   onOrderUpdated?: () => void
 }
 
@@ -144,7 +146,7 @@ const getStatusLabel = (status: string): string => {
   return labels[status] || status
 }
 
-export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }: DeliveryMapV2Props) {
+export default function DeliveryMapV2({ orders, zones, drivers, stores = [], onOrderUpdated }: DeliveryMapV2Props) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
   
@@ -183,23 +185,25 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
   // const [mapZoom, setMapZoom] = useState<number>(13)
   // const [openPopupId, setOpenPopupId] = useState<string | null>(null)
 
-  // Extraire les magasins uniques avec compteur de commandes
-  const stores: Store[] = Array.from(
-    orders.reduce((map, order) => {
-      const storeId = order.store.id
-      const existing = map.get(storeId)
-      if (existing) {
-        existing.activeOrdersCount++
-      } else {
-        map.set(storeId, {
-          id: storeId,
-          name: order.store.name,
-          activeOrdersCount: 1
-        })
-      }
-      return map
-    }, new Map<string, Store>()).values()
-  )
+  // Utiliser les magasins fournis par l'API, ou les extraire des commandes en fallback
+  const storesList: Store[] = stores.length > 0 
+    ? stores 
+    : Array.from(
+        orders.reduce((map, order) => {
+          const storeId = order.store.id
+          const existing = map.get(storeId)
+          if (existing) {
+            existing.activeOrdersCount++
+          } else {
+            map.set(storeId, {
+              id: storeId,
+              name: order.store.name,
+              activeOrdersCount: 1
+            })
+          }
+          return map
+        }, new Map<string, Store>()).values()
+      )
 
   // Tous les statuts possibles (sans PREPARING et READY)
   const statuses = [
@@ -446,9 +450,15 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
 
     // 3. Ajouter les markers des livreurs
     drivers.forEach(driver => {
+      // Ignorer les livreurs sans coordonnées
+      if (!driver.coordinates) {
+        console.warn(`⚠️ Livreur ${driver.name} (${driver.id}) ignoré: pas de coordonnées`)
+        return
+      }
+
       const marker = L.marker(
         [driver.coordinates.lat, driver.coordinates.lng],
-        { icon: createCustomIcon('#ff6b35', 'truck') }
+        { icon: createCustomIcon(driver.zone?.color || '#ff6b35', 'truck') }
       ).addTo(map)
 
       // Popup amélioré pour le livreur
@@ -471,11 +481,28 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
               </p>
             </div>
             
+            <div style="background: #f9fafb; padding: 8px; border-radius: 6px;">
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">
+                <strong>🏪 Magasin:</strong>
+              </p>
+              <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: 600; color: #111827;">
+                ${driver.store.name || 'N/A'}
+              </p>
+            </div>
+            
+            ${driver.zone ? `
             <div style="background: #dbeafe; padding: 8px; border-radius: 6px; border-left: 3px solid ${driver.zone.color};">
               <p style="margin: 0; font-size: 12px; color: #1e40af;">
                 <strong>📍 Zone:</strong> ${driver.zone.name}
               </p>
             </div>
+            ` : `
+            <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; border-left: 3px solid #9ca3af;">
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">
+                <strong>📍 Zone:</strong> Aucune zone assignée
+              </p>
+            </div>
+            `}
             
             <div style="background: ${driver.activeOrders.length > 0 ? '#dcfce7' : '#f3f4f6'}; padding: 8px; border-radius: 6px;">
               <p style="margin: 0 0 4px 0; font-size: 12px; color: ${driver.activeOrders.length > 0 ? '#166534' : '#6b7280'}; font-weight: 600;">
@@ -521,7 +548,9 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
       })
       
       drivers.forEach(driver => {
-        bounds.extend([driver.coordinates.lat, driver.coordinates.lng])
+        if (driver.coordinates) {
+          bounds.extend([driver.coordinates.lat, driver.coordinates.lng])
+        }
       })
       
       if (bounds.isValid()) {
@@ -564,10 +593,10 @@ export default function DeliveryMapV2({ orders, zones, drivers, onOrderUpdated }
             {showStorePanel && (
               <ScrollArea className="max-h-64">
                 <div className="space-y-2">
-                  {stores.length === 0 ? (
+                  {storesList.length === 0 ? (
                     <p className="text-sm text-gray-500">Aucun magasin</p>
                   ) : (
-                    stores.map(store => (
+                    storesList.map(store => (
                       <div
                         key={store.id}
                         className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-50 cursor-pointer transition-colors"

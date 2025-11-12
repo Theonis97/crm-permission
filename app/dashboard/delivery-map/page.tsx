@@ -94,15 +94,23 @@ interface Driver {
   id: string
   name: string
   phone: string
-  coordinates: { lat: number; lng: number }
-  zone: { id: string; name: string; color: string }
+  coordinates: { lat: number; lng: number } | null
+  zone: { id: string; name: string; color: string } | null
+  store: { id: string; name: string }
   activeOrders: Array<{ id: string; number: string; status: string }>
+}
+
+interface Store {
+  id: string
+  name: string
+  activeOrdersCount: number
 }
 
 interface MapData {
   orders: Order[]
   zones: Zone[]
   drivers: Driver[]
+  stores: Store[]
   stats: {
     totalOrders: number
     pendingOrders: number
@@ -112,6 +120,7 @@ interface MapData {
     deliveringOrders: number
     totalZones: number
     activeDrivers: number
+    totalStores: number
   }
 }
 
@@ -322,7 +331,7 @@ export default function DeliveryMapPage() {
                     {/* Avatar avec couleur de zone */}
                     <div
                       className="h-10 w-10 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
-                      style={{ backgroundColor: driver.zone.color }}
+                      style={{ backgroundColor: driver.zone?.color || '#9CA3AF' }}
                     >
                       {driver.name.charAt(0).toUpperCase()}
                     </div>
@@ -339,18 +348,33 @@ export default function DeliveryMapPage() {
                         <span className="truncate">{driver.phone}</span>
                       </div>
 
+                      {/* Magasin */}
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                        <Package className="h-3 w-3" />
+                        <span className="truncate">{driver.store.name}</span>
+                      </div>
+
                       {/* Zone assignée */}
-                      <Badge
-                        variant="outline"
-                        className="mt-2 text-xs"
-                        style={{
-                          borderColor: driver.zone.color,
-                          backgroundColor: `${driver.zone.color}15`,
-                          color: driver.zone.color,
-                        }}
-                      >
-                        {driver.zone.name}
-                      </Badge>
+                      {driver.zone ? (
+                        <Badge
+                          variant="outline"
+                          className="mt-2 text-xs"
+                          style={{
+                            borderColor: driver.zone.color,
+                            backgroundColor: `${driver.zone.color}15`,
+                            color: driver.zone.color,
+                          }}
+                        >
+                          {driver.zone.name}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="mt-2 text-xs text-gray-500 border-gray-300"
+                        >
+                          Aucune zone assignée
+                        </Badge>
+                      )}
 
                       {/* Commandes actives */}
                       {driver.activeOrders.length > 0 && (
@@ -376,6 +400,7 @@ export default function DeliveryMapPage() {
             orders={mapData.orders}
             zones={mapData.zones}
             drivers={mapData.drivers}
+            stores={mapData.stores || []}
             onOrderUpdated={() => mutate()}
           />
         </div>

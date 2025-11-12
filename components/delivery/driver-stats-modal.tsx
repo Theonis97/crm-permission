@@ -46,8 +46,17 @@ interface DriverStats {
     acceptedOrders: number
     deliveredOrders: number
     cancelledOrders: number
+    pendingOrders?: number
+    preparingOrders?: number
+    readyOrders?: number
+    deliveringOrders?: number
     averageOrderAmount: number
     totalDeliveries: number
+    _debug?: {
+      allDeliveredCount: number
+      deliveredWithDate: number
+      deliveredWithoutDate: number
+    }
   }
   assignedZones: Array<{
     id: string
@@ -67,27 +76,104 @@ export function DriverStatsModal({
   const [stats, setStats] = useState<DriverStats | null>(null)
   const [period, setPeriod] = useState<"today" | "week" | "month" | "all">("all")
 
+  // Log quand le modal s'ouvre ou se ferme
   useEffect(() => {
-    if (open && driverId) {
-      fetchDriverStats(period)
+    if (open) {
+      console.log('🚪 Modal ouvert pour le livreur:', driverId)
+      if (driverId) {
+        console.log('🔄 Chargement des stats pour la période:', period)
+        fetchDriverStats(period)
+      } else {
+        console.warn('⚠️ Aucun ID de livreur fourni à l\'ouverture du modal')
+      }
+    } else {
+      console.log('🚪 Modal fermé, réinitialisation des états')
+      setStats(null)
+    }
+    
+    // Nettoyage lors du démontage
+    return () => {
+      console.log('🧹 Nettoyage du composant DriverStatsModal')
     }
   }, [open, driverId, period])
+  
+  // Log quand les stats changent
+  useEffect(() => {
+    // Log du rendu du composant
+    console.log('🎨 Rendu du composant DriverStatsModal', {
+      open,
+      loading,
+      hasStats: !!stats,
+      driverId,
+      period
+    })
+
+    if (!stats) {
+      console.log('⏳ En attente des statistiques...')
+      return
+    }
+
+    console.log('🔄 Mise à jour des statistiques:', {
+      revenue: stats.stats.revenue,
+      deliveredOrders: stats.stats.deliveredOrders,
+      acceptedOrders: stats.stats.acceptedOrders,
+      cancelledOrders: stats.stats.cancelledOrders,
+      pendingOrders: stats.stats.pendingOrders,
+      preparingOrders: stats.stats.preparingOrders,
+      readyOrders: stats.stats.readyOrders,
+      deliveringOrders: stats.stats.deliveringOrders,
+      averageOrderAmount: stats.stats.averageOrderAmount,
+      totalDeliveries: stats.stats.totalDeliveries,
+      debug: stats.stats._debug,
+    })
+  }, [stats, open, loading, driverId, period])
 
   const fetchDriverStats = async (selectedPeriod: string) => {
-    if (!driverId) return
+    if (!driverId) {
+      console.warn('❌ Aucun ID de livreur fourni')
+      return
+    }
 
+    console.log(`🔍 Récupération des stats pour le livreur ${driverId}, période: ${selectedPeriod}`)
     setLoading(true)
+    
     try {
-      const response = await fetch(
-        `/api/delivery/driver-stats?driverId=${driverId}&period=${selectedPeriod}`
-      )
+      const url = `/api/delivery/driver-stats?driverId=${driverId}&period=${selectedPeriod}`
+      console.log(`📡 Appel API: ${url}`)
+      
+      const response = await fetch(url)
+      console.log(`📊 Réponse API status: ${response.status}`)
+      
       const data = await response.json()
+      console.log('📋 Données reçues (complètes):', JSON.stringify(data, null, 2))
 
-      if (data.success) {
+      if (data.success && data.data) {
+        console.log('✅ Données valides, mise à jour du state')
+        console.log('📈 Stats détaillées:', {
+          revenue: data.data.stats?.revenue,
+          acceptedOrders: data.data.stats?.acceptedOrders,
+          deliveredOrders: data.data.stats?.deliveredOrders,
+          cancelledOrders: data.data.stats?.cancelledOrders,
+          pendingOrders: data.data.stats?.pendingOrders,
+          preparingOrders: data.data.stats?.preparingOrders,
+          readyOrders: data.data.stats?.readyOrders,
+          deliveringOrders: data.data.stats?.deliveringOrders,
+          averageOrderAmount: data.data.stats?.averageOrderAmount,
+          totalDeliveries: data.data.stats?.totalDeliveries,
+          debug: data.data.stats?._debug,
+        })
         setStats(data.data)
+      } else {
+        console.error('❌ API retourne success: false ou data manquante', {
+          success: data.success,
+          error: data.error,
+          hasData: !!data.data,
+        })
+        setStats(null)
       }
     } catch (error) {
-      console.error("Erreur chargement stats:", error)
+      console.error('💥 Erreur lors du chargement des stats:', error)
+      setStats(null)
     } finally {
       setLoading(false)
     }
@@ -107,6 +193,12 @@ export function DriverStatsModal({
       month: "long",
       day: "numeric",
     })
+  }
+
+  const handlePeriodChange = (value: string) => {
+    const newPeriod = value as "today" | "week" | "month" | "all"
+    console.log(`🔄 Changement de période: ${period} → ${newPeriod}`)
+    setPeriod(newPeriod)
   }
 
   return (
@@ -173,9 +265,7 @@ export function DriverStatsModal({
             {/* Filtres de période */}
             <Tabs
               value={period}
-              onValueChange={(value) =>
-                setPeriod(value as "today" | "week" | "month" | "all")
-              }
+              onValueChange={handlePeriodChange}
             >
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="today">Aujourd'hui</TabsTrigger>
