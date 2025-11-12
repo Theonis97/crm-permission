@@ -16,12 +16,10 @@ const nextConfig: NextConfig = {
         // Appliquer ces headers à toutes les routes API
         source: "/api/:path*",
         headers: [
-          {
-            key: "Access-Control-Allow-Origin",
-            value: process.env.NODE_ENV === "production" 
-              ? "https://livreur.inotech-gabon.com" 
-              : "*",
-          },
+           {
+          key: "Access-Control-Allow-Origin",
+          value: "*",
+        },
           {
             key: "Access-Control-Allow-Methods",
             value: "GET, POST, PUT, DELETE, PATCH, OPTIONS",
@@ -36,7 +34,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Access-Control-Allow-Credentials",
-            value: "false",
+            value: "true",
           },
         ],
       },
