@@ -261,11 +261,19 @@ export function StoreProductDialog({
         }
       })
 
+      // Calculer les totaux
+      const totalQuantity = items.reduce((sum, item) => sum + item.requestedQuantity, 0)
+      const totalCost = items.reduce((sum, item) => sum + item.total, 0)
+
       const response = await fetch("/api/restocking-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storeId,
+          priority: "NORMAL", // Valeur par défaut
+          notes: "Demande d'approvisionnement depuis la page produits du magasin",
+          totalQuantity,
+          totalCost,
           items,
         }),
       })

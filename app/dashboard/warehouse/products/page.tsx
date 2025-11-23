@@ -37,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  ImageIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ProductFormDialog } from "@/components/products/product-form-dialog"
@@ -343,8 +344,16 @@ export default function ProductsPage() {
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
-                      <Package className="h-5 w-5 text-gray-600" />
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 overflow-hidden">
+                      {product.photos && product.photos.length > 0 ? (
+                        <img
+                          src={product.photos[0]}
+                          alt={product.name}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <ImageIcon className="h-5 w-5 text-gray-400" />
+                      )}
                     </div>
                     <div>
                       <div className="font-medium text-gray-900">{product.name}</div>

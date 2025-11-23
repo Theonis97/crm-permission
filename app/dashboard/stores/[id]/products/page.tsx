@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ButtonGroup } from "@/components/ui/button-group"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -22,6 +23,7 @@ import { StorePageHeader } from "@/components/stores/store-page-header"
 import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { StoreProductDetailsSheet } from "@/components/stores/store-product-details-sheet"
 import { RestockingRequestDialog } from "@/components/stores/restocking-request-dialog"
+import { RestockingOrdersSheet } from "@/components/stores/restocking-orders-sheet"
 import {
   Package,
   Search,
@@ -39,6 +41,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Truck,
+  ClipboardList,
+  ImageIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -87,6 +91,7 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [createProductDialogOpen, setCreateProductDialogOpen] = useState(false)
   const [restockingDialogOpen, setRestockingDialogOpen] = useState(false)
+  const [restockingOrdersSheetOpen, setRestockingOrdersSheetOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -256,13 +261,22 @@ export default function ProductsPage({ params }: ProductsPageProps) {
             <p className="text-sm text-gray-500 mt-1">Gérer les produits du magasin</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button
-              onClick={() => setRestockingDialogOpen(true)}
-              className="bg-blue-900 hover:bg-blue-800"
-            >
-              <Truck className="h-4 w-4 mr-2" />
-              Demander un approvisionnement
-            </Button>
+            <ButtonGroup aria-label="Approvisionnement">
+              <Button
+                onClick={() => setRestockingDialogOpen(true)}
+                variant="outline"
+              >
+                <Truck className="h-4 w-4 mr-2" />
+                Faire une demande
+              </Button>
+              <Button
+                onClick={() => setRestockingOrdersSheetOpen(true)}
+                variant="outline"
+              >
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Voir les demandes
+              </Button>
+            </ButtonGroup>
             <Button
               onClick={() => setCreateProductDialogOpen(true)}
               variant="outline"
@@ -470,8 +484,16 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                         >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
-                                <Package className="h-5 w-5 text-gray-600" />
+                              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 overflow-hidden">
+                                {product.photos && product.photos.length > 0 ? (
+                                  <img
+                                    src={product.photos[0]}
+                                    alt={product.name}
+                                    className="w-full h-full object-contain"
+                                  />
+                                ) : (
+                                  <ImageIcon className="h-5 w-5 text-gray-400" />
+                                )}
                               </div>
                               <div>
                                 <div className="font-medium text-gray-900">{product.name}</div>
@@ -597,6 +619,13 @@ export default function ProductsPage({ params }: ProductsPageProps) {
           loadProducts(storeId)
           toast.success("Demande envoyée ! Les produits seront ajoutés une fois la commande confirmée.")
         }}
+      />
+
+      <RestockingOrdersSheet
+        open={restockingOrdersSheetOpen}
+        onOpenChange={setRestockingOrdersSheetOpen}
+        storeId={storeId}
+        storeName={storeName}
       />
 
       <ProductFormDialog
