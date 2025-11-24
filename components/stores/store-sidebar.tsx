@@ -149,13 +149,7 @@ const adminItems: MenuItem[] = [
     label: "Rôles", 
     href: "/roles",
     permission: STORE_PERMISSIONS.USERS_ROLES
-  },
-  { 
-    icon: Shield, 
-    label: "Test Permissions", 
-    href: "/test-permissions",
-    permission: STORE_PERMISSIONS.USERS_VIEW
-  },
+  }
 ]
 
 export function StoreSidebar({ 
