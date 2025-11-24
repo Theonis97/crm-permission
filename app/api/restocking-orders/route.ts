@@ -57,9 +57,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Magasin introuvable" }, { status: 404 })
     }
 
-    // Générer un numéro de commande unique
-    const count = await prisma.order.count()
-    const number = `RST-${String(count + 1).padStart(5, "0")}`
+    // Générer un numéro de commande unique basé sur timestamp
+    const now = new Date()
+    const year = now.getFullYear().toString().slice(-2)
+    const month = (now.getMonth() + 1).toString().padStart(2, "0")
+    const day = now.getDate().toString().padStart(2, "0")
+    const hours = now.getHours().toString().padStart(2, "0")
+    const minutes = now.getMinutes().toString().padStart(2, "0")
+    const seconds = now.getSeconds().toString().padStart(2, "0")
+    const milliseconds = now.getMilliseconds().toString().padStart(3, "0")
+    
+    const number = `RST-${year}${month}${day}-${hours}${minutes}${seconds}${milliseconds}`
 
     // Calculer les totaux
     const totalQuantity = items.reduce((sum: number, item: any) => sum + item.requestedQuantity, 0)
