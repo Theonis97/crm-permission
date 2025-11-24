@@ -555,8 +555,6 @@ export default function WarehouseOrdersPage() {
                         <SelectItem value="APPROVED">Approuvée</SelectItem>
                         <SelectItem value="PREPARING">En préparation</SelectItem>
                         <SelectItem value="SHIPPED">Expédiée</SelectItem>
-                        <SelectItem value="DELIVERED">Livrée</SelectItem>
-                        <SelectItem value="CANCELLED">Annulée</SelectItem>
                         <SelectItem value="REJECTED">Rejetée</SelectItem>
                       </SelectContent>
                     </Select>

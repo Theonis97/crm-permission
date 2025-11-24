@@ -25,6 +25,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Clock,
@@ -38,6 +44,9 @@ import {
   Eye,
   AlertTriangle,
   ImageIcon,
+  CheckCircle,
+  Ban,
+  MoreHorizontal,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -106,6 +115,7 @@ export function RestockingOrdersSheet({
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<RestockingOrder | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -137,6 +147,52 @@ export function RestockingOrdersSheet({
       toast.error("Erreur lors du chargement des demandes")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      setUpdatingStatus(true)
+      
+      const response = await fetch(`/api/restocking-orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Erreur lors de la mise à jour")
+      }
+
+      // Recharger les commandes
+      await loadOrders()
+      
+      // Mettre à jour la commande sélectionnée si c'est celle qui a été modifiée
+      if (selectedOrder && selectedOrder.id === orderId) {
+        const updatedOrder = { ...selectedOrder, status: newStatus as any }
+        setSelectedOrder(updatedOrder)
+      }
+
+      toast.success("Statut mis à jour avec succès")
+    } catch (error) {
+      console.error("Error updating order status:", error)
+      toast.error("Erreur lors de la mise à jour du statut")
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  const handleMarkAsDelivered = () => {
+    if (selectedOrder) {
+      updateOrderStatus(selectedOrder.id, "DELIVERED")
+    }
+  }
+
+  const handleMarkAsCancelled = () => {
+    if (selectedOrder) {
+      updateOrderStatus(selectedOrder.id, "CANCELLED")
     }
   }
 
@@ -248,8 +304,8 @@ export function RestockingOrdersSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="min-w-[900px] max-w-[95vw] p-0">
-        <SheetHeader className="px-6 py-4 border-b">
+      <SheetContent className="min-w-[900px] max-w-[95vw] p-0 overflow-visible">
+        <SheetHeader className="px-4 py-4 border-b">
           <div className="flex items-center justify-between">
             <div>
               <SheetTitle className="flex items-center gap-2">
@@ -272,7 +328,7 @@ export function RestockingOrdersSheet({
           </div>
         </SheetHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-visible">
           {/* Stats rapides */}
           <div className="grid grid-cols-4 gap-4 p-6 border-b bg-gray-50">
             <div className="text-center">
@@ -309,7 +365,7 @@ export function RestockingOrdersSheet({
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Filtrer par statut" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]" position="popper" side="bottom" align="start">
                   <SelectItem value="all">Tous les statuts</SelectItem>
                   <SelectItem value="PENDING">En attente</SelectItem>
                   <SelectItem value="APPROVED">Approuvées</SelectItem>
@@ -324,7 +380,7 @@ export function RestockingOrdersSheet({
           </div>
 
           {/* Liste des demandes */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 px-4 relative" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -386,13 +442,58 @@ export function RestockingOrdersSheet({
                         {formatDate(order.createdAt)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewDetails(order)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu modal={false}>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent 
+                            align="end" 
+                            className="z-[9999]" 
+                            sideOffset={5}
+                            side="bottom"
+                            avoidCollisions={true}
+                          >
+                            <DropdownMenuItem onClick={() => handleViewDetails(order)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Détails
+                            </DropdownMenuItem>
+                            
+                            {/* Action "Marquer comme livré" - Seulement si pas encore livré, annulé ou rejeté */}
+                            {!["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status) && (
+                              <DropdownMenuItem 
+                                onClick={() => updateOrderStatus(order.id, "DELIVERED")}
+                                disabled={updatingStatus}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Marquer comme livré
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* Action "Annuler" - Seulement si pas encore livré, annulé ou rejeté */}
+                            {!["DELIVERED", "CANCELLED", "REJECTED"].includes(order.status) && (
+                              <DropdownMenuItem 
+                                onClick={() => updateOrderStatus(order.id, "CANCELLED")}
+                                disabled={updatingStatus}
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Annuler
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* Action "Réactiver" - Seulement pour les commandes annulées */}
+                            {order.status === "CANCELLED" && (
+                              <DropdownMenuItem 
+                                onClick={() => updateOrderStatus(order.id, "PENDING")}
+                                disabled={updatingStatus}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Réactiver
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -543,6 +644,37 @@ export function RestockingOrdersSheet({
                       </div>
                     )}
                   </div>
+
+                  {/* Actions du magasin */}
+                    <div className="border-t pt-6">
+                      
+                      <div className="flex justify-end gap-3">
+                        <Button
+                          onClick={handleMarkAsDelivered}
+                          disabled={updatingStatus}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {updatingStatus ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          )}
+                          Marquer comme livrée
+                        </Button>
+                        <Button
+                          onClick={handleMarkAsCancelled}
+                          disabled={updatingStatus}
+                          variant="destructive"
+                        >
+                          {updatingStatus ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Ban className="h-4 w-4 mr-2" />
+                          )}
+                          Annuler la commande
+                        </Button>
+                      </div>
+                    </div>
                 </div>
               </div>
             </div>

@@ -34,10 +34,10 @@ export async function PATCH(
       },
     })
 
-    if (!user || !hasPermission(user, "warehouse.orders.update")) {
+    if (!user) {
       return NextResponse.json(
-        { error: "Permission refusée" },
-        { status: 403 }
+        { error: "Utilisateur introuvable" },
+        { status: 404 }
       )
     }
 
@@ -72,6 +72,28 @@ export async function PATCH(
         { error: "Commande d'approvisionnement introuvable" },
         { status: 404 }
       )
+    }
+
+    // Vérifier les permissions : soit l'utilisateur a les permissions d'entrepôt, 
+    // soit il est le demandeur de la commande (magasin)
+    const hasWarehousePermission = hasPermission(user, "warehouse.orders.update")
+    const isOrderRequester = user.id === order.requestedBy
+    
+    if (!hasWarehousePermission && !isOrderRequester) {
+      return NextResponse.json(
+        { error: "Permission refusée - Vous ne pouvez modifier que vos propres commandes" },
+        { status: 403 }
+      )
+    }
+
+    // Les utilisateurs sans permission d'entrepôt ne peuvent changer que vers DELIVERED ou CANCELLED
+    if (!hasWarehousePermission && isOrderRequester) {
+      if (status !== "DELIVERED" && status !== "CANCELLED") {
+        return NextResponse.json(
+          { error: "Vous ne pouvez marquer les commandes que comme livrées ou annulées" },
+          { status: 403 }
+        )
+      }
     }
 
     // Ne pas permettre de changer le statut d'une commande livrée ou annulée
