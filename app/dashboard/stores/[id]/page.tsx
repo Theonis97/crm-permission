@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, use, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StorePageHeader } from "@/components/stores/store-page-header"
@@ -15,6 +16,8 @@ import {
   AlertTriangle,
   ShoppingCart,
   Users,
+  Lock,
+  ArrowRight,
 } from "lucide-react"
 import {
   LineChart,
@@ -30,6 +33,8 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { toast } from "sonner"
+import { usePermissions } from "@/hooks/use-permissions"
+import { STORE_PERMISSIONS } from "@/types/store-auth"
 
 interface StorePageProps {
   params: Promise<{
@@ -119,6 +124,8 @@ const formatFCFA = (amount: number) => {
 
 export default function StorePage({ params }: StorePageProps) {
   const { id } = use(params)
+  const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
   const [selectedPeriod, setSelectedPeriod] = useState("Ce Mois")
   const [storeData, setStoreData] = useState<StoreStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -143,7 +150,7 @@ export default function StorePage({ params }: StorePageProps) {
     }
   }
 
-  if (loading) {
+  if (loading || permissionsLoading) {
     return (
       <>
         <StorePageHeader
@@ -154,6 +161,121 @@ export default function StorePage({ params }: StorePageProps) {
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-3" />
             <p className="text-gray-600">Chargement des données...</p>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  // Vérifier les permissions d'accès à la vue d'ensemble
+  if (!hasPermission(STORE_PERMISSIONS.DASHBOARD_VIEW)) {
+    return (
+      <>
+        <StorePageHeader
+          title="Accès restreint"
+          description="Vous n'avez pas accès à cette section"
+        />
+        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+          <div className="max-w-md mx-auto text-center">
+            <div className="bg-white rounded-lg shadow-lg p-8">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Accès non autorisé
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Vous n'avez pas les permissions nécessaires pour accéder à la vue d'ensemble de ce magasin.
+              </p>
+              
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  Modules disponibles :
+                </h4>
+                
+                <div className="grid gap-2">
+                  {hasPermission(STORE_PERMISSIONS.PRODUCTS_VIEW) && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/stores/${id}/products`)}
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center">
+                        <Package className="h-4 w-4 mr-2" />
+                        Produits
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                  
+                  {hasPermission(STORE_PERMISSIONS.ORDERS_VIEW) && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/stores/${id}/orders`)}
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center">
+                        <ShoppingCart className="h-4 w-4 mr-2" />
+                        Commandes
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                  
+                  {hasPermission(STORE_PERMISSIONS.POS_ACCESS) && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/stores/${id}/pos`)}
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center">
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Point de vente
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                  
+                  {hasPermission(STORE_PERMISSIONS.CONTACTS_VIEW) && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/stores/${id}/contacts`)}
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center">
+                        <Users className="h-4 w-4 mr-2" />
+                        Contacts
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                  
+                  {hasPermission(STORE_PERMISSIONS.USERS_VIEW) && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/stores/${id}/users`)}
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center">
+                        <Users className="h-4 w-4 mr-2" />
+                        Utilisateurs
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                
+                <div className="pt-4 border-t">
+                  <Button
+                    onClick={() => router.push('/dashboard')}
+                    variant="ghost"
+                    className="w-full"
+                  >
+                    Retour au tableau de bord
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </>

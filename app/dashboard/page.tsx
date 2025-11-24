@@ -137,7 +137,7 @@ const quickActions = [
 ]
 
 export default function DashboardPage() {
-  const { user, hasPermission, loading } = usePermissions()
+  const { user, hasPermission, stores, loading } = usePermissions()
   const router = useRouter()
 
   const handleModuleClick = (module: (typeof modules)[0]) => {
@@ -207,6 +207,52 @@ export default function DashboardPage() {
             })}
           </div>
         </div>
+
+        {/* Mes Magasins */}
+        {stores.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Mes Magasins ({stores.length})</h2>
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                {stores.length} magasin(s) assigné(s)
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {stores.map((store) => (
+                <Card
+                  key={store.id}
+                  className="group py-0 transition-all duration-300 border-gray-200 overflow-hidden cursor-pointer hover:shadow-xl hover:scale-[1.02]"
+                  onClick={() => router.push(`/dashboard/stores/${store.id}`)}
+                >
+                  <CardContent className="p-0">
+                    <div className="h-32 bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center">
+                      <Store className="h-12 w-12 text-white" />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="font-bold text-gray-900 mb-2">{store.name}</h3>
+                      <p className="text-sm text-gray-600 mb-3">Espace de travail du magasin</p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap gap-1">
+                          {store.roles.slice(0, 2).map((role) => (
+                            <Badge key={role} variant="outline" className="text-xs">
+                              {role}
+                            </Badge>
+                          ))}
+                          {store.roles.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{store.roles.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Modules restreints */}
         {restrictedModules.length > 0 && (

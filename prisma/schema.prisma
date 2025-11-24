@@ -123,6 +123,10 @@ model Store {
   storeContacts   StoreContact[]
   transfersFrom   Transfer[] @relation("fromStore")
   transfersTo     Transfer[] @relation("toStore")
+  
+  // Relations pour les rôles et permissions magasin
+  storeRoles      StoreRole[]
+  storeUserRoles  StoreUserRole[]
 
   @@map("stores")
 }
@@ -767,6 +771,10 @@ model User {
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
   resolvedFailedOrders   FailedWhatsAppOrder[] // Commandes WhatsApp avec erreurs résolues par cet utilisateur
   pwaPushSubscription    PWAPushSubscription? // Subscription PWA pour les notifications push
+  
+  // Relations pour les rôles et permissions magasin
+  storeUserRoles         StoreUserRole[]
+  assignedStoreRoles     StoreUserRole[] @relation("StoreRoleAssignedBy")
 
   @@map("users")
 }
@@ -832,6 +840,70 @@ model RolePermission {
 
   @@unique([roleId, permissionId])
   @@map("role_permissions")
+}
+
+// ============================================================================
+// RÔLES ET PERMISSIONS AU NIVEAU MAGASIN
+// ============================================================================
+
+model StoreRole {
+  id          String   @id @default(cuid())
+  name        String   // Ex: "Manager", "Vendeur", "Caissier"
+  description String?
+  storeId     String   @map("store_id")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store                Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeUserRoles       StoreUserRole[]
+  storeRolePermissions StoreRolePermission[]
+
+  @@unique([name, storeId])
+  @@map("store_roles")
+}
+
+model StorePermission {
+  id          String   @id @default(cuid())
+  name        String   @unique // Ex: "store.products.view", "store.pos.access"
+  description String?
+  module      String   // Ex: "products", "pos", "orders"
+  action      String   // Ex: "view", "create", "edit", "delete"
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  storeRolePermissions StoreRolePermission[]
+
+  @@map("store_permissions")
+}
+
+model StoreUserRole {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  storeId    String   @map("store_id")
+  roleId     String   @map("role_id")
+  assignedBy String   @map("assigned_by")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store          Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  role           StoreRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User      @relation("StoreRoleAssignedBy", fields: [assignedBy], references: [id])
+
+  @@unique([userId, storeId, roleId])
+  @@map("store_user_roles")
+}
+
+model StoreRolePermission {
+  id           String   @id @default(cuid())
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       StoreRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission StorePermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("store_role_permissions")
 }
 
 // ============================================================================

@@ -18,6 +18,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { usePermissions } from "@/hooks/use-permissions"
+import { STORE_PERMISSIONS } from "@/types/store-auth"
+import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
+import { useStorePermissions } from "@/hooks/use-store-permissions"
 
 interface BrandsPageProps {
   params: Promise<{
@@ -45,6 +49,9 @@ interface BrandFormData {
 }
 
 export default function BrandsPage({ params }: BrandsPageProps) {
+  const { hasPermission } = usePermissions()
+  const [storeId, setStoreId] = useState<string>("")
+  const { hasStorePermission, hasStoreAccess, loading: permissionsLoading } = useStorePermissions(storeId)
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -58,6 +65,11 @@ export default function BrandsPage({ params }: BrandsPageProps) {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    const getStoreId = async () => {
+      const resolvedParams = await params
+      setStoreId(resolvedParams.id)
+    }
+    getStoreId()
     fetchBrands()
   }, [])
 
@@ -166,16 +178,31 @@ export default function BrandsPage({ params }: BrandsPageProps) {
 
   const totalProducts = brands.reduce((sum, b) => sum + (b._count?.products || 0), 0)
 
+  // Vérification des permissions sans afficher de message d'erreur
+  if (permissionsLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <span className="ml-2">Chargement...</span>
+      </div>
+    )
+  }
+
+  // Si l'utilisateur n'a pas accès, ne rien afficher
+  if (!hasStoreAccess && !hasStorePermission(STORE_PERMISSIONS.BRANDS_VIEW)) {
+    return null
+  }
+
   return (
     <>
       <StorePageHeader
         title="Marques"
         description="Gérer les marques de produits (partagées avec tous les magasins)"
-        action={{
+        action={hasPermission(STORE_PERMISSIONS.BRANDS_MANAGE) ? {
           label: "Nouvelle marque",
           onClick: () => handleOpenDialog(),
           icon: Plus,
-        }}
+        } : undefined}
       />
 
       <div className="p-8 space-y-6">
@@ -215,13 +242,15 @@ export default function BrandsPage({ params }: BrandsPageProps) {
             <CardContent className="p-8 text-center text-gray-500">
               <Tag className="h-12 w-12 mx-auto mb-4 text-gray-400" />
               <p>Aucune marque</p>
-              <Button
-                onClick={() => handleOpenDialog()}
-                className="mt-4 rounded-full"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Créer une marque
-              </Button>
+              {hasPermission(STORE_PERMISSIONS.BRANDS_MANAGE) && (
+                <Button
+                  onClick={() => handleOpenDialog()}
+                  className="mt-4 rounded-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Créer une marque
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -251,26 +280,28 @@ export default function BrandsPage({ params }: BrandsPageProps) {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(brand)}
-                      className="flex-1 rounded-full"
-                    >
-                      <Edit className="h-4 w-4 mr-2" />
-                      Éditer
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(brand)}
-                      className="flex-1 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Supprimer
-                    </Button>
-                  </div>
+                  {hasPermission(STORE_PERMISSIONS.BRANDS_MANAGE) && (
+                    <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(brand)}
+                        className="flex-1 rounded-full"
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Éditer
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(brand)}
+                        className="flex-1 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Supprimer
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

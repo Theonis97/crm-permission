@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StorePageHeader } from "@/components/stores/store-page-header"
-import { FolderTree, Plus, Package, Edit, Trash2, ChevronRight, ChevronDown } from "lucide-react"
+import { FolderTree, Plus, Package, Edit, Trash2, ChevronRight, ChevronDown, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { usePermissions } from "@/hooks/use-permissions"
+import { STORE_PERMISSIONS } from "@/types/store-auth"
+import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
+import { useStorePermissions } from "@/hooks/use-store-permissions"
 
 interface CategoriesPageProps {
   params: Promise<{
@@ -38,6 +42,9 @@ interface CategoryFormData {
 }
 
 export default function CategoriesPage({ params }: CategoriesPageProps) {
+  const { hasPermission } = usePermissions()
+  const [storeId, setStoreId] = useState<string>("")
+  const { hasStorePermission, hasStoreAccess, loading: permissionsLoading } = useStorePermissions(storeId)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -51,6 +58,11 @@ export default function CategoriesPage({ params }: CategoriesPageProps) {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    const getStoreId = async () => {
+      const resolvedParams = await params
+      setStoreId(resolvedParams.id)
+    }
+    getStoreId()
     fetchCategories()
   }, [])
 
@@ -222,24 +234,26 @@ export default function CategoriesPage({ params }: CategoriesPageProps) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleOpenDialog(category)}
-                  className="rounded-full"
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(category)}
-                  className="rounded-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {hasPermission(STORE_PERMISSIONS.CATEGORIES_MANAGE) && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleOpenDialog(category)}
+                    className="rounded-full"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(category)}
+                    className="rounded-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -251,16 +265,31 @@ export default function CategoriesPage({ params }: CategoriesPageProps) {
     )
   }
 
+  // Vérification des permissions sans afficher de message d'erreur
+  if (permissionsLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <span className="ml-2">Chargement...</span>
+      </div>
+    )
+  }
+
+  // Si l'utilisateur n'a pas accès, ne rien afficher
+  if (!hasStoreAccess && !hasStorePermission(STORE_PERMISSIONS.CATEGORIES_VIEW)) {
+    return null
+  }
+
   return (
     <>
       <StorePageHeader
         title="Catégories"
         description="Organiser les produits par catégorie"
-        action={{
+        action={hasPermission(STORE_PERMISSIONS.CATEGORIES_MANAGE) ? {
           label: "Nouvelle catégorie",
           onClick: () => handleOpenDialog(),
           icon: Plus,
-        }}
+        } : undefined}
       />
 
       <div className="p-8 space-y-6">

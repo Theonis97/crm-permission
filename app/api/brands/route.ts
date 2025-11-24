@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { hasPermission } from "@/lib/auth-helpers"
+import { hasGlobalOrStorePermission } from "@/lib/auth-helpers"
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const canView = await hasPermission(session.user.id, "products.view")
+    const canView = await hasGlobalOrStorePermission(session.user.id, "products.view", "store.products.view")
     if (!canView) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const canCreate = await hasPermission(session.user.id, "products.create")
+    const canCreate = await hasGlobalOrStorePermission(session.user.id, "products.create", "store.products.create")
     if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }

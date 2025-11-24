@@ -46,6 +46,10 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
+import { STORE_PERMISSIONS } from "@/types/store-auth"
+import { usePermissions } from "@/hooks/use-permissions"
+import { useStorePermissions } from "@/hooks/use-store-permissions"
 
 interface ProductsPageProps {
   params: Promise<{
@@ -79,7 +83,9 @@ interface Product {
 }
 
 export default function ProductsPage({ params }: ProductsPageProps) {
+  const { hasPermission } = usePermissions()
   const [storeId, setStoreId] = useState<string>("")
+  const { hasStorePermission, hasStoreAccess, loading: permissionsLoading } = useStorePermissions(storeId)
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [brands, setBrands] = useState<any[]>([])
@@ -252,22 +258,37 @@ export default function ProductsPage({ params }: ProductsPageProps) {
     }).format(price)
   }
 
+  // Vérification des permissions sans afficher de message d'erreur
+  if (permissionsLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <span className="ml-2">Chargement...</span>
+      </div>
+    )
+  }
+
+  // Si l'utilisateur n'a pas accès, ne rien afficher (ou rediriger silencieusement)
+  if (!hasStoreAccess && !hasStorePermission(STORE_PERMISSIONS.PRODUCTS_VIEW)) {
+    return null // Ou redirection vers une autre page
+  }
+
   return (
     <>
-      <div className="border-b bg-white">
-        <div className="flex items-center justify-between px-8 py-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Produits</h1>
-            <p className="text-sm text-gray-500 mt-1">Gérer les produits du magasin</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <ButtonGroup aria-label="Approvisionnement">
-              <Button
-                onClick={() => setRestockingDialogOpen(true)}
-                variant="outline"
-              >
-                <Truck className="h-4 w-4 mr-2" />
-                Faire une demande
+      <div>
+        <StorePageHeader
+          title="Produits"
+          description="Gérez votre inventaire et vos stocks"
+          icon={Package}
+          actions={
+            <div className="flex items-center gap-3">
+              <ButtonGroup aria-label="Approvisionnement">
+                <Button
+                  onClick={() => setRestockingDialogOpen(true)}
+                  variant="outline"
+                >
+                  <Truck className="h-4 w-4 mr-2" />
+                  Faire une demande
               </Button>
               <Button
                 onClick={() => setRestockingOrdersSheetOpen(true)}
@@ -277,16 +298,23 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                 Voir les demandes
               </Button>
             </ButtonGroup>
-            <Button
-              onClick={() => setCreateProductDialogOpen(true)}
-              variant="outline"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Créer un produit
-            </Button>
-          </div>
+                <StorePermissionGuard 
+                  storeId={storeId} 
+                  permission={STORE_PERMISSIONS.PRODUCTS_CREATE}
+                  fallback={null}
+                >
+                  <Button
+                    onClick={() => setCreateProductDialogOpen(true)}
+                    variant="outline"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Créer un produit
+                  </Button>
+                </StorePermissionGuard>
+              </div>
+            }
+          />
         </div>
-      </div>
 
       <main className="py-8">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-6">
@@ -516,30 +544,40 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                           </td>
                           <td className="px-6 py-4">{getStatusBadge(product)}</td>
                           <td className="px-6 py-4 text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewProduct(product.id); }}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  Voir les détails
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Modifier
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product); }} 
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Retirer du magasin
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {(hasPermission(STORE_PERMISSIONS.PRODUCTS_VIEW) || 
+                              hasPermission(STORE_PERMISSIONS.PRODUCTS_EDIT) || 
+                              hasPermission(STORE_PERMISSIONS.PRODUCTS_DELETE)) && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {hasPermission(STORE_PERMISSIONS.PRODUCTS_VIEW) && (
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewProduct(product.id); }}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      Voir les détails
+                                    </DropdownMenuItem>
+                                  )}
+                                  {hasPermission(STORE_PERMISSIONS.PRODUCTS_EDIT) && (
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }}>
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Modifier
+                                    </DropdownMenuItem>
+                                  )}
+                                  {hasPermission(STORE_PERMISSIONS.PRODUCTS_DELETE) && (
+                                    <DropdownMenuItem 
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product); }} 
+                                      className="text-red-600"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Retirer du magasin
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </td>
                         </tr>
                       ))}

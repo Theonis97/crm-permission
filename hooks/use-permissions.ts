@@ -8,10 +8,12 @@ export function usePermissions(): UserPermissions & {
   hasPermission: (permission: string) => boolean
   hasAnyPermission: (permissions: string[]) => boolean
   hasAllPermissions: (permissions: string[]) => boolean
+  stores: Array<{ id: string; name: string; roles: string[] }>
 } {
   const { data: session, status } = useSession()
   const [permissions, setPermissions] = useState<string[]>([])
   const [user, setUser] = useState(null)
+  const [stores, setStores] = useState<Array<{ id: string; name: string; roles: string[] }>>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -29,6 +31,7 @@ export function usePermissions(): UserPermissions & {
           const data = await response.json()
           setUser(data.user)
           setPermissions(data.permissions)
+          setStores(data.stores || [])
         }
       } catch (error) {
         console.error("Error fetching permissions:", error)
@@ -55,6 +58,7 @@ export function usePermissions(): UserPermissions & {
   return {
     user,
     permissions,
+    stores,
     loading: loading || status === "loading",
     hasPermission,
     hasAnyPermission,

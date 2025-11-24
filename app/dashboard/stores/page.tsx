@@ -112,7 +112,17 @@ export default function StoresPage() {
   const router = useRouter()
   const [stores, setStores] = useState<StoreDataExtended[]>([])
   const [loading, setLoading] = useState(true)
-  const { hasPermission } = usePermissions()
+  const { hasPermission, stores: userStores } = usePermissions()
+
+  // Vérifier si l'utilisateur a accès à un magasin spécifique
+  const hasStoreAccess = (storeId: string) => {
+    // Si l'utilisateur a la permission globale stores.manage, il a accès à tous les magasins
+    if (hasPermission("stores.manage")) {
+      return true
+    }
+    // Sinon, vérifier s'il est assigné à ce magasin spécifique
+    return userStores.some(store => store.id === storeId)
+  }
 
   useEffect(() => {
     fetchStores()
@@ -134,6 +144,15 @@ export default function StoresPage() {
       toast.error("Erreur lors du chargement des boutiques")
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Gérer le clic sur un magasin
+  const handleStoreClick = (storeId: string) => {
+    if (hasStoreAccess(storeId)) {
+      router.push(`/dashboard/stores/${storeId}`)
+    } else {
+      toast.error("Vous n'avez pas accès à ce magasin")
     }
   }
 
@@ -204,12 +223,18 @@ export default function StoresPage() {
             </Card>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-              {stores.map((store) => (
-                <Card 
-                  key={store.id} 
-                  className="overflow-hidden pt-0 hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => router.push(`/dashboard/stores/${store.id}`)}
-                >
+              {stores.map((store) => {
+                const hasAccess = hasStoreAccess(store.id)
+                return (
+                  <Card 
+                    key={store.id} 
+                    className={`overflow-hidden pt-0 transition-all ${
+                      hasAccess 
+                        ? "hover:shadow-lg cursor-pointer" 
+                        : "opacity-60 cursor-not-allowed"
+                    }`}
+                    onClick={() => handleStoreClick(store.id)}
+                  >
                   {/* Cover Image */}
                   <div className="h-32 bg-gradient-to-br from-blue-500 to-blue-600 relative">
                     {store.coverImage ? (
@@ -223,11 +248,17 @@ export default function StoresPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/dashboard/stores/${store.id}`)}>
+                          <DropdownMenuItem 
+                            onClick={() => handleStoreClick(store.id)}
+                            disabled={!hasAccess}
+                          >
                             <Eye className="h-4 w-4 mr-2" />
                             Voir la boutique
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/dashboard/stores/${store.id}/orders`)}>
+                          <DropdownMenuItem 
+                            onClick={() => hasAccess ? router.push(`/dashboard/stores/${store.id}/orders`) : toast.error("Accès refusé")}
+                            disabled={!hasAccess}
+                          >
                             <ShoppingCart className="h-4 w-4 mr-2" />
                             Voir les commandes
                           </DropdownMenuItem>
@@ -268,9 +299,16 @@ export default function StoresPage() {
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg text-gray-900 truncate">{store.name}</h3>
-                        <Badge variant={store.isActive ? "default" : "secondary"} className="mt-1">
-                          {store.isActive ? "Actif" : "Inactif"}
-                        </Badge>
+                        <div className="flex gap-2 mt-1">
+                          <Badge variant={store.isActive ? "default" : "secondary"}>
+                            {store.isActive ? "Actif" : "Inactif"}
+                          </Badge>
+                          {!hasAccess && (
+                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                              Accès restreint
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -300,7 +338,8 @@ export default function StoresPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

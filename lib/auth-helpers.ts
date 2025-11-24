@@ -121,3 +121,65 @@ export async function hasAllPermissions(userOrId: string | any, permissions: str
   }
   return true
 }
+
+/**
+ * Vérifie si un utilisateur a une permission globale OU une permission de magasin
+ * Utile pour les endpoints qui peuvent être utilisés depuis le dashboard global ou depuis un magasin
+ */
+export async function hasGlobalOrStorePermission(userId: string, globalPermission: string, storePermission: string): Promise<boolean> {
+  try {
+    console.log(`Checking global permission "${globalPermission}" OR store permission "${storePermission}" for user ${userId}`)
+    
+    // Vérifier d'abord la permission globale
+    const hasGlobal = await hasPermission(userId, globalPermission)
+    if (hasGlobal) {
+      console.log(`✅ User has global permission "${globalPermission}"`)
+      return true
+    }
+
+    // Si pas de permission globale, vérifier les permissions de magasin
+    const userWithStoreRoles = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        storeUserRoles: {
+          include: {
+            role: {
+              include: {
+                storeRolePermissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!userWithStoreRoles || !userWithStoreRoles.storeUserRoles) {
+      console.log(`User has no store roles`)
+      return false
+    }
+
+    console.log(`User has ${userWithStoreRoles.storeUserRoles.length} store roles`)
+
+    // Vérifier si l'utilisateur a la permission dans au moins un magasin
+    for (const storeUserRole of userWithStoreRoles.storeUserRoles) {
+      console.log(`Checking store role: ${storeUserRole.role.name}`)
+      for (const rolePermission of storeUserRole.role.storeRolePermissions) {
+        console.log(`  - Store permission: ${rolePermission.permission.name}`)
+        if (rolePermission.permission.name === storePermission) {
+          console.log(`✅ Store permission "${storePermission}" found`)
+          return true
+        }
+      }
+    }
+
+    console.log(`❌ Neither global permission "${globalPermission}" nor store permission "${storePermission}" found`)
+    return false
+  } catch (error) {
+    console.error("Error checking global or store permission:", error)
+    return false
+  }
+}

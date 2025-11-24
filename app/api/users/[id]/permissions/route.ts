@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params
 
-    // Get user with roles and permissions
+    // Get user with roles and permissions (global + store-specific)
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
@@ -30,6 +30,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
           },
         },
+        storeUserRoles: {
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            role: {
+              include: {
+                storeRolePermissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     })
 
@@ -37,13 +56,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Extract permissions
+    // Extract global permissions
     const permissions = new Set<string>()
     user.userRoles.forEach((userRole) => {
       userRole.role.rolePermissions.forEach((rolePermission) => {
         permissions.add(rolePermission.permission.name)
       })
     })
+
+    // Extract store permissions and store access
+    const storePermissions = new Set<string>()
+    const userStores: Array<{ id: string; name: string; roles: string[] }> = []
+    
+    user.storeUserRoles.forEach((storeUserRole) => {
+      // Add store permissions
+      storeUserRole.role.storeRolePermissions.forEach((rolePermission) => {
+        storePermissions.add(rolePermission.permission.name)
+      })
+      
+      // Track user stores
+      const existingStore = userStores.find(s => s.id === storeUserRole.store.id)
+      if (existingStore) {
+        existingStore.roles.push(storeUserRole.role.name)
+      } else {
+        userStores.push({
+          id: storeUserRole.store.id,
+          name: storeUserRole.store.name,
+          roles: [storeUserRole.role.name]
+        })
+      }
+    })
+
+    // If user has access to any store, grant basic stores.view permission
+    if (userStores.length > 0) {
+      permissions.add("stores.view")
+    }
+
+    // Combine all permissions
+    const allPermissions = new Set([...permissions, ...storePermissions])
 
     return NextResponse.json({
       user: {
@@ -53,7 +103,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         lastName: user.lastName,
         status: user.status,
       },
-      permissions: Array.from(permissions),
+      permissions: Array.from(allPermissions),
+      stores: userStores,
     })
   } catch (error) {
     console.error("Error fetching user permissions:", error)
