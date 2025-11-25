@@ -88,7 +88,7 @@ npm run build
 ### 4. Re-créer les subscriptions
 
 **Pour chaque livreur :**
-1. Ouvrir `https://livreur.inotech-gabon.com`
+1. Ouvrir `https://inotech-gabon.com`
 2. Se déconnecter puis se reconnecter
 3. Cliquer sur l'icône de notification dans le header
 4. Autoriser les notifications (nouvelles clés VAPID)

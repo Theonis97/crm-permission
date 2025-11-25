@@ -18,7 +18,9 @@ const nextConfig: NextConfig = {
         headers: [
            {
           key: "Access-Control-Allow-Origin",
-          value: "*",
+          value: process.env.NODE_ENV === 'production' 
+            ? "https://livreur.inotech-gabon.com, https://inotech-gabon.com"
+            : "*",
         },
           {
             key: "Access-Control-Allow-Methods",

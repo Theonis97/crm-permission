@@ -3,7 +3,7 @@
 ## 🎯 Problème identifié
 ```
 Access to fetch at 'https://inotech-gabon.com/api/mobile/auth/me' 
-from origin 'https://livreur.inotech-gabon.com' has been blocked by CORS policy: 
+from origin 'https://inotech-gabon.com' has been blocked by CORS policy: 
 Response to preflight request doesn't pass access control check: 
 No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ```
@@ -15,7 +15,7 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 {
   key: "Access-Control-Allow-Origin",
   value: process.env.NODE_ENV === "production" 
-    ? "https://livreur.inotech-gabon.com" 
+    ? "https://inotech-gabon.com" 
     : "*",
 }
 ```
@@ -23,7 +23,7 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ### 2. Middleware CORS (`middleware.ts`)
 ```typescript
 const allowedOrigin = process.env.NODE_ENV === 'production' 
-  ? 'https://livreur.inotech-gabon.com' 
+  ? 'https://inotech-gabon.com' 
   : '*';
 ```
 
@@ -51,7 +51,7 @@ node scripts/test-cors.js
 ### 4. Vérifier les headers HTTP
 ```bash
 # Test manuel avec curl
-curl -H "Origin: https://livreur.inotech-gabon.com" \
+curl -H "Origin: https://inotech-gabon.com" \
      -H "Access-Control-Request-Method: GET" \
      -H "Access-Control-Request-Headers: Content-Type, Authorization" \
      -X OPTIONS \
@@ -62,7 +62,7 @@ curl -H "Origin: https://livreur.inotech-gabon.com" \
 
 ### Headers attendus dans la réponse :
 ```
-Access-Control-Allow-Origin: https://livreur.inotech-gabon.com
+Access-Control-Allow-Origin: https://inotech-gabon.com
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
 Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
 Access-Control-Allow-Credentials: false
@@ -70,7 +70,7 @@ Access-Control-Max-Age: 86400
 ```
 
 ### Vérification côté PWA :
-1. Ouvrir https://livreur.inotech-gabon.com
+1. Ouvrir https://inotech-gabon.com
 2. Ouvrir DevTools → Console
 3. Chercher les erreurs CORS
 4. Vérifier les logs du NetworkDiagnostic
@@ -92,12 +92,12 @@ Si vous avez un reverse proxy, vérifiez qu'il ne supprime pas les headers CORS 
 
 **Nginx :**
 ```nginx
-add_header 'Access-Control-Allow-Origin' 'https://livreur.inotech-gabon.com' always;
+add_header 'Access-Control-Allow-Origin' 'https://inotech-gabon.com' always;
 ```
 
 **Apache :**
 ```apache
-Header always set Access-Control-Allow-Origin "https://livreur.inotech-gabon.com"
+Header always set Access-Control-Allow-Origin "https://inotech-gabon.com"
 ```
 
 ## 🧪 Tests de validation

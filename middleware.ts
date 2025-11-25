@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Configuration CORS pour la production
+  // Configuration CORS pour la production - Origines autorisées
+  const allowedOrigins = [
+    'https://inotech-gabon.com',
+    'https://livreur.inotech-gabon.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'https://pwa-delivery.vercel.app', // Si déployé sur Vercel
+  ];
+
+  const origin = request.headers.get('origin');
   const allowedOrigin = process.env.NODE_ENV === 'production' 
-    ? 'https://livreur.inotech-gabon.com' 
+    ? (allowedOrigins.includes(origin || '') ? (origin || 'https://inotech-gabon.com') : 'https://inotech-gabon.com')
     : '*';
 
   // Gérer les requêtes preflight CORS
