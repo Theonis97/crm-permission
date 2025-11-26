@@ -530,35 +530,40 @@ export default function PosPage() {
   }
 
   const handleTransferToDriver = async () => {
-    const transferData = {
+    // Créer une demande d'approvisionnement au lieu d'un transfert direct
+    const restockingRequestData = {
+      storeId,
       deliveryPersonId: selectedDeliveryPerson,
       items: cart.map(item => ({
         productId: item.product.id,
-        quantity: item.quantity,
+        requestedQuantity: item.quantity,
+        notes: `Demande depuis POS - ${item.product.name}`,
       })),
-      notes: notes || "Transfert de stock depuis POS",
+      notes: notes || "Demande d'approvisionnement créée depuis POS",
+      priority: "HIGH", // Priorité haute car c'est depuis le POS
     }
 
-    const response = await fetch(`/api/delivery-persons/${selectedDeliveryPerson}/stock`, {
+    const response = await fetch(`/api/restocking-requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(transferData),
+      body: JSON.stringify(restockingRequestData),
     })
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || "Erreur lors du transfert de stock")
+      throw new Error(error.message || "Erreur lors de la création de la demande d'approvisionnement")
     }
 
-    toast.success("Stock transféré au livreur avec succès !")
+    const result = await response.json()
+    
+    toast.success(`Demande d'approvisionnement créée avec succès ! (ID: ${result.data.id.slice(-8).toUpperCase()})`)
     
     // Réinitialiser
     resetCheckoutForm()
     clearCart()
     setIsCheckoutOpen(false)
     
-    // Recharger les produits pour mettre à jour les stocks
-    loadProducts()
+    // Pas besoin de recharger les produits car c'est une demande, pas un transfert direct
   }
 
   const resetCheckoutForm = () => {

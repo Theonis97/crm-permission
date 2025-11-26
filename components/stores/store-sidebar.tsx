@@ -98,13 +98,22 @@ const catalogueItems: MenuItem[] = [
   },
 ]
 
-const menuItems: MenuItem[] = [
+const ordersItems: MenuItem[] = [
   { 
     icon: ShoppingBag, 
-    label: "Commandes", 
+    label: "Commandes clients", 
     href: "/orders",
     permission: STORE_PERMISSIONS.ORDERS_VIEW
   },
+  { 
+    icon: Truck, 
+    label: "Demandes livreurs", 
+    href: "/delivery-requests",
+    permission: STORE_PERMISSIONS.ORDERS_VIEW
+  },
+]
+
+const menuItems: MenuItem[] = [
   { 
     icon: Calculator, 
     label: "Caisse", 
@@ -163,6 +172,7 @@ export function StoreSidebar({
   const pathname = usePathname()
   const { data: session } = useSession()
   const [catalogueOpen, setCatalogueOpen] = useState(false)
+  const [ordersOpen, setOrdersOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [userPermissions, setUserPermissions] = useState<string[]>([])
   const [permissionsLoading, setPermissionsLoading] = useState(true)
@@ -209,9 +219,11 @@ export function StoreSidebar({
   }
 
   const visibleCatalogueItems = getVisibleItems(catalogueItems)
+  const visibleOrdersItems = getVisibleItems(ordersItems)
   const visibleMenuItems = getVisibleItems(menuItems)
   const visibleAdminItems = getVisibleItems(adminItems)
   const isCatalogueActive = visibleCatalogueItems.some(item => isActive(item.href))
+  const isOrdersActive = visibleOrdersItems.some(item => isActive(item.href))
 
   if (permissionsLoading) {
     return (
@@ -366,6 +378,61 @@ export function StoreSidebar({
             {catalogueOpen && !sidebarCollapsed && (
               <div className="pl-8 space-y-1">
                 {visibleCatalogueItems.map((item) => {
+                  const Icon = item.icon
+                  const active = isActive(item.href)
+                  return (
+                    <Button
+                      key={item.href}
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "w-full justify-start gap-2 font-normal text-sm",
+                        active
+                          ? "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
+                          : "text-gray-600 hover:bg-gray-100"
+                      )}
+                      onClick={() => router.push(`/dashboard/stores/${storeId}${item.href}`)}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Orders Dropdown */}
+        {visibleOrdersItems.length > 0 && (
+          <div className="space-y-1">
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full font-normal",
+                sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3",
+                isOrdersActive
+                  ? "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
+                  : "text-gray-700 hover:bg-gray-100"
+              )}
+              onClick={() => setOrdersOpen(!ordersOpen)}
+              title={sidebarCollapsed ? "Commandes" : undefined}
+            >
+              <ShoppingBag className="h-5 w-5" />
+              {!sidebarCollapsed && (
+                <>
+                  Commandes
+                  <ChevronRight className={cn(
+                    "h-4 w-4 ml-auto transition-transform",
+                    ordersOpen && "rotate-90"
+                  )} />
+                </>
+              )}
+            </Button>
+
+            {ordersOpen && !sidebarCollapsed && (
+              <div className="pl-8 space-y-1">
+                {visibleOrdersItems.map((item) => {
                   const Icon = item.icon
                   const active = isActive(item.href)
                   return (

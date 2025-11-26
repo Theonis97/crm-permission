@@ -289,15 +289,15 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                 >
                   <Truck className="h-4 w-4 mr-2" />
                   Faire une demande
-              </Button>
-              <Button
-                onClick={() => setRestockingOrdersSheetOpen(true)}
-                variant="outline"
-              >
-                <ClipboardList className="h-4 w-4 mr-2" />
-                Voir les demandes
-              </Button>
-            </ButtonGroup>
+                </Button>
+                <Button
+                  onClick={() => setRestockingOrdersSheetOpen(true)}
+                  variant="outline"
+                >
+                  <ClipboardList className="h-4 w-4 mr-2" />
+                  Voir les demandes
+                </Button>
+              </ButtonGroup>
                 <StorePermissionGuard 
                   storeId={storeId} 
                   permission={STORE_PERMISSIONS.PRODUCTS_CREATE}
@@ -679,6 +679,23 @@ export default function ProductsPage({ params }: ProductsPageProps) {
         productId={selectedProductId}
         storeId={storeId}
         onUpdated={() => loadProducts(storeId)}
+      />
+
+      <RestockingRequestDialog
+        open={restockingDialogOpen}
+        onOpenChange={setRestockingDialogOpen}
+        storeId={storeId}
+        storeName={storeName}
+        onSuccess={() => {
+          setRestockingOrdersSheetOpen(true)
+        }}
+      />
+
+      <RestockingOrdersSheet
+        open={restockingOrdersSheetOpen}
+        onOpenChange={setRestockingOrdersSheetOpen}
+        storeId={storeId}
+        storeName={storeName}
       />
     </>
   )

@@ -2,8 +2,8 @@
 const https = require('https');
 const http = require('http');
 
-const BACKEND_URL = 'https://dev-crm.inotech-gabon.com';
-const PWA_ORIGIN = 'https://dev-crm.inotech-gabon.com';
+const BACKEND_URL = 'http://169.254.154.216:3001';
+const PWA_ORIGIN = 'http://169.254.154.216:3001';
 
 async function testCorsOptions() {
   console.log('🔍 Test des requêtes CORS OPTIONS (preflight)');

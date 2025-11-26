@@ -21,7 +21,7 @@ Tester l'envoi automatique de notifications PWA à tous les livreurs lors de la 
 
 ```bash
 # Vérifier les abonnements actifs
-curl https://dev-crm.inotech-gabon.com/api/pwa/debug
+curl http://169.254.154.216:3001/api/pwa/debug
 
 # Résultat attendu :
 {
@@ -31,7 +31,7 @@ curl https://dev-crm.inotech-gabon.com/api/pwa/debug
 ```
 
 **Si aucun abonnement :**
-1. Ouvrir `https://dev-crm.inotech-gabon.com`
+1. Ouvrir `http://169.254.154.216:3001`
 2. Se connecter comme livreur
 3. Cliquer sur l'icône de notification dans le header
 4. Autoriser les notifications
@@ -40,7 +40,7 @@ curl https://dev-crm.inotech-gabon.com/api/pwa/debug
 ### Test 2: Création de commande POS
 
 **Étapes :**
-1. Aller sur `https://dev-crm.inotech-gabon.com/dashboard/stores/[store-id]/pos`
+1. Aller sur `http://169.254.154.216:3001/dashboard/stores/[store-id]/pos`
 2. Créer une nouvelle commande avec :
    - Client : "Test PWA Client"
    - Téléphone : "+241 01 23 45 67"
@@ -90,7 +90,7 @@ node scripts/test-pos-notifications.js
 ### Test manuel avec curl
 ```bash
 # Créer une commande de test
-curl -X POST https://dev-crm.inotech-gabon.com/api/store-orders \
+curl -X POST http://169.254.154.216:3001/api/store-orders \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -151,10 +151,10 @@ GET /api/pwa/test
 **Debug :**
 ```bash
 # Vérifier abonnements
-curl https://dev-crm.inotech-gabon.com/api/pwa/debug
+curl http://169.254.154.216:3001/api/pwa/debug
 
 # Tester notification directe
-curl https://dev-crm.inotech-gabon.com/api/pwa/test
+curl http://169.254.154.216:3001/api/pwa/test
 ```
 
 ### Notification reçue mais pas d'action

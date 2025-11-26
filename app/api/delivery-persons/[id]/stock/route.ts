@@ -184,94 +184,122 @@ export async function POST(
       }
     }
 
-    // Transaction pour mettre à jour les stocks et créer les mouvements
+    // Transaction optimisée pour mettre à jour les stocks et créer les mouvements
     const result = await prisma.$transaction(async (tx) => {
+      console.log(`🔄 Starting stock transfer transaction for delivery person ${id}`)
+      
+      // 1. Récupérer tous les stocks existants du livreur en une seule requête
+      const existingDeliveryStocks = await tx.deliveryPersonStock.findMany({
+        where: {
+          deliveryPersonId: id,
+          productId: { in: productsToTransfer.map((item: any) => item.productId) },
+        },
+      })
+
+      // 2. Préparer les opérations en batch
+      const storeProductUpdates = []
+      const deliveryPersonStockOps = []
+      const stockMovements = []
+      const deliveryStockMovements = []
       const transferredItems = []
 
       for (const item of productsToTransfer) {
         const storeProduct = storeProducts.find(sp => sp.productId === item.productId)!
 
-        // 1. Réduire le stock du magasin
-        await tx.storeProduct.update({
-          where: { id: storeProduct.id },
-          data: {
-            stock: {
-              decrement: item.quantity,
-            },
-          },
-        })
-
-        // 2. Augmenter le stock du livreur
-        // Vérifier si le stock existe déjà
-        const existingStock = await tx.deliveryPersonStock.findFirst({
-          where: {
-            deliveryPersonId: id,
-            productId: item.productId,
-            variantId: item.variantId || null,
-          },
-        })
-
-        let deliveryStock
-        if (existingStock) {
-          // Mettre à jour le stock existant
-          deliveryStock = await tx.deliveryPersonStock.update({
-            where: {
-              id: existingStock.id,
-            },
+        // 2a. Préparer la réduction du stock du magasin
+        storeProductUpdates.push(
+          tx.storeProduct.update({
+            where: { id: storeProduct.id },
             data: {
-              quantity: {
-                increment: item.quantity,
+              stock: {
+                decrement: item.quantity,
               },
             },
-            include: {
-              product: true,
-              variant: true,
-            },
           })
+        )
+
+        // 2b. Préparer l'augmentation du stock du livreur
+        const existingStock = existingDeliveryStocks.find(stock => 
+          stock.productId === item.productId && 
+          stock.variantId === (item.variantId || null)
+        )
+
+        if (existingStock) {
+          // Mettre à jour le stock existant
+          deliveryPersonStockOps.push(
+            tx.deliveryPersonStock.update({
+              where: { id: existingStock.id },
+              data: {
+                quantity: {
+                  increment: item.quantity,
+                },
+              },
+              include: {
+                product: true,
+                variant: true,
+              },
+            })
+          )
         } else {
           // Créer un nouveau stock
-          deliveryStock = await tx.deliveryPersonStock.create({
+          deliveryPersonStockOps.push(
+            tx.deliveryPersonStock.create({
+              data: {
+                deliveryPersonId: id,
+                productId: item.productId,
+                variantId: item.variantId || null,
+                quantity: item.quantity,
+              },
+              include: {
+                product: true,
+                variant: true,
+              },
+            })
+          )
+        }
+
+        // 2c. Préparer les mouvements de stock
+        deliveryStockMovements.push(
+          tx.deliveryStockMovement.create({
             data: {
               deliveryPersonId: id,
               productId: item.productId,
               variantId: item.variantId || null,
+              type: "SUPPLY",
               quantity: item.quantity,
-            },
-            include: {
-              product: true,
-              variant: true,
+              notes: notes || "Transfert depuis POS",
+              createdById: user.id,
             },
           })
-        }
+        )
 
-        // 3. Créer un mouvement de stock pour le livreur (entrée)
-        await tx.deliveryStockMovement.create({
-          data: {
-            deliveryPersonId: id,
-            productId: item.productId,
-            variantId: item.variantId || null,
-            type: "SUPPLY",
-            quantity: item.quantity,
-            notes: notes || "Transfert depuis POS",
-            createdById: user.id,
-          },
-        })
-
-        // 4. Créer un mouvement de stock pour le magasin (sortie)
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            quantity: -item.quantity,
-            type: "EXIT",
-            note: `Transfert au livreur: ${deliveryPerson.name}${notes ? ` - ${notes}` : ""}`,
-            userId: user.id,
-          },
-        })
-
-        transferredItems.push(deliveryStock)
+        stockMovements.push(
+          tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              quantity: -item.quantity,
+              type: "EXIT",
+              note: `Transfert au livreur: ${deliveryPerson.name}${notes ? ` - ${notes}` : ""}`,
+              userId: user.id,
+            },
+          })
+        )
       }
 
-      return transferredItems
+      // 3. Exécuter toutes les opérations en parallèle
+      console.log(`🔄 Executing ${storeProductUpdates.length + deliveryPersonStockOps.length + stockMovements.length + deliveryStockMovements.length} operations`)
+      
+      const [storeUpdates, deliveryUpdates, stockMoves, deliveryMoves] = await Promise.all([
+        Promise.all(storeProductUpdates),
+        Promise.all(deliveryPersonStockOps),
+        Promise.all(stockMovements),
+        Promise.all(deliveryStockMovements),
+      ])
+
+      console.log(`✅ Stock transfer completed for delivery person ${id}`)
+      return deliveryUpdates
+    }, {
+      timeout: 15000, // Augmenter le timeout à 15 secondes
     })
 
     return NextResponse.json({ 
