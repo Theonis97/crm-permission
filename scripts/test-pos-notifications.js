@@ -74,7 +74,7 @@ async function checkPWASubscriptions() {
       if (data.totalSubscriptions === 0) {
         console.log('\n⚠️  Aucun abonnement PWA actif !');
         console.log('   Pour tester les notifications:');
-        console.log('   1. Ouvrez https://inotech-gabon.com');
+        console.log('   1. Ouvrez https://dev-crm.inotech-gabon.com');
         console.log('   2. Connectez-vous comme livreur');
         console.log('   3. Activez les notifications dans le header');
         console.log('   4. Relancez ce test');

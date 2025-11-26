@@ -166,7 +166,7 @@ async function createTestNotifications() {
     
     console.log(`\n🔗 Testez maintenant l'API avec :`);
     console.log(`   curl -H "Authorization: Bearer <TOKEN>" \\`);
-    console.log(`     https://inotech-gabon.com/api/mobile/notifications`);
+    console.log(`     https://dev-crm.inotech-gabon.com/api/mobile/notifications`);
 
   } catch (error) {
     console.error('❌ Erreur lors de la création des notifications de test:', error);

@@ -88,7 +88,7 @@ npm run build
 ### 4. Re-créer les subscriptions
 
 **Pour chaque livreur :**
-1. Ouvrir `https://inotech-gabon.com`
+1. Ouvrir `https://dev-crm.inotech-gabon.com`
 2. Se déconnecter puis se reconnecter
 3. Cliquer sur l'icône de notification dans le header
 4. Autoriser les notifications (nouvelles clés VAPID)
@@ -109,15 +109,15 @@ console.log(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
 ```bash
 # Vérifier les subscriptions actives
-curl https://inotech-gabon.com/api/pwa/debug
+curl https://dev-crm.inotech-gabon.com/api/pwa/debug
 
 # Test d'envoi
-curl https://inotech-gabon.com/api/pwa/test
+curl https://dev-crm.inotech-gabon.com/api/pwa/test
 ```
 
 ### 3. Créer une commande POS
 
-1. Aller sur le POS : `https://inotech-gabon.com/dashboard/stores/[id]/pos`
+1. Aller sur le POS : `https://dev-crm.inotech-gabon.com/dashboard/stores/[id]/pos`
 2. Créer une commande
 3. Vérifier que la notification est reçue sans erreur 403
 
