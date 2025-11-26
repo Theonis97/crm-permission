@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { reserveDeliveryPersonStock } from '@/lib/delivery-stock-validator';
 
 /**
  * POST /api/delivery/orders/[orderId]/accept
@@ -93,38 +94,65 @@ export async function POST(
       }
     }
 
-    // Mettre à jour la commande
-    const updatedOrder = await prisma.storeOrder.update({
-      where: { id: orderId },
-      data: {
-        status: 'CONFIRMED', // Passer de PENDING à CONFIRMED
-        deliveryPersonId: driverId || order.deliveryPersonId,
-        deliveryZoneId: zoneId || order.deliveryZoneId,
-        updatedAt: new Date(),
-      },
-      include: {
-        deliveryPerson: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
+    // Transaction pour mettre à jour la commande et réserver le stock du livreur
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // 1. Mettre à jour la commande
+      const updated = await tx.storeOrder.update({
+        where: { id: orderId },
+        data: {
+          status: 'CONFIRMED', // Passer de PENDING à CONFIRMED
+          deliveryPersonId: driverId || order.deliveryPersonId,
+          deliveryZoneId: zoneId || order.deliveryZoneId,
+          updatedAt: new Date(),
+        },
+        include: {
+          deliveryPerson: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+          deliveryZone: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+            },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          items: {
+            select: {
+              productId: true,
+              variantId: true,
+              quantity: true,
+            },
           },
         },
-        deliveryZone: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-        store: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+      });
+
+      // 2. Si un livreur accepte la commande, réserver son stock
+      if (driverId && updated.items.length > 0) {
+        console.log(`🚚 Réservation du stock du livreur ${driverId} pour la commande ${order.number}`);
+        
+        const stockItems = updated.items.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+        }));
+
+        // Réserver le stock du livreur (sans utiliser tx car la fonction a sa propre transaction)
+        await reserveDeliveryPersonStock(driverId, stockItems);
+      }
+
+      return updated;
     });
+    
 
     console.log(`✅ Commande ${order.number} acceptée par ${updatedOrder.deliveryPerson?.name || 'livreur inconnu'}`);
 

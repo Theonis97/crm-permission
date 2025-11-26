@@ -258,32 +258,39 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // 2. Batch création des mouvements de stock
-      const stockMovements = stockValidations.map(item => ({
-        productId: item.productId,
-        quantity: -item.quantity, // Quantité négative pour une sortie
-        type: "SALE" as const,
-        note: `Vente commande ${orderNumber} - ${customerName}`,
-        userId: user.id,
-      }))
+      // 2. Création des mouvements de stock SEULEMENT si aucun livreur assigné
+      // Si un livreur est assigné, le stock sera débité du livreur lors de la livraison
+      if (!deliveryPersonId) {
+        console.log('📦 Aucun livreur assigné - Débit du stock magasin');
+        
+        const stockMovements = stockValidations.map(item => ({
+          productId: item.productId,
+          quantity: -item.quantity, // Quantité négative pour une sortie
+          type: "SALE" as const,
+          note: `Vente commande ${orderNumber} - ${customerName}`,
+          userId: user.id,
+        }))
 
-      await tx.stockMovement.createMany({
-        data: stockMovements,
-      })
-
-      // 3. Batch mise à jour des stocks
-      const stockUpdates = stockValidations.map(item => 
-        tx.storeProduct.update({
-          where: { id: item.storeProductId },
-          data: {
-            stock: {
-              decrement: item.quantity,
-            },
-          },
+        await tx.stockMovement.createMany({
+          data: stockMovements,
         })
-      )
 
-      await Promise.all(stockUpdates)
+        // 3. Batch mise à jour des stocks du magasin
+        const stockUpdates = stockValidations.map(item => 
+          tx.storeProduct.update({
+            where: { id: item.storeProductId },
+            data: {
+              stock: {
+                decrement: item.quantity,
+              },
+            },
+          })
+        )
+
+        await Promise.all(stockUpdates)
+      } else {
+        console.log('🚚 Livreur assigné - Le stock sera débité du livreur lors de la livraison');
+      }
 
       console.log('✅ Transaction terminée avec succès');
       return order
