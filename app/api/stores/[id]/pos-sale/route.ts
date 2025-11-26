@@ -159,7 +159,7 @@ export async function POST(
             productId,
             quantity: -quantity, // Quantité négative pour une sortie
             type: "SALE",
-            note: `Vente POS ${saleNumber} - ${storeProduct.product.name} (${customerName || "Client"})`,
+            note: `Vente POS ${saleNumber} - ${customerName} (${customerPhone})`,
             userId: user.id,
           },
           include: {

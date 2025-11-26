@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   // Configuration CORS pour la production - Origines autorisées
   const allowedOrigins = [
-    'http://172.20.10.10:3001',
+    'http://192.168.1.115:3001',
     'https://livreur.inotech-gabon.com',
     'http://localhost:3000',
     'http://localhost:3001',
@@ -13,7 +13,7 @@ export function middleware(request: NextRequest) {
 
   const origin = request.headers.get('origin');
   const allowedOrigin = process.env.NODE_ENV === 'production' 
-    ? (allowedOrigins.includes(origin || '') ? (origin || 'http://172.20.10.10:3001') : 'http://172.20.10.10:3001')
+    ? (allowedOrigins.includes(origin || '') ? (origin || 'http://192.168.1.115:3001') : 'http://192.168.1.115:3001')
     : '*';
 
   // Gérer les requêtes preflight CORS

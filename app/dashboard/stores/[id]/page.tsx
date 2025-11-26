@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner"
 import { usePermissions } from "@/hooks/use-permissions"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
+import { StoreDayCloses } from "@/components/stores/store-day-closes"
 
 interface StorePageProps {
   params: Promise<{
@@ -556,6 +557,8 @@ export default function StorePage({ params }: StorePageProps) {
 
         {/* Section inférieure avec métriques détaillées */}
         <div className="grid gap-6 lg:grid-cols-3">
+          {/* Clôtures de journée */}
+          <StoreDayCloses storeId={id} />
           {/* Average Order Value */}
           <Card className="bg-white">
             <CardHeader className="flex flex-row items-center justify-between">

@@ -130,6 +130,9 @@ model Store {
   
   // Demandes d'approvisionnement
   restockingRequests RestockingRequest[]
+  
+  // Clôtures de journée
+  dayCloses DayClose[]
 
   @@map("stores")
 }
@@ -793,6 +796,9 @@ model User {
   
   // Demandes d'approvisionnement approuvées
   approvedRestockingRequests RestockingRequest[]
+  
+  // Clôtures de journée effectuées
+  dayCloses DayClose[]
 
   @@map("users")
 }
@@ -1392,5 +1398,31 @@ model RestockingRequestItem {
   @@index([restockingRequestId])
   @@index([productId])
   @@map("restocking_request_items")
+}
+
+// Clôture de journée de caisse
+model DayClose {
+  id            String   @id @default(cuid())
+  storeId       String   @map("store_id")
+  userId        String   @map("user_id")
+  closeDate     DateTime @map("close_date") // Date de la journée clôturée (sans heure)
+  totalSales    Int      @map("total_sales") // Nombre de ventes
+  totalItems    Int      @map("total_items") // Nombre total d'articles vendus
+  subtotal      Float    @map("subtotal") // Sous-total avant TVA et remises
+  totalTax      Float    @map("total_tax") // Total TVA
+  totalDiscounts Float   @map("total_discounts") // Total des remises accordées
+  totalRevenue  Float    @map("total_revenue") // Recette totale encaissée
+  notes         String?  // Notes optionnelles de clôture
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, closeDate]) // Une seule clôture par magasin par jour
+  @@index([storeId])
+  @@index([userId])
+  @@index([closeDate])
+  @@map("day_closes")
 }
 

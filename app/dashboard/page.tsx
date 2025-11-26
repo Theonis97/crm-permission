@@ -17,6 +17,7 @@ import {
   Store,
   ArrowRight,
   Sparkles,
+  Calendar,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
@@ -108,6 +109,17 @@ const modules = [
     permission: "reports.view",
     href: "/dashboard/reports",
     stats: "6 KPIs actifs",
+    clickable: true,
+  },
+  {
+    id: "day-closes",
+    name: "Clôtures de journée",
+    description: "Historique des clôtures de caisse",
+    icon: Calendar,
+    color: "from-violet-500 to-violet-600",
+    permission: "store.pos.access", // Utiliser une permission existante
+    href: "/dashboard/day-closes",
+    stats: "Mes clôtures",
     clickable: true,
   },
 ]

@@ -292,7 +292,7 @@ npx prisma generate
 Toutes les routes nécessitent un token JWT valide. Testez avec :
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" \
-  http://172.20.10.10:3001/api/mobile/notifications
+  http://192.168.1.115:3001/api/mobile/notifications
 ```
 
 ### 3. Performance
@@ -339,19 +339,19 @@ eas build --platform all
 ```bash
 # Récupérer les notifications
 curl -H "Authorization: Bearer TOKEN" \
-  http://172.20.10.10:3001/api/mobile/notifications
+  http://192.168.1.115:3001/api/mobile/notifications
 
 # Marquer comme lue
 curl -X POST -H "Authorization: Bearer TOKEN" \
-  http://172.20.10.10:3001/api/mobile/notifications/ID/read
+  http://192.168.1.115:3001/api/mobile/notifications/ID/read
 
 # Marquer toutes comme lues
 curl -X POST -H "Authorization: Bearer TOKEN" \
-  http://172.20.10.10:3001/api/mobile/notifications/read
+  http://192.168.1.115:3001/api/mobile/notifications/read
 
 # Effacer toutes
 curl -X DELETE -H "Authorization: Bearer TOKEN" \
-  http://172.20.10.10:3001/api/mobile/notifications
+  http://192.168.1.115:3001/api/mobile/notifications
 ```
 
 ### Test de l'app mobile

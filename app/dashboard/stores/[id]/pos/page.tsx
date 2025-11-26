@@ -21,6 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -176,6 +183,11 @@ export default function PosPage() {
   // Réductions
   const [globalDiscount, setGlobalDiscount] = useState(0) // Remise globale en pourcentage
   const [globalDiscountAmount, setGlobalDiscountAmount] = useState(0) // Remise globale en montant fixe
+
+  // Clôture de journée
+  const [showDayCloseSheet, setShowDayCloseSheet] = useState(false)
+  const [dayCloseSummary, setDayCloseSummary] = useState<any>(null)
+  const [isLoadingDayClose, setIsLoadingDayClose] = useState(false)
 
   // Refs
   const addressDropdownRef = useRef<HTMLDivElement>(null)
@@ -796,6 +808,25 @@ export default function PosPage() {
     ))
   }
 
+  // Fonction pour charger le résumé de clôture de journée
+  const loadDayCloseSummary = async () => {
+    setIsLoadingDayClose(true)
+    try {
+      const response = await fetch(`/api/stores/${storeId}/day-close-summary`)
+      if (!response.ok) {
+        throw new Error('Erreur lors du chargement du résumé')
+      }
+      const data = await response.json()
+      setDayCloseSummary(data)
+      setShowDayCloseSheet(true)
+    } catch (error) {
+      console.error('Erreur:', error)
+      toast.error('Erreur lors du chargement du résumé de la journée')
+    } finally {
+      setIsLoadingDayClose(false)
+    }
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Section Gauche - Produits */}
@@ -965,10 +996,39 @@ export default function PosPage() {
           <div className="w-92 bg-white border-l flex flex-col">
             {/* Header Panier */}
             <div className="p-3 border-b">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-900">Panier</h3>
                 <Badge variant="outline">{cartItemsCount} article{cartItemsCount > 1 ? 's' : ''}</Badge>
               </div>
+              
+              {/* Bouton Clôture de journée */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadDayCloseSummary}
+                disabled={isLoadingDayClose}
+                className={cn(
+                  "w-full text-xs h-7",
+                  dayCloseSummary?.isAlreadyClosed && "border-green-200 bg-green-50 text-green-700"
+                )}
+              >
+                {isLoadingDayClose ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Chargement...
+                  </>
+                ) : dayCloseSummary?.isAlreadyClosed ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Journée clôturée
+                  </>
+                ) : (
+                  <>
+                    <Calendar className="h-3 w-3 mr-1" />
+                    Clôturer la journée
+                  </>
+                )}
+              </Button>
             </div>
 
             {/* Items du Panier */}
@@ -2045,6 +2105,154 @@ export default function PosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Sheet de clôture de journée */}
+      <Sheet open={showDayCloseSheet} onOpenChange={setShowDayCloseSheet}>
+        <SheetContent side="right" className="w-[600px] sm:w-[700px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Clôture de journée - {new Date().toLocaleDateString('fr-FR')}
+              {dayCloseSummary?.isAlreadyClosed && (
+                <Badge variant="secondary" className="ml-2">
+                  Déjà clôturée
+                </Badge>
+              )}
+            </SheetTitle>
+            <SheetDescription>
+              {dayCloseSummary?.isAlreadyClosed ? (
+                <>
+                  Journée clôturée le {new Date(dayCloseSummary.closedAt).toLocaleString('fr-FR')} par {dayCloseSummary.closedBy}
+                </>
+              ) : (
+                "Résumé des ventes directes effectuées au magasin aujourd'hui"
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          {dayCloseSummary && (
+            <div className="mt-6 space-y-6">
+              {/* En-tête de facture */}
+              <div className="border-b pb-4">
+                <div className="text-center">
+                  <h2 className="text-xl font-bold text-gray-900">RAPPORT DE CAISSE</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {dayCloseSummary.storeName}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {new Date().toLocaleDateString('fr-FR', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Statistiques générales */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {dayCloseSummary.totalSales}
+                  </div>
+                  <div className="text-sm text-blue-700">Ventes</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {dayCloseSummary.totalItems}
+                  </div>
+                  <div className="text-sm text-green-700">Articles</div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {formatFCFA(dayCloseSummary.totalRevenue)}
+                  </div>
+                  <div className="text-sm text-purple-700">Recette</div>
+                </div>
+              </div>
+
+              {/* Liste des ventes */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900 border-b pb-2">
+                  Détail des ventes
+                </h3>
+                
+                {dayCloseSummary.sales && dayCloseSummary.sales.length > 0 ? (
+                  <div className="space-y-2">
+                    {dayCloseSummary.sales.map((sale: any, index: number) => (
+                      <div key={sale.id || index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">
+                            {sale.customerName || 'Client anonyme'}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {new Date(sale.createdAt).toLocaleTimeString('fr-FR')} • 
+                            {sale.itemCount} article{sale.itemCount > 1 ? 's' : ''}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-sm">
+                            {formatFCFA(sale.total)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Espèces
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p>Aucune vente directe aujourd'hui</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Totaux finaux */}
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Sous-total:</span>
+                  <span>{formatFCFA(dayCloseSummary.subtotal || 0)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>TVA:</span>
+                  <span>{formatFCFA(dayCloseSummary.totalTax || 0)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-red-600">
+                  <span>Remises accordées:</span>
+                  <span>-{formatFCFA(dayCloseSummary.totalDiscounts || 0)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>TOTAL ENCAISSÉ:</span>
+                  <span className="text-green-600">{formatFCFA(dayCloseSummary.totalRevenue)}</span>
+                </div>
+              </div>
+
+              {/* Boutons d'action */}
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => window.print()}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Imprimer
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => setShowDayCloseSheet(false)}
+                >
+                  Fermer
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

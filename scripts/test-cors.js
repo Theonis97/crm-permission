@@ -2,8 +2,8 @@
 const https = require('https');
 const http = require('http');
 
-const BACKEND_URL = 'http://172.20.10.10:3001';
-const PWA_ORIGIN = 'http://172.20.10.10:3001';
+const BACKEND_URL = 'http://192.168.1.115:3001';
+const PWA_ORIGIN = 'http://192.168.1.115:3001';
 
 async function testCorsOptions() {
   console.log('🔍 Test des requêtes CORS OPTIONS (preflight)');
