@@ -59,7 +59,7 @@ async function cleanupInvalidSubscriptions() {
     
     console.log(`\n✅ ${deleteResult.count} subscription(s) supprimée(s)`);
     console.log('\n📋 Instructions pour les utilisateurs:');
-    console.log('1. Ouvrir http://169.254.154.216:3001');
+    console.log('1. Ouvrir http://172.20.10.10:3001');
     console.log('2. Se déconnecter puis se reconnecter');
     console.log('3. Cliquer sur l\'icône de notification dans le header');
     console.log('4. Autoriser les notifications (nouvelles clés VAPID)');

@@ -15,6 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Table,
   TableBody,
   TableCell,
@@ -33,11 +39,14 @@ import {
   Activity,
   Users,
   Loader2,
+  ChevronDown,
+  RotateCcw,
 } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { toast } from "sonner"
 import { ReturnMovementDialog } from "@/components/stores/return-movement-dialog"
+import { DriverReturnDialog } from "@/components/stores/driver-return-dialog"
 
 interface MovementsPageProps {
   params: Promise<{
@@ -118,6 +127,7 @@ export default function MovementsPage({ params }: MovementsPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<string>("all")
   const [showReturnDialog, setShowReturnDialog] = useState(false)
+  const [showDriverReturnDialog, setShowDriverReturnDialog] = useState(false)
   
   useEffect(() => {
     params.then(p => {
@@ -185,15 +195,32 @@ export default function MovementsPage({ params }: MovementsPageProps) {
 
   return (
     <>
-      <StorePageHeader
-        title="Mouvements de stock"
-        description="Suivi des entrées et sorties"
-        action={{
-          label: "Enregistrer un retour",
-          onClick: () => setShowReturnDialog(true),
-          icon: Plus,
-        }}
-      />
+      <div className="flex items-center justify-between p-8 pb-0">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Mouvements de stock</h1>
+          <p className="text-gray-600 mt-1">Suivi des entrées et sorties</p>
+        </div>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Enregistrer un retour
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onClick={() => setShowReturnDialog(true)}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Retour client
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowDriverReturnDialog(true)}>
+              <Truck className="h-4 w-4 mr-2" />
+              Retour livreur
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <div className="p-8 space-y-6">
 
@@ -446,13 +473,27 @@ export default function MovementsPage({ params }: MovementsPageProps) {
       </Card>
       </div>
 
-      {/* Modal de retour */}
+      {/* Modal de retour client */}
       <ReturnMovementDialog
         open={showReturnDialog}
         onOpenChange={setShowReturnDialog}
         storeId={storeId}
         onSuccess={() => {
           fetchStoreMovements(storeId)
+          if (activeTab === "delivery") {
+            fetchDeliveryMovements(storeId)
+          }
+        }}
+      />
+
+      {/* Modal de retour livreur */}
+      <DriverReturnDialog
+        open={showDriverReturnDialog}
+        onOpenChange={setShowDriverReturnDialog}
+        storeId={storeId}
+        onSuccess={() => {
+          fetchStoreMovements(storeId)
+          fetchDeliveryMovements(storeId)
         }}
       />
     </>

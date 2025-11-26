@@ -104,6 +104,8 @@ const paymentMethods = [
 interface CartItem {
   product: Product
   quantity: number
+  discount?: number // Réduction en pourcentage (0-100)
+  discountAmount?: number // Montant de réduction fixe en FCFA
 }
 
 const formatFCFA = (amount: number) => {
@@ -125,7 +127,7 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState(0)
-  const [orderType, setOrderType] = useState<"CLIENT" | "DRIVER" | null>(null)
+  const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER" | null>(null)
   
   // Données
   const [products, setProducts] = useState<Product[]>([])
@@ -170,6 +172,10 @@ export default function PosPage() {
   // Formulaire checkout - Étape 3: Paiement
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [notes, setNotes] = useState("")
+
+  // Réductions
+  const [globalDiscount, setGlobalDiscount] = useState(0) // Remise globale en pourcentage
+  const [globalDiscountAmount, setGlobalDiscountAmount] = useState(0) // Remise globale en montant fixe
 
   // Refs
   const addressDropdownRef = useRef<HTMLDivElement>(null)
@@ -418,7 +424,7 @@ export default function PosPage() {
     }
 
     // Validation selon le type de commande
-    if (orderType === "CLIENT") {
+    if (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE") {
       if (!customerPhone) {
         toast.error("Téléphone du client requis")
         return
@@ -436,9 +442,12 @@ export default function PosPage() {
       if (orderType === "DRIVER") {
         // Transférer le stock au livreur
         await handleTransferToDriver()
-      } else {
-        // Créer une commande client classique
-        await handleCreateClientOrder()
+      } else if (orderType === "CLIENT_DELIVERY") {
+        // Créer une commande client avec livraison (ne pas déstocker)
+        await handleCreateClientDeliveryOrder()
+      } else if (orderType === "CLIENT_STORE") {
+        // Vente directe au magasin (déstocker et créer mouvement)
+        await handleCreateClientStoreOrder()
       }
     } catch (error: any) {
       console.error("Error creating order:", error)
@@ -448,7 +457,7 @@ export default function PosPage() {
     }
   }
 
-  const handleCreateClientOrder = async () => {
+  const handleCreateClientDeliveryOrder = async () => {
     // Créer ou récupérer le contact
     let contactId = selectedContactId
     if (!contactId && (customerFirstName || customerLastName || customerPhone)) {
@@ -487,10 +496,11 @@ export default function PosPage() {
       deliveryZoneId: detectedZone?.id || null,
       requestedDeliveryDate: requestedDeliveryDate ? new Date(requestedDeliveryDate).toISOString() : null,
       priority: "NORMAL",
-      deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : null,
+      // Pour CLIENT_DELIVERY, on met un livreur fictif pour éviter le déstockage du magasin
+      deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : "PENDING_ASSIGNMENT",
       deliveryFee,
       paymentMethod: paymentMethod.toUpperCase(),
-      notes,
+      notes: notes + " [COMMANDE À LIVRER - NE PAS DÉSTOCKER LE MAGASIN]",
       items: cart.map(item => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -566,6 +576,72 @@ export default function PosPage() {
     // Pas besoin de recharger les produits car c'est une demande, pas un transfert direct
   }
 
+  const handleCreateClientStoreOrder = async () => {
+    // Créer ou récupérer le contact
+    let contactId = selectedContactId
+    if (!contactId && (customerFirstName || customerLastName || customerPhone)) {
+      // Créer le contact et l'associer automatiquement à la boutique
+      const contactResponse = await fetch(`/api/stores/${storeId}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: customerFirstName,
+          lastName: customerLastName,
+          phone: customerPhone,
+          email: customerEmail || null,
+          type: "PERSONNE",
+          status: "CLIENT",
+        }),
+      })
+      
+      if (contactResponse.ok) {
+        const newContact = await contactResponse.json()
+        contactId = newContact.id
+        
+        // Recharger la liste des contacts pour inclure le nouveau
+        loadContacts()
+      }
+    }
+
+    // Créer directement une vente POS (pas de commande, juste des mouvements de stock)
+    const saleData = {
+      storeId,
+      contactId: contactId || null,
+      customerName: `${customerFirstName} ${customerLastName}`.trim() || "Client",
+      customerPhone,
+      customerEmail: customerEmail || null,
+      paymentMethod: "CASH", // Toujours en espèces pour les ventes au magasin
+      notes: notes || "Vente directe POS",
+      items: cart.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: item.product.prixVente,
+      })),
+    }
+
+    const response = await fetch(`/api/stores/${storeId}/pos-sale`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(saleData),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Erreur création vente")
+    }
+
+    const sale = await response.json()
+    toast.success(`Vente ${sale.number || 'POS'} enregistrée avec succès !`)
+    
+    // Réinitialiser
+    resetCheckoutForm()
+    clearCart()
+    setIsCheckoutOpen(false)
+    
+    // Recharger les produits pour mettre à jour les stocks
+    loadProducts()
+  }
+
   const resetCheckoutForm = () => {
     setCheckoutStep(0)
     setOrderType(null)
@@ -588,18 +664,27 @@ export default function PosPage() {
     setRequestedDeliveryDate(today.toISOString().split('T')[0])
     setPaymentMethod("cash")
     setNotes("")
+    // Réinitialiser les réductions
+    setGlobalDiscount(0)
+    setGlobalDiscountAmount(0)
+    // Réinitialiser les réductions par article
+    setCart(prev => prev.map(item => ({ 
+      ...item, 
+      discount: undefined, 
+      discountAmount: undefined 
+    })))
   }
 
   const canProceedToStep2 = () => {
-    if (orderType === "CLIENT") {
+    if (orderType === "CLIENT_DELIVERY") {
       return customerPhone.trim().length > 0
     }
-    // Pour DRIVER, pas d'étape 2
+    // Pour CLIENT_STORE et DRIVER, pas d'étape 2 de livraison
     return false
   }
 
   const canProceedToStep3 = () => {
-    if (orderType === "CLIENT") {
+    if (orderType === "CLIENT_DELIVERY") {
       return deliveryAddress.trim().length > 0
     }
     return false
@@ -609,14 +694,52 @@ export default function PosPage() {
     return selectedDeliveryPerson !== ""
   }
 
-  // Calculs du panier
-  const cartSubtotal = cart.reduce((sum, item) => sum + (item.product.prixVente * item.quantity), 0)
-  const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0)
-  const cartTax = cart.reduce((sum, item) => {
-    const itemTotal = item.product.prixVente * item.quantity
-    return sum + (itemTotal * item.product.tva / 100)
+  // Calculs du panier avec réductions
+  const cartSubtotal = cart.reduce((sum, item) => {
+    const itemPrice = item.product.prixVente
+    const itemTotal = itemPrice * item.quantity
+    
+    // Appliquer la réduction par article
+    let discountedTotal = itemTotal
+    if (item.discount && item.discount > 0) {
+      discountedTotal = itemTotal * (1 - item.discount / 100)
+    } else if (item.discountAmount && item.discountAmount > 0) {
+      discountedTotal = Math.max(0, itemTotal - item.discountAmount)
+    }
+    
+    return sum + discountedTotal
   }, 0)
-  const cartTotal = cartSubtotal + cartTax + deliveryFee
+  
+  const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  
+  const cartTax = cart.reduce((sum, item) => {
+    const itemPrice = item.product.prixVente
+    const itemTotal = itemPrice * item.quantity
+    
+    // Appliquer la réduction par article pour calculer la TVA sur le montant réduit
+    let discountedTotal = itemTotal
+    if (item.discount && item.discount > 0) {
+      discountedTotal = itemTotal * (1 - item.discount / 100)
+    } else if (item.discountAmount && item.discountAmount > 0) {
+      discountedTotal = Math.max(0, itemTotal - item.discountAmount)
+    }
+    
+    return sum + (discountedTotal * item.product.tva / 100)
+  }, 0)
+  
+  // Appliquer la remise globale
+  let finalSubtotal = cartSubtotal
+  let globalDiscountApplied = 0
+  
+  if (globalDiscount > 0) {
+    globalDiscountApplied = cartSubtotal * (globalDiscount / 100)
+    finalSubtotal = cartSubtotal - globalDiscountApplied
+  } else if (globalDiscountAmount > 0) {
+    globalDiscountApplied = Math.min(globalDiscountAmount, cartSubtotal)
+    finalSubtotal = cartSubtotal - globalDiscountApplied
+  }
+  
+  const cartTotal = finalSubtotal + cartTax + deliveryFee
 
   const addToCart = (product: Product) => {
     setCart(prev => {
@@ -654,6 +777,23 @@ export default function PosPage() {
 
   const clearCart = () => {
     setCart([])
+  }
+
+  // Fonctions pour gérer les réductions par article
+  const updateItemDiscount = (productId: string, discount: number) => {
+    setCart(prev => prev.map(item => 
+      item.product.id === productId 
+        ? { ...item, discount: Math.max(0, Math.min(100, discount)), discountAmount: undefined }
+        : item
+    ))
+  }
+
+  const updateItemDiscountAmount = (productId: string, discountAmount: number) => {
+    setCart(prev => prev.map(item => 
+      item.product.id === productId 
+        ? { ...item, discountAmount: Math.max(0, discountAmount), discount: undefined }
+        : item
+    ))
   }
 
   return (
@@ -772,7 +912,7 @@ export default function PosPage() {
                 <p className="text-sm">Aucun produit disponible</p>
               </div>
             ) : (
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {filteredProducts.map((product) => (
                   <div
                     key={product.id}
@@ -822,7 +962,7 @@ export default function PosPage() {
             )}
           </div>
           {/* Section Droite - Panier */}
-          <div className="w-80 bg-white border-l flex flex-col">
+          <div className="w-92 bg-white border-l flex flex-col">
             {/* Header Panier */}
             <div className="p-3 border-b">
               <div className="flex items-center justify-between">
@@ -864,7 +1004,29 @@ export default function PosPage() {
                         <div className="text-xs text-gray-500">
                           {item.product.prixVente} F x {item.quantity}
                         </div>
-                        <div className="flex items-center gap-1 mt-1">
+                        
+                        {/* Réductions par article */}
+                        <div className="flex gap-1 mt-1">
+                          <Input
+                            type="number"
+                            placeholder="% remise"
+                            value={item.discount || ''}
+                            onChange={(e) => updateItemDiscount(item.product.id, Number(e.target.value))}
+                            className="h-7 text-xs w-36"
+                            min="0"
+                            max="100"
+                          />
+                          <Input
+                            type="number"
+                            placeholder="FCFA"
+                            value={item.discountAmount || ''}
+                            onChange={(e) => updateItemDiscountAmount(item.product.id, Number(e.target.value))}
+                            className="h-7 text-xs w-36"
+                            min="0"
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-1 mt-4">
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -893,9 +1055,32 @@ export default function PosPage() {
                       </div>
 
                       <div className="text-right">
-                        <div className="font-bold text-sm text-gray-900">
-                          {(item.product.prixVente * item.quantity).toLocaleString()} F
+                        <div className="space-y-1">
+                          {/* Prix original */}
+                          <div className={cn(
+                            "text-xs",
+                            (item.discount || item.discountAmount) ? "line-through text-gray-400" : "font-bold text-gray-900"
+                          )}>
+                            {(item.product.prixVente * item.quantity).toLocaleString()} F
+                          </div>
+                          
+                          {/* Prix avec réduction */}
+                          {(item.discount || item.discountAmount) && (
+                            <div className="font-bold text-sm text-green-600">
+                              {(() => {
+                                const originalTotal = item.product.prixVente * item.quantity
+                                let discountedTotal = originalTotal
+                                if (item.discount && item.discount > 0) {
+                                  discountedTotal = originalTotal * (1 - item.discount / 100)
+                                } else if (item.discountAmount && item.discountAmount > 0) {
+                                  discountedTotal = Math.max(0, originalTotal - item.discountAmount)
+                                }
+                                return discountedTotal.toLocaleString()
+                              })()} F
+                            </div>
+                          )}
                         </div>
+                        
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -915,11 +1100,52 @@ export default function PosPage() {
             {/* Footer Panier - Total */}
             {cart.length > 0 && (
               <div className="border-t p-3 space-y-3">
+                {/* Remise globale */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-gray-700">Remise globale</div>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      placeholder="% remise"
+                      value={globalDiscount || ''}
+                      onChange={(e) => {
+                        setGlobalDiscount(Number(e.target.value))
+                        setGlobalDiscountAmount(0) // Reset l'autre type de remise
+                      }}
+                      className="h-8 text-sm flex-1"
+                      min="0"
+                      max="100"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Montant FCFA"
+                      value={globalDiscountAmount || ''}
+                      onChange={(e) => {
+                        setGlobalDiscountAmount(Number(e.target.value))
+                        setGlobalDiscount(0) // Reset l'autre type de remise
+                      }}
+                      className="h-8 text-sm flex-1"
+                      min="0"
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Sous-total</span>
                     <span className="font-medium">{cartSubtotal.toLocaleString()} F</span>
                   </div>
+                  
+                  {/* Afficher la remise globale si applicable */}
+                  {globalDiscountApplied > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Remise globale</span>
+                      <span>-{globalDiscountApplied.toLocaleString()} F</span>
+                    </div>
+                  )}
+                  
                   <div className="flex justify-between">
                     <span className="text-gray-600">TVA</span>
                     <span className="font-medium">{cartTax.toLocaleString()} F</span>
@@ -959,13 +1185,13 @@ export default function PosPage() {
             <DialogTitle className="text-xl">Finaliser la commande</DialogTitle>
             <DialogDescription>
               {checkoutStep === 0 && "Sélectionnez le type de transaction"}
-              {checkoutStep === 1 && (orderType === "CLIENT" ? "Sélectionnez ou créez un client" : "Sélectionnez le livreur")}
+              {checkoutStep === 1 && (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE" ? "Sélectionnez ou créez un client" : "Sélectionnez le livreur")}
               {checkoutStep === 2 && "Configurez la livraison"}
               {checkoutStep === 3 && "Confirmez le paiement"}
             </DialogDescription>
             
-            {/* Indicateur d'étapes - seulement si type sélectionné */}
-            {orderType === "CLIENT" && checkoutStep > 0 && (
+            {/* Indicateur d'étapes - seulement pour CLIENT_DELIVERY */}
+            {orderType === "CLIENT_DELIVERY" && checkoutStep > 0 && (
               <div className="flex items-center gap-2 mt-4">
                 {[1, 2, 3].map((step) => (
                   <div key={step} className="flex items-center flex-1">
@@ -997,30 +1223,54 @@ export default function PosPage() {
                 <div className="text-center mb-6">
                   <h3 className="text-lg font-semibold mb-2">Type de transaction</h3>
                   <p className="text-sm text-gray-600">
-                    Choisissez si c'est pour un client final ou pour transférer au livreur
+                    Choisissez le type de commande selon la situation
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  {/* Option Client Direct */}
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Option Client à livrer */}
                   <button
                     onClick={() => {
-                      setOrderType("CLIENT")
+                      setOrderType("CLIENT_DELIVERY")
                       setCheckoutStep(1)
                     }}
-                    className="group relative p-8 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all"
+                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all"
                   >
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center group-hover:from-blue-500 group-hover:to-blue-600 transition-all">
-                        <User className="h-10 w-10 text-blue-600 group-hover:text-white transition-colors" />
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center group-hover:from-blue-500 group-hover:to-blue-600 transition-all">
+                        <Truck className="h-8 w-8 text-blue-600 group-hover:text-white transition-colors" />
                       </div>
                       <div className="text-center">
-                        <h4 className="text-lg font-semibold mb-2 group-hover:text-blue-600 transition-colors">
-                          Client Direct
+                        <h4 className="text-base font-semibold mb-1 group-hover:text-blue-600 transition-colors">
+                          Client à livrer
                         </h4>
-                        
+                        <p className="text-xs text-gray-500 leading-tight">
+                          Commande avec livraison
+                        </p>
                       </div>
-                      
+                    </div>
+                  </button>
+
+                  {/* Option Client au magasin */}
+                  <button
+                    onClick={() => {
+                      setOrderType("CLIENT_STORE")
+                      setCheckoutStep(1)
+                    }}
+                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-purple-500 hover:shadow-lg transition-all"
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center group-hover:from-purple-500 group-hover:to-purple-600 transition-all">
+                        <User className="h-8 w-8 text-purple-600 group-hover:text-white transition-colors" />
+                      </div>
+                      <div className="text-center">
+                        <h4 className="text-base font-semibold mb-1 group-hover:text-purple-600 transition-colors">
+                          Client au magasin
+                        </h4>
+                        <p className="text-xs text-gray-500 leading-tight">
+                          Vente directe POS
+                        </p>
+                      </div>
                     </div>
                   </button>
 
@@ -1030,19 +1280,20 @@ export default function PosPage() {
                       setOrderType("DRIVER")
                       setCheckoutStep(1)
                     }}
-                    className="group relative p-8 rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all"
+                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all"
                   >
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center group-hover:from-green-500 group-hover:to-green-600 transition-all">
-                        <Truck className="h-10 w-10 text-green-600 group-hover:text-white transition-colors" />
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center group-hover:from-green-500 group-hover:to-green-600 transition-all">
+                        <Package className="h-8 w-8 text-green-600 group-hover:text-white transition-colors" />
                       </div>
                       <div className="text-center">
-                        <h4 className="text-lg font-semibold mb-2 group-hover:text-green-600 transition-colors">
+                        <h4 className="text-base font-semibold mb-1 group-hover:text-green-600 transition-colors">
                           Transfert Livreur
                         </h4>
-                       
+                        <p className="text-xs text-gray-500 leading-tight">
+                          Approvisionnement
+                        </p>
                       </div>
-                      
                     </div>
                   </button>
                 </div>
@@ -1053,8 +1304,9 @@ export default function PosPage() {
                     <div className="text-sm text-blue-900">
                       <p className="font-medium mb-1">Information</p>
                       <ul className="space-y-1 text-blue-700">
-                        <li>• <strong>Client Direct :</strong> Crée une commande client avec toutes les infos (livraison, paiement, etc.)</li>
-                        <li>• <strong>Transfert Livreur :</strong> Ajoute les produits au stock du livreur et enregistre les mouvements</li>
+                        <li>• <strong>Client à livrer :</strong> Commande avec livraison (ne déstocke pas le magasin)</li>
+                        <li>• <strong>Client au magasin :</strong> Vente directe POS (déstocke le magasin)</li>
+                        <li>• <strong>Transfert Livreur :</strong> Demande d'approvisionnement pour le livreur</li>
                       </ul>
                     </div>
                   </div>
@@ -1063,7 +1315,7 @@ export default function PosPage() {
             )}
 
             {/* ÉTAPE 1: Client ou Livreur selon le type */}
-            {checkoutStep === 1 && orderType === "CLIENT" && (
+            {checkoutStep === 1 && (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE") && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1272,8 +1524,8 @@ export default function PosPage() {
               </div>
             )}
 
-            {/* ÉTAPE 2: Livraison */}
-            {checkoutStep === 2 && orderType === "CLIENT" && (
+            {/* ÉTAPE 2: Livraison (seulement pour CLIENT_DELIVERY) */}
+            {checkoutStep === 2 && orderType === "CLIENT_DELIVERY" && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1461,8 +1713,89 @@ export default function PosPage() {
               </div>
             )}
 
-            {/* ÉTAPE 3: Paiement et confirmation (CLIENT uniquement) */}
-            {checkoutStep === 3 && orderType === "CLIENT" && (
+            {/* ÉTAPE 2: Paiement direct (CLIENT_STORE uniquement) */}
+            {checkoutStep === 2 && orderType === "CLIENT_STORE" && (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                      <Banknote className="h-6 w-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-green-900">Paiement en espèces</h3>
+                      <p className="text-sm text-green-700">Vente directe au magasin - Paiement en espèces uniquement</p>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <Label htmlFor="notes">Notes (optionnel)</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Ajoutez des notes sur cette vente..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <Separator />
+
+                {/* Récapitulatif vente directe */}
+                <div className="bg-purple-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-semibold text-purple-900">Récapitulatif de la vente</h3>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Client:</span>
+                      <span className="font-medium">
+                        {customerFirstName} {customerLastName} • {customerPhone}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Type:</span>
+                      <span className="font-medium text-purple-700">Vente directe POS</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Paiement:</span>
+                      <span className="font-medium text-green-700">Espèces</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Articles ({cartItemsCount})</span>
+                      <span>{cartSubtotal.toLocaleString()} FCFA</span>
+                    </div>
+                    
+                    {/* Afficher la remise globale si applicable */}
+                    {globalDiscountApplied > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Remise globale</span>
+                        <span>-{globalDiscountApplied.toLocaleString()} FCFA</span>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-between text-gray-600">
+                      <span>TVA</span>
+                      <span>{cartTax.toLocaleString()} FCFA</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between text-lg font-bold pt-2">
+                      <span>Total à encaisser</span>
+                      <span className="text-purple-600">{(finalSubtotal + cartTax).toLocaleString()} FCFA</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ÉTAPE 3: Paiement et confirmation (CLIENT_DELIVERY uniquement) */}
+            {checkoutStep === 3 && orderType === "CLIENT_DELIVERY" && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1553,6 +1886,15 @@ export default function PosPage() {
                       <span>Articles ({cartItemsCount})</span>
                       <span>{cartSubtotal.toLocaleString()} FCFA</span>
                     </div>
+                    
+                    {/* Afficher la remise globale si applicable */}
+                    {globalDiscountApplied > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Remise globale</span>
+                        <span>-{globalDiscountApplied.toLocaleString()} FCFA</span>
+                      </div>
+                    )}
+                    
                     <div className="flex justify-between text-gray-600">
                       <span>TVA</span>
                       <span>{cartTax.toLocaleString()} FCFA</span>
@@ -1576,7 +1918,7 @@ export default function PosPage() {
           <div className="shrink-0 border-t bg-white p-6">
             <div className="flex items-center justify-between gap-3">
               {/* Bouton Précédent ou Annuler */}
-              {checkoutStep > 0 && (orderType === "CLIENT" ? checkoutStep > 1 : checkoutStep > 1) ? (
+              {checkoutStep > 0 && ((orderType === "CLIENT_DELIVERY" && checkoutStep > 1) || (orderType === "CLIENT_STORE" && checkoutStep > 1) || (orderType === "DRIVER" && checkoutStep > 1)) ? (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1639,8 +1981,27 @@ export default function PosPage() {
                     </>
                   )}
                 </Button>
-              ) : orderType === "CLIENT" && checkoutStep < 3 ? (
-                // Pour CLIENT, bouton suivant jusqu'à l'étape 3
+              ) : orderType === "CLIENT_STORE" && checkoutStep === 2 ? (
+                // Pour CLIENT_STORE, bouton de validation à l'étape 2
+                <Button
+                  onClick={handleCreateOrder}
+                  disabled={isSubmitting}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Vente en cours...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Finaliser la vente
+                    </>
+                  )}
+                </Button>
+              ) : orderType === "CLIENT_DELIVERY" && checkoutStep < 3 ? (
+                // Pour CLIENT_DELIVERY, bouton suivant jusqu'à l'étape 3
                 <Button
                   onClick={() => setCheckoutStep(checkoutStep + 1)}
                   disabled={
@@ -1651,8 +2012,8 @@ export default function PosPage() {
                 >
                   Suivant
                 </Button>
-              ) : orderType === "CLIENT" && checkoutStep === 3 ? (
-                // Pour CLIENT, bouton de validation finale à l'étape 3
+              ) : orderType === "CLIENT_DELIVERY" && checkoutStep === 3 ? (
+                // Pour CLIENT_DELIVERY, bouton de validation finale à l'étape 3
                 <Button
                   onClick={handleCreateOrder}
                   disabled={isSubmitting}
@@ -1669,6 +2030,15 @@ export default function PosPage() {
                       Créer la commande
                     </>
                   )}
+                </Button>
+              ) : orderType === "CLIENT_STORE" && checkoutStep === 1 ? (
+                // Pour CLIENT_STORE, bouton suivant à l'étape 1
+                <Button
+                  onClick={() => setCheckoutStep(2)}
+                  disabled={!customerPhone.trim()}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  Suivant
                 </Button>
               ) : null}
             </div>

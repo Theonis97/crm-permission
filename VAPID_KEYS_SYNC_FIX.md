@@ -88,7 +88,7 @@ npm run build
 ### 4. Re-créer les subscriptions
 
 **Pour chaque livreur :**
-1. Ouvrir `http://169.254.154.216:3001`
+1. Ouvrir `http://172.20.10.10:3001`
 2. Se déconnecter puis se reconnecter
 3. Cliquer sur l'icône de notification dans le header
 4. Autoriser les notifications (nouvelles clés VAPID)
@@ -109,15 +109,15 @@ console.log(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
 ```bash
 # Vérifier les subscriptions actives
-curl http://169.254.154.216:3001/api/pwa/debug
+curl http://172.20.10.10:3001/api/pwa/debug
 
 # Test d'envoi
-curl http://169.254.154.216:3001/api/pwa/test
+curl http://172.20.10.10:3001/api/pwa/test
 ```
 
 ### 3. Créer une commande POS
 
-1. Aller sur le POS : `http://169.254.154.216:3001/dashboard/stores/[id]/pos`
+1. Aller sur le POS : `http://172.20.10.10:3001/dashboard/stores/[id]/pos`
 2. Créer une commande
 3. Vérifier que la notification est reçue sans erreur 403
 

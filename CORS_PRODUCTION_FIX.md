@@ -2,8 +2,8 @@
 
 ## 🎯 Problème identifié
 ```
-Access to fetch at 'http://169.254.154.216:3001/api/mobile/auth/me' 
-from origin 'http://169.254.154.216:3001' has been blocked by CORS policy: 
+Access to fetch at 'http://172.20.10.10:3001/api/mobile/auth/me' 
+from origin 'http://172.20.10.10:3001' has been blocked by CORS policy: 
 Response to preflight request doesn't pass access control check: 
 No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ```
@@ -15,7 +15,7 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 {
   key: "Access-Control-Allow-Origin",
   value: process.env.NODE_ENV === "production" 
-    ? "http://169.254.154.216:3001" 
+    ? "http://172.20.10.10:3001" 
     : "*",
 }
 ```
@@ -23,7 +23,7 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ### 2. Middleware CORS (`middleware.ts`)
 ```typescript
 const allowedOrigin = process.env.NODE_ENV === 'production' 
-  ? 'http://169.254.154.216:3001' 
+  ? 'http://172.20.10.10:3001' 
   : '*';
 ```
 
@@ -51,18 +51,18 @@ node scripts/test-cors.js
 ### 4. Vérifier les headers HTTP
 ```bash
 # Test manuel avec curl
-curl -H "Origin: http://169.254.154.216:3001" \
+curl -H "Origin: http://172.20.10.10:3001" \
      -H "Access-Control-Request-Method: GET" \
      -H "Access-Control-Request-Headers: Content-Type, Authorization" \
      -X OPTIONS \
-     http://169.254.154.216:3001/api/mobile/auth/me -v
+     http://172.20.10.10:3001/api/mobile/auth/me -v
 ```
 
 ## 🔍 Diagnostic
 
 ### Headers attendus dans la réponse :
 ```
-Access-Control-Allow-Origin: http://169.254.154.216:3001
+Access-Control-Allow-Origin: http://172.20.10.10:3001
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
 Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
 Access-Control-Allow-Credentials: false
@@ -70,7 +70,7 @@ Access-Control-Max-Age: 86400
 ```
 
 ### Vérification côté PWA :
-1. Ouvrir http://169.254.154.216:3001
+1. Ouvrir http://172.20.10.10:3001
 2. Ouvrir DevTools → Console
 3. Chercher les erreurs CORS
 4. Vérifier les logs du NetworkDiagnostic
@@ -92,12 +92,12 @@ Si vous avez un reverse proxy, vérifiez qu'il ne supprime pas les headers CORS 
 
 **Nginx :**
 ```nginx
-add_header 'Access-Control-Allow-Origin' 'http://169.254.154.216:3001' always;
+add_header 'Access-Control-Allow-Origin' 'http://172.20.10.10:3001' always;
 ```
 
 **Apache :**
 ```apache
-Header always set Access-Control-Allow-Origin "http://169.254.154.216:3001"
+Header always set Access-Control-Allow-Origin "http://172.20.10.10:3001"
 ```
 
 ## 🧪 Tests de validation
@@ -110,7 +110,7 @@ node scripts/test-cors.js
 ### 2. Test manuel navigateur
 ```javascript
 // Dans la console de livreur.inotech-gabon.com
-fetch('http://169.254.154.216:3001/api/mobile/auth/me', {
+fetch('http://172.20.10.10:3001/api/mobile/auth/me', {
   method: 'GET',
   headers: { 'Content-Type': 'application/json' }
 })
