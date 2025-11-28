@@ -8,6 +8,7 @@ export interface TicketData {
   storeName: string
   storeAddress?: string
   storePhone?: string
+  storeLogo?: string
   
   // Informations de la vente
   ticketNumber: string
@@ -85,7 +86,16 @@ export class ThermalPrinterService {
 
     // En-tête du magasin
     lines.push(centerText('================================'))
+    
+    // Logo du magasin (si disponible et activé)
+    if (data.storeLogo) {
+      // Pour les imprimantes thermiques, on affiche un indicateur
+      lines.push(centerText('*** LOGO ***'))
+      lines.push('')
+    }
+    
     lines.push(centerText(data.storeName.toUpperCase()))
+    
     if (data.storeAddress) {
       lines.push(centerText(data.storeAddress))
     }
@@ -234,57 +244,52 @@ export class ThermalPrinterService {
       const content = this.generateTicketContent(data)
       
       // Créer un élément pour l'impression
-      const printWindow = window.open('', '_blank')
+      const printWindow = window.open('', '_blank', 'width=400,height=600')
       if (!printWindow) {
         throw new Error('Impossible d\'ouvrir la fenêtre d\'impression')
       }
 
-      // Style CSS pour l'impression thermique
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Ticket ${data.ticketNumber}</title>
-          <style>
-            @page {
-              size: 58mm auto;
-              margin: 0;
-            }
-            
-            body {
-              font-family: 'Courier New', monospace;
-              font-size: 12px;
-              line-height: 1.2;
-              margin: 0;
-              padding: 2mm;
-              white-space: pre-wrap;
-              word-wrap: break-word;
-            }
-            
-            @media print {
-              body {
-                font-size: 10px;
-              }
-            }
-          </style>
-        </head>
-        <body>${content.replace(/\n/g, '<br>')}</body>
-        </html>
-      `
+      // Générer le contenu HTML simple
+      const logoSection = data.storeLogo ? 
+        `<div style="text-align: center; margin-bottom: 10px;"><img src="${data.storeLogo}" alt="Logo" style="max-width: 50mm; max-height: 20mm; object-fit: contain;" /></div>` : ''
+      
+      // HTML simplifié pour éviter les erreurs
+      const printContent = [
+        '<!DOCTYPE html>',
+        '<html>',
+        '<head>',
+        `<title>Ticket ${data.ticketNumber}</title>`,
+        '<style>',
+        '@page { size: 58mm auto; margin: 0; }',
+        'body { font-family: "Courier New", monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 2mm; white-space: pre-wrap; }',
+        '@media print { body { font-size: 10px; } }',
+        '</style>',
+        '</head>',
+        '<body>',
+        logoSection,
+        content.replace(/\n/g, '<br>'),
+        '</body>',
+        '</html>'
+      ].join('')
 
       printWindow.document.write(printContent)
       printWindow.document.close()
 
       // Attendre que le contenu soit chargé puis imprimer
-      printWindow.onload = () => {
-        setTimeout(() => {
+      setTimeout(() => {
+        try {
           printWindow.print()
+          setTimeout(() => {
+            printWindow.close()
+          }, 100)
+        } catch (printError) {
+          console.error('Erreur lors de l\'impression:', printError)
           printWindow.close()
-        }, 250)
-      }
+        }
+      }, 500)
 
       return true
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur lors de l\'impression:', error)
       throw error
     }
@@ -300,6 +305,10 @@ export class ThermalPrinterService {
     if (!previewWindow) {
       throw new Error('Impossible d\'ouvrir la fenêtre de prévisualisation')
     }
+    
+    // Générer le logo pour la prévisualisation
+    const logoSection = data.storeLogo ? 
+      `<div style="text-align: center; margin-bottom: 10px;"><img src="${data.storeLogo}" alt="Logo" style="max-width: 50mm; max-height: 20mm; object-fit: contain;" /></div>` : ''
 
     const previewContent = `
       <!DOCTYPE html>
@@ -361,7 +370,10 @@ export class ThermalPrinterService {
           <button onclick="window.print()">🖨️ Imprimer</button>
           <button class="close-btn" onclick="window.close()">❌ Fermer</button>
         </div>
-        <div class="ticket">${content.replace(/\n/g, '<br>')}</div>
+        <div class="ticket">
+          ${logoSection}
+          ${content.replace(/\n/g, '<br>')}
+        </div>
         <div class="actions">
           <button onclick="window.print()">🖨️ Imprimer</button>
           <button class="close-btn" onclick="window.close()">❌ Fermer</button>
