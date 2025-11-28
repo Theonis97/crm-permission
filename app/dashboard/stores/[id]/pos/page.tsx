@@ -244,7 +244,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement produits")
       const data = await response.json()
       setProducts(data)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading products:", error)
       toast.error("Erreur lors du chargement des produits")
     } finally {
@@ -259,7 +259,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement catégories")
       const data = await response.json()
       setCategories(data.filter((c: Category) => !c.description?.includes("parent"))) // Filtrer les catégories principales
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading categories:", error)
       toast.error("Erreur lors du chargement des catégories")
     } finally {
@@ -274,7 +274,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement marques")
       const data = await response.json()
       setBrands(data)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading brands:", error)
       toast.error("Erreur lors du chargement des marques")
     } finally {
@@ -289,7 +289,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement livreurs")
       const data = await response.json()
       setDeliveryPersons(data.filter((d: any) => d.isActive))
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading delivery persons:", error)
     } finally {
       setIsLoadingDrivers(false)
@@ -302,7 +302,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement contacts")
       const data = await response.json()
       setContacts(data)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading contacts:", error)
     }
   }
@@ -313,7 +313,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement zones")
       const data = await response.json()
       setDeliveryZones(data.filter((z: any) => z.isActive))
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading delivery zones:", error)
     }
   }
@@ -345,7 +345,7 @@ export default function PosPage() {
         }
         localStorage.setItem(`printer-settings-${storeId}`, JSON.stringify(defaultSettings))
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading store info:", error)
     }
   }
@@ -438,7 +438,7 @@ export default function PosPage() {
         
         setAddressSuggestions(data)
         setShowAddressSuggestions(data.length > 0)
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching addresses:", error)
         setAddressSuggestions([])
         setShowAddressSuggestions(false)
@@ -704,7 +704,7 @@ export default function PosPage() {
         const { thermalPrinter } = await import('@/lib/thermal-printer')
         await thermalPrinter.printTicket(ticket)
         toast.success('Ticket imprimé automatiquement !')
-      } catch (error) {
+      } catch (error: any) {
         console.error('Erreur impression automatique:', error)
         toast.error('Erreur d\'impression automatique')
         // Fallback: afficher le dialog
@@ -1016,9 +1016,9 @@ export default function PosPage() {
       setDayCloseSummary(summaryData)
       setShowDayCloseSheet(true)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur:', error)
-      toast.error(error.message || 'Erreur lors de la clôture de la journée')
+      toast.error(error?.message || 'Erreur lors de la clôture de la journée')
     } finally {
       setIsLoadingDayClose(false)
     }
@@ -1035,7 +1035,7 @@ export default function PosPage() {
       const data = await response.json()
       setDayCloseSummary(data)
       setShowDayCloseSheet(true)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur:', error)
       toast.error('Erreur lors du chargement du résumé de la journée')
     } finally {
