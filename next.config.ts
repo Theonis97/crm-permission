@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
            {
           key: "Access-Control-Allow-Origin",
           value: process.env.NODE_ENV === 'production' 
-            ? "https://livreur.inotech-gabon.com, http://192.168.1.115:3001"
+            ? "https://livreur.inotech-gabon.com, https://inotech-gabon.com"
             : "*",
         },
           {

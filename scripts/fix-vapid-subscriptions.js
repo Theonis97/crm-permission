@@ -59,7 +59,7 @@ async function cleanupInvalidSubscriptions() {
     
     console.log(`\n✅ ${deleteResult.count} subscription(s) supprimée(s)`);
     console.log('\n📋 Instructions pour les utilisateurs:');
-    console.log('1. Ouvrir http://192.168.1.115:3001');
+    console.log('1. Ouvrir https://inotech-gabon.com');
     console.log('2. Se déconnecter puis se reconnecter');
     console.log('3. Cliquer sur l\'icône de notification dans le header');
     console.log('4. Autoriser les notifications (nouvelles clés VAPID)');

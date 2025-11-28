@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,9 +48,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   Calendar,
+  Receipt,
+  Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { ThermalPrinterDialog } from "@/components/pos/thermal-printer-dialog"
+import { PrinterSettingsDialog, usePrinterSettings } from "@/components/pos/printer-settings-dialog"
+import type { TicketData } from "@/lib/thermal-printer"
 
 interface Product {
   id: string
@@ -127,6 +133,8 @@ const formatFCFA = (amount: number) => {
 export default function PosPage() {
   const params = useParams()
   const storeId = params.id as string
+  const { data: session } = useSession()
+  
   // États
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -136,6 +144,12 @@ export default function PosPage() {
   const [checkoutStep, setCheckoutStep] = useState(0)
   const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER" | null>(null)
   
+  // États pour l'impression
+  const [showPrintDialog, setShowPrintDialog] = useState(false)
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false)
+  const [ticketData, setTicketData] = useState<TicketData | null>(null)
+  const printerSettings = usePrinterSettings(storeId)
+  
   // Données
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -143,6 +157,7 @@ export default function PosPage() {
   const [deliveryPersons, setDeliveryPersons] = useState<DeliveryPerson[]>([])
   const [contacts, setContacts] = useState<any[]>([])
   const [deliveryZones, setDeliveryZones] = useState<any[]>([])
+  const [storeInfo, setStoreInfo] = useState<any>(null)
   
   // Loading states
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
@@ -201,6 +216,7 @@ export default function PosPage() {
     loadDeliveryPersons()
     loadContacts()
     loadDeliveryZones()
+    loadStoreInfo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId])
 
@@ -299,6 +315,38 @@ export default function PosPage() {
       setDeliveryZones(data.filter((z: any) => z.isActive))
     } catch (error) {
       console.error("Error loading delivery zones:", error)
+    }
+  }
+
+  const loadStoreInfo = async () => {
+    try {
+      const response = await fetch(`/api/stores/${storeId}`)
+      if (!response.ok) throw new Error("Erreur chargement magasin")
+      const data = await response.json()
+      setStoreInfo(data)
+      
+      // Mettre à jour les paramètres d'imprimante avec les infos du magasin
+      const currentSettings = localStorage.getItem(`printer-settings-${storeId}`)
+      if (!currentSettings) {
+        // Première fois : initialiser avec les données du magasin
+        const defaultSettings = {
+          storeName: data.name || "Magasin",
+          storeAddress: data.address || "",
+          storePhone: data.phone || "",
+          paperWidth: 58,
+          autoprint: true,
+          copies: 1,
+          showLogo: false,
+          footerMessage: "Merci de votre visite!\nA bientôt",
+          showTaxDetails: true,
+          showItemSKU: false,
+          currencySymbol: "FCFA",
+          showDecimals: false
+        }
+        localStorage.setItem(`printer-settings-${storeId}`, JSON.stringify(defaultSettings))
+      }
+    } catch (error) {
+      console.error("Error loading store info:", error)
     }
   }
 
@@ -645,6 +693,28 @@ export default function PosPage() {
     const sale = await response.json()
     toast.success(`Vente ${sale.number || 'POS'} enregistrée avec succès !`)
     
+    // Générer le ticket d'impression
+    const ticket = generateTicketData(sale, saleData)
+    setTicketData(ticket)
+    
+    // Impression automatique ou affichage du dialog selon les paramètres
+    if (printerSettings.autoprint) {
+      // Impression automatique
+      try {
+        const { thermalPrinter } = await import('@/lib/thermal-printer')
+        await thermalPrinter.printTicket(ticket)
+        toast.success('Ticket imprimé automatiquement !')
+      } catch (error) {
+        console.error('Erreur impression automatique:', error)
+        toast.error('Erreur d\'impression automatique')
+        // Fallback: afficher le dialog
+        setShowPrintDialog(true)
+      }
+    } else {
+      // Afficher le dialog d'impression
+      setShowPrintDialog(true)
+    }
+    
     // Réinitialiser
     resetCheckoutForm()
     clearCart()
@@ -652,6 +722,48 @@ export default function PosPage() {
     
     // Recharger les produits pour mettre à jour les stocks
     loadProducts()
+  }
+
+  // Générer les données du ticket d'impression
+  const generateTicketData = (sale: any, saleData: any): TicketData => {
+    return {
+      // Informations du magasin (utiliser les paramètres personnalisés en priorité)
+      storeName: printerSettings.storeName || storeInfo?.name || "Magasin",
+      storeAddress: printerSettings.storeAddress || storeInfo?.address || undefined,
+      storePhone: printerSettings.storePhone || storeInfo?.phone || undefined,
+      
+      // Informations de la vente
+      ticketNumber: sale.number || `POS-${Date.now()}`,
+      date: new Date(),
+      cashier: session?.user?.name || "Caissier",
+      
+      // Client
+      customerName: saleData.customerName || undefined,
+      customerPhone: saleData.customerPhone || undefined,
+      
+      // Articles
+      items: cart.map(item => ({
+        name: item.product.name,
+        sku: item.product.sku || undefined,
+        quantity: item.quantity,
+        unitPrice: item.product.prixVente,
+        total: item.product.prixVente * item.quantity,
+        discount: item.discount,
+        discountAmount: item.discountAmount
+      })),
+      
+      // Totaux
+      subtotal: cartSubtotal,
+      tax: cartTax,
+      discount: globalDiscountApplied,
+      total: cartTotal,
+      
+      // Paiement
+      paymentMethod: saleData.paymentMethod || "CASH",
+      
+      // Notes
+      notes: saleData.notes || undefined
+    }
   }
 
   const resetCheckoutForm = () => {
@@ -808,7 +920,111 @@ export default function PosPage() {
     ))
   }
 
-  // Fonction pour charger le résumé de clôture de journée
+  // Générer un ticket de clôture de journée
+  const generateDayCloseTicket = (summary: any): TicketData => {
+    const currentSettings = localStorage.getItem(`printer-settings-${storeId}`)
+    const settings = currentSettings ? JSON.parse(currentSettings) : {}
+    
+    return {
+      // Informations du magasin
+      storeName: settings.storeName || storeInfo?.name || "Magasin",
+      storeAddress: settings.storeAddress || storeInfo?.address || undefined,
+      storePhone: settings.storePhone || storeInfo?.phone || undefined,
+      
+      // Informations de la clôture
+      ticketNumber: `CLOSE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`,
+      date: new Date(),
+      cashier: session?.user?.name || "Caissier",
+      
+      // Client (clôture de journée)
+      customerName: "CLÔTURE DE JOURNÉE",
+      
+      // Articles (résumé des ventes)
+      items: [
+        {
+          name: "NOMBRE DE VENTES",
+          quantity: summary.totalSales || 0,
+          unitPrice: 0,
+          total: 0
+        },
+        {
+          name: "ARTICLES VENDUS",
+          quantity: summary.totalItems || 0,
+          unitPrice: 0,
+          total: 0
+        },
+        {
+          name: "CHIFFRE D'AFFAIRES",
+          quantity: 1,
+          unitPrice: summary.totalRevenue || 0,
+          total: summary.totalRevenue || 0
+        }
+      ],
+      
+      // Totaux
+      subtotal: summary.totalRevenue || 0,
+      tax: 0,
+      discount: 0,
+      total: summary.totalRevenue || 0,
+      
+      // Paiement
+      paymentMethod: "ESPECES",
+      
+      // Notes spéciales pour la clôture
+      notes: `Journée du ${new Date().toLocaleDateString('fr-FR')}\nPériode: ${summary.startTime || '00:00'} - ${summary.endTime || new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\nDétail des ventes:\n${summary.sales?.slice(0, 5).map((sale: any, index: number) => `${index + 1}. ${sale.customerName || 'Client'} - ${formatFCFA(sale.total)}`).join('\n') || 'Aucune vente'}${summary.sales?.length > 5 ? `\n... et ${summary.sales.length - 5} autres` : ''}`
+    }
+  }
+
+  // Fonction pour clôturer la journée et imprimer directement
+  const handleDayClose = async () => {
+    setIsLoadingDayClose(true)
+    try {
+      // 1. Enregistrer la clôture en backend
+      const closeResponse = await fetch(`/api/stores/${storeId}/day-close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      
+      if (!closeResponse.ok) {
+        throw new Error('Erreur lors de l\'enregistrement de la clôture')
+      }
+      
+      const closeData = await closeResponse.json()
+      toast.success('Journée clôturée avec succès !')
+      
+      // 2. Récupérer le résumé pour l'impression
+      const summaryResponse = await fetch(`/api/stores/${storeId}/day-close-summary`)
+      if (!summaryResponse.ok) {
+        throw new Error('Erreur lors du chargement du résumé')
+      }
+      
+      const summaryData = await summaryResponse.json()
+      
+      // 3. Générer et imprimer directement le ticket de clôture
+      const closeTicket = generateDayCloseTicket(summaryData)
+      
+      try {
+        const { thermalPrinter } = await import('@/lib/thermal-printer')
+        await thermalPrinter.printTicket(closeTicket)
+        toast.success('Ticket de clôture imprimé avec succès !')
+      } catch (printError) {
+        console.error('Erreur impression clôture:', printError)
+        toast.error('Journée clôturée mais erreur d\'impression du ticket')
+      }
+      
+      // 4. Mettre à jour l'état pour afficher le résumé
+      setDayCloseSummary(summaryData)
+      setShowDayCloseSheet(true)
+      
+    } catch (error) {
+      console.error('Erreur:', error)
+      toast.error(error.message || 'Erreur lors de la clôture de la journée')
+    } finally {
+      setIsLoadingDayClose(false)
+    }
+  }
+
+  // Fonction pour charger le résumé de clôture de journée (sans clôturer)
   const loadDayCloseSummary = async () => {
     setIsLoadingDayClose(true)
     try {
@@ -998,37 +1214,38 @@ export default function PosPage() {
             <div className="p-3 border-b">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-900">Panier</h3>
-                <Badge variant="outline">{cartItemsCount} article{cartItemsCount > 1 ? 's' : ''}</Badge>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowPrinterSettings(true)}
+                    className="h-7 w-7 p-0"
+                    title="Configuration d'imprimante"
+                  >
+                    <Settings className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={dayCloseSummary?.isAlreadyClosed ? loadDayCloseSummary : handleDayClose}
+                    disabled={isLoadingDayClose}
+                    className={cn(
+                      "h-7 w-7 p-0",
+                      dayCloseSummary?.isAlreadyClosed && "text-green-600"
+                    )}
+                    title={dayCloseSummary?.isAlreadyClosed ? "Voir le résumé de journée" : "Clôturer la journée"}
+                  >
+                    {isLoadingDayClose ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : dayCloseSummary?.isAlreadyClosed ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <Calendar className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Badge variant="outline">{cartItemsCount} article{cartItemsCount > 1 ? 's' : ''}</Badge>
+                </div>
               </div>
-              
-              {/* Bouton Clôture de journée */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadDayCloseSummary}
-                disabled={isLoadingDayClose}
-                className={cn(
-                  "w-full text-xs h-7",
-                  dayCloseSummary?.isAlreadyClosed && "border-green-200 bg-green-50 text-green-700"
-                )}
-              >
-                {isLoadingDayClose ? (
-                  <>
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    Chargement...
-                  </>
-                ) : dayCloseSummary?.isAlreadyClosed ? (
-                  <>
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Journée clôturée
-                  </>
-                ) : (
-                  <>
-                    <Calendar className="h-3 w-3 mr-1" />
-                    Clôturer la journée
-                  </>
-                )}
-              </Button>
             </div>
 
             {/* Items du Panier */}
@@ -1221,14 +1438,45 @@ export default function PosPage() {
                   </div>
                 </div>
 
-                <Button 
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  size="lg"
-                  onClick={() => setIsCheckoutOpen(true)}
-                >
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  Valider la commande
-                </Button>
+                {/* Boutons d'action */}
+                <div className="space-y-2">
+                  {/* Bouton d'impression de test */}
+                  <Button 
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      if (cart.length > 0) {
+                        const testTicket = generateTicketData(
+                          { number: `TEST-${Date.now()}` },
+                          {
+                            customerName: customerFirstName && customerLastName ? `${customerFirstName} ${customerLastName}`.trim() : undefined,
+                            customerPhone: customerPhone || undefined,
+                            paymentMethod: paymentMethod || "CASH",
+                            notes: "Ticket de test"
+                          }
+                        )
+                        setTicketData(testTicket)
+                        setShowPrintDialog(true)
+                      } else {
+                        toast.error("Ajoutez des articles au panier pour tester l'impression")
+                      }
+                    }}
+                    disabled={cart.length === 0}
+                  >
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Test d'impression
+                  </Button>
+                  
+                  {/* Bouton de validation */}
+                  <Button 
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    size="lg"
+                    onClick={() => setIsCheckoutOpen(true)}
+                  >
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Valider la commande
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -2235,15 +2483,7 @@ export default function PosPage() {
               <div className="flex gap-2 pt-4">
                 <Button 
                   variant="outline" 
-                  className="flex-1"
-                  onClick={() => window.print()}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Imprimer
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
+                  className="w-full"
                   onClick={() => setShowDayCloseSheet(false)}
                 >
                   Fermer
@@ -2253,6 +2493,25 @@ export default function PosPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Dialog d'impression de ticket */}
+      {ticketData && (
+        <ThermalPrinterDialog
+          open={showPrintDialog}
+          onOpenChange={setShowPrintDialog}
+          ticketData={ticketData}
+          onPrintSuccess={() => {
+            console.log('Ticket imprimé avec succès')
+          }}
+        />
+      )}
+
+      {/* Dialog de configuration d'imprimante */}
+      <PrinterSettingsDialog
+        open={showPrinterSettings}
+        onOpenChange={setShowPrinterSettings}
+        storeId={storeId}
+      />
     </div>
   )
 }
