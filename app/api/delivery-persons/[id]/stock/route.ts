@@ -72,17 +72,24 @@ export async function GET(
     // Calculer le nombre total d'articles
     const totalItems = stock.reduce((sum, item) => sum + item.quantity, 0)
 
+    // Calculer le nombre de produits en stock faible (disponible <= 5)
+    const lowStockCount = stock.filter(item => {
+      const available = item.quantity - (item.reserved || 0)
+      return available > 0 && available <= 5
+    }).length
+
     return NextResponse.json({
       deliveryPerson: {
         id: deliveryPerson.id,
         name: deliveryPerson.name,
         store: deliveryPerson.store,
       },
-      stock,
+      items: stock,
       summary: {
         totalItems,
         totalValue,
         totalProducts: stock.length,
+        lowStockCount,
       },
     })
   } catch (error) {
