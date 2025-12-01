@@ -556,8 +556,8 @@ export default function PosPage() {
       deliveryZoneId: detectedZone?.id || null,
       requestedDeliveryDate: requestedDeliveryDate ? new Date(requestedDeliveryDate).toISOString() : null,
       priority: "NORMAL",
-      // Pour CLIENT_DELIVERY, on met un livreur fictif pour éviter le déstockage du magasin
-      deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : "PENDING_ASSIGNMENT",
+      // Pour CLIENT_DELIVERY, on laisse null si aucun livreur sélectionné
+      deliveryPersonId: selectedDeliveryPerson && selectedDeliveryPerson !== "none" ? selectedDeliveryPerson : null,
       deliveryFee,
       paymentMethod: paymentMethod.toUpperCase(),
       notes: notes + " [COMMANDE À LIVRER - NE PAS DÉSTOCKER LE MAGASIN]",

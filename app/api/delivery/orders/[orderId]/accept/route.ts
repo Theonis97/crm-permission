@@ -15,6 +15,12 @@ export async function POST(
     const body = await request.json();
     const { driverId, zoneId } = body;
 
+    console.log('🚀 [ACCEPT_ORDER] Début acceptation commande:', {
+      orderId,
+      driverId,
+      zoneId
+    });
+
     // Vérifier que la commande existe
     const order = await prisma.storeOrder.findUnique({
       where: { id: orderId },
@@ -170,8 +176,20 @@ export async function POST(
     });
   } catch (error) {
     console.error('❌ Accept order error:', error);
+    
+    // Log détaillé de l'erreur
+    if (error instanceof Error) {
+      console.error('❌ Error name:', error.name);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+    }
+    
     return NextResponse.json(
-      { success: false, error: 'Erreur lors de l\'acceptation de la commande' },
+      { 
+        success: false, 
+        error: 'Erreur lors de l\'acceptation de la commande',
+        details: error instanceof Error ? error.message : 'Erreur inconnue'
+      },
       { status: 500 }
     );
   }
