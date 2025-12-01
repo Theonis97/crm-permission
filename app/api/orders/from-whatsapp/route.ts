@@ -61,24 +61,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 1. Récupérer le premier magasin du système
-    console.log('🏪 Récupération du premier magasin...')
-    const store = await prisma.store.findFirst({
-      where: { isActive: true },
-      orderBy: { createdAt: 'asc' }
+    // 1. Récupérer le magasin spécifique pour les commandes WhatsApp
+    const WHATSAPP_STORE_ID = "cmieialsg0001wj7zpp0229kj"
+    console.log(`🏪 Récupération du magasin WhatsApp (${WHATSAPP_STORE_ID})...`)
+    
+    const store = await prisma.store.findUnique({
+      where: { 
+        id: WHATSAPP_STORE_ID,
+        isActive: true 
+      }
     })
 
     if (!store) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Aucun magasin actif trouvé dans le système" 
+          error: `Magasin WhatsApp introuvable ou inactif (ID: ${WHATSAPP_STORE_ID})` 
         },
         { status: 404 }
       )
     }
 
-    console.log(`✅ Magasin trouvé: ${store.name} (${store.id})`)
+    console.log(`✅ Magasin WhatsApp trouvé: ${store.name} (${store.id})`)
 
     // 2. Géocoder l'adresse de livraison
     console.log(`📍 Géocodage de l'adresse: "${deliveryAddress}"...`)
@@ -393,8 +397,6 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    console.log(`✅ Commande créée: ${order.number} (${order.id})`)
-
     // Mettre à jour les statistiques du store-contact
     await prisma.storeContact.update({
       where: {
@@ -410,7 +412,6 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    console.log(`🎉 Commande WhatsApp créée avec succès! Statut: ${orderStatus}`)
 
     // 7. Envoyer une notification push aux livreurs de la zone (non-bloquant)
     if (deliveryZoneId && order.deliveryZone) {

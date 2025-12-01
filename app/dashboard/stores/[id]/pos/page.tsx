@@ -1451,33 +1451,6 @@ export default function PosPage() {
 
                 {/* Boutons d'action */}
                 <div className="space-y-2">
-                  {/* Bouton d'impression de test */}
-                  <Button 
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      if (cart.length > 0) {
-                        const testTicket = generateTicketData(
-                          { number: `TEST-${Date.now()}` },
-                          {
-                            customerName: customerFirstName && customerLastName ? `${customerFirstName} ${customerLastName}`.trim() : undefined,
-                            customerPhone: customerPhone || undefined,
-                            paymentMethod: paymentMethod || "CASH",
-                            notes: "Ticket de test"
-                          }
-                        )
-                        setTicketData(testTicket)
-                        setShowPrintDialog(true)
-                      } else {
-                        toast.error("Ajoutez des articles au panier pour tester l'impression")
-                      }
-                    }}
-                    disabled={cart.length === 0}
-                  >
-                    <Receipt className="h-4 w-4 mr-2" />
-                    Test d'impression
-                  </Button>
-                  
                   {/* Bouton de validation */}
                   <Button 
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"

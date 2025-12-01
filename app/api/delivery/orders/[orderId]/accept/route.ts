@@ -76,18 +76,19 @@ export async function POST(
         );
       }
 
-      // RÈGLE CRITIQUE : Un livreur ne peut avoir qu'UNE SEULE commande active
-      if (driver.storeOrders.length > 0) {
-        const activeOrder = driver.storeOrders[0];
+      // RÈGLE MISE À JOUR : Un livreur peut avoir jusqu'à 5 commandes actives
+      const MAX_ORDERS_PER_DRIVER = 5;
+      if (driver.storeOrders.length >= MAX_ORDERS_PER_DRIVER) {
         return NextResponse.json(
           { 
             success: false, 
-            error: `Vous avez déjà une commande active (${activeOrder.number}). Terminez-la avant d'en accepter une nouvelle.`,
-            activeOrder: {
-              id: activeOrder.id,
-              number: activeOrder.number,
-              status: activeOrder.status,
-            },
+            error: `Vous avez atteint le maximum de ${MAX_ORDERS_PER_DRIVER} commandes actives (${driver.storeOrders.length}). Livrez une commande avant d'en accepter une nouvelle.`,
+            activeOrders: driver.storeOrders.map(order => ({
+              id: order.id,
+              number: order.number,
+              status: order.status,
+            })),
+            maxOrdersReached: true,
           },
           { status: 400 }
         );

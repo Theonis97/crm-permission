@@ -442,16 +442,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Trouver la commande active du livreur (CONFIRMED ou DELIVERING)
-    // Un livreur ne peut avoir qu'UNE SEULE commande active à la fois
-    const activeOrder = formattedOrders.find(
+    // Trouver toutes les commandes actives du livreur (CONFIRMED ou DELIVERING)
+    // Un livreur peut maintenant avoir jusqu'à 5 commandes actives
+    const activeOrders = formattedOrders.filter(
       order => 
         order.deliveryPerson?.id === driverId &&
         (order.status === 'CONFIRMED' || order.status === 'DELIVERING')
-    ) || null;
+    );
+
+    // Commande active principale (pour compatibilité avec l'interface)
+    const activeOrder = activeOrders[0] || null;
 
     // Vérifier si le livreur peut accepter de nouvelles commandes
-    const canAcceptNewOrders = !activeOrder;
+    const MAX_ORDERS_PER_DRIVER = 5;
+    const canAcceptNewOrders = activeOrders.length < MAX_ORDERS_PER_DRIVER;
 
     // 4. Récupérer tous les magasins actifs
     const stores = await prisma.store.findMany({
@@ -507,6 +511,8 @@ export async function GET(request: NextRequest) {
       stores: storesWithCounts.length,
       currentDriverZoneId,
       activeOrder,
+      activeOrdersCount: activeOrders.length,
+      maxOrdersPerDriver: MAX_ORDERS_PER_DRIVER,
       canAcceptNewOrders,
       stats,
     });
@@ -519,8 +525,11 @@ export async function GET(request: NextRequest) {
         drivers: formattedDrivers,
         stores: storesWithCounts,
         currentDriverZoneId,
-        activeOrder, // La commande en cours du livreur
-        canAcceptNewOrders, // false si le livreur a déjà une commande active
+        activeOrder, // La commande en cours du livreur (pour compatibilité)
+        activeOrders, // Toutes les commandes actives du livreur
+        activeOrdersCount: activeOrders.length,
+        maxOrdersPerDriver: MAX_ORDERS_PER_DRIVER,
+        canAcceptNewOrders, // false si le livreur a atteint le maximum
         stats,
       },
     });
