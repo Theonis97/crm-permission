@@ -207,9 +207,12 @@ export async function GET(request: NextRequest) {
 
         const formattedItem = {
           id: item.id,
+          productId: item.productId,
+          variantId: item.variantId || null,
           productName: item.product?.name || item.name || 'Produit inconnu',
           quantity: item.quantity,
           unitPrice: item.unitPrice || 0,
+          price: item.unitPrice || 0,
           total: item.total || (item.quantity * (item.unitPrice || 0)),
           product: item.product ? {
             id: item.product.id,
