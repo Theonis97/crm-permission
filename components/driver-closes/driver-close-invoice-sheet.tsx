@@ -50,7 +50,7 @@ interface DriverCloseDetail {
   zone: {
     id: string
     name: string
-  }
+  } | null
   totalDeliveries: number
   totalOrders: number
   totalRevenue: number
