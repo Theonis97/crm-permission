@@ -54,7 +54,7 @@ interface DriverClose {
   zone: {
     id: string
     name: string
-  }
+  } | null
   totalDeliveries: number
   totalOrders: number
   totalRevenue: number
@@ -242,7 +242,7 @@ export default function DriverClosesPage({ params }: DriverClosesPageProps) {
     const searchLower = searchTerm.toLowerCase()
     return (
       driverClose.driver.name.toLowerCase().includes(searchLower) ||
-      driverClose.zone.name.toLowerCase().includes(searchLower)
+      (driverClose.zone?.name || '').toLowerCase().includes(searchLower)
     )
   })
 
@@ -363,7 +363,7 @@ export default function DriverClosesPage({ params }: DriverClosesPageProps) {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <MapPin className="h-4 w-4 text-gray-400" />
-                            {driverClose.zone.name}
+                            {driverClose.zone?.name || 'Non assignée'}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">

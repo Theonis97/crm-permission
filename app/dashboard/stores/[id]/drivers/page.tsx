@@ -448,7 +448,7 @@ export default function DriversPage() {
                 {filteredDrivers.map((driver) => (
                   <Card 
                     key={driver.id} 
-                    className="hover:shadow-lg transition-all cursor-pointer border border-gray-200 group"
+                    className="hover:shadow-lg py-0 transition-all cursor-pointer border border-gray-200 group"
                   >
                     <CardContent className="p-4">
                       {/* Header avec avatar et statut */}
@@ -468,7 +468,6 @@ export default function DriversPage() {
                             </div>
                           </div>
                         </div>
-                        {getStatusBadge(driver.status)}
                       </div>
 
                       {/* Informations supplémentaires */}
