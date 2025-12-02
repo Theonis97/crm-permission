@@ -82,8 +82,8 @@ export async function POST(
         );
       }
 
-      // RÈGLE MISE À JOUR : Un livreur peut avoir jusqu'à 5 commandes actives
-      const MAX_ORDERS_PER_DRIVER = 5;
+      // RÈGLE MISE À JOUR : Un livreur peut avoir jusqu'à 20 commandes actives
+      const MAX_ORDERS_PER_DRIVER = 20;
       if (driver.storeOrders.length >= MAX_ORDERS_PER_DRIVER) {
         return NextResponse.json(
           { 

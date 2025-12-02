@@ -457,7 +457,7 @@ export async function GET(request: NextRequest) {
     const activeOrder = activeOrders[0] || null;
 
     // Vérifier si le livreur peut accepter de nouvelles commandes
-    const MAX_ORDERS_PER_DRIVER = 5;
+    const MAX_ORDERS_PER_DRIVER = 20;
     const canAcceptNewOrders = activeOrders.length < MAX_ORDERS_PER_DRIVER;
 
     // 4. Récupérer tous les magasins actifs

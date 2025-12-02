@@ -153,8 +153,9 @@ export async function PATCH(
       },
     })
 
-    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est approuvée ou livrée
-    if (status === "APPROVED" || status === "DELIVERED") {
+    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct UNIQUEMENT quand le magasin marque la commande comme DELIVERED
+    // Le stock n'est PAS modifié lors de l'approbation (APPROVED), préparation (PREPARING) ou expédition (SHIPPED)
+    if (status === "DELIVERED") {
       for (const item of order.items) {
         // Vérifier si le produit existe déjà dans le magasin
         const existingStoreProduct = await prisma.storeProduct.findFirst({
