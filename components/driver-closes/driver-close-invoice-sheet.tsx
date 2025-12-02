@@ -151,7 +151,7 @@ export function DriverCloseInvoiceSheet({
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="flex items-center justify-between">
                 <div className="text-center flex-1">
-                  <div className="text-3xl font-bold text-blue-600">{formatFCFA(driverClose.totalRevenue)}</div>
+                  <div className="text-3xl font-bold text-blue-600">{formatFCFA(driverClose.totalRevenue - driverClose.totalCommission)}</div>
                   <div className="text-sm text-gray-500 mt-1">Chiffre d'Affaires</div>
                 </div>
                 <div className="w-px h-16 bg-gray-300"></div>
@@ -179,22 +179,38 @@ export function DriverCloseInvoiceSheet({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {driverClose.deliveries.map((delivery) => (
-                    <TableRow key={delivery.id} className="hover:bg-gray-50">
-                      <TableCell className="font-mono text-sm">
-                        #{delivery.orderNumber}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {delivery.items.length}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatFCFA(delivery.orderValue)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {formatFCFA(delivery.commission)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {driverClose.deliveries.map((delivery) => {
+                    // Montant commande = valeur commande - commission
+                    const montantCommande = delivery.orderValue - delivery.commission
+                    return (
+                      <TableRow key={delivery.id} className="hover:bg-gray-50">
+                        <TableCell className="font-mono text-sm">
+                          #{delivery.orderNumber}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {delivery.items.length}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatFCFA(montantCommande)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold text-green-600">
+                          {formatFCFA(delivery.commission)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                  {/* Ligne de total */}
+                  <TableRow className="bg-gray-100 border-t-2 border-gray-300">
+                    <TableCell className="font-bold text-gray-900" colSpan={2}>
+                      TOTAL
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-gray-900">
+                      {formatFCFA(driverClose.totalRevenue - driverClose.totalCommission)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-green-600">
+                      {formatFCFA(driverClose.totalCommission)}
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
             </div>

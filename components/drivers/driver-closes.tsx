@@ -223,8 +223,8 @@ export function DriverCloses({ driverId, onViewClose }: DriverClosesProps) {
                       <TableCell className="text-center">
                         {close.totalOrders}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(close.totalRevenue)}
+                      <TableCell className="text-right font-bold">
+                        {formatCurrency(close.totalRevenue - close.totalCommission)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-green-600">
                         {formatCurrency(close.totalCommission)}

@@ -371,16 +371,10 @@ export default function DriverClosesPage({ params }: DriverClosesPageProps) {
                           <div className="text-xs text-gray-500">{driverClose.totalOrders} cmd</div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="font-medium">{formatFCFA(driverClose.totalRevenue)}</div>
-                          <div className="text-xs text-gray-500">
-                            Moy: {formatFCFA(driverClose.totalRevenue / driverClose.totalDeliveries)}
-                          </div>
+                          <div className="font-bold">{formatFCFA(driverClose.totalRevenue - driverClose.totalCommission)}</div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="font-medium">{formatFCFA(driverClose.totalCommission)}</div>
-                          <div className="text-xs text-gray-500">
-                            CA: {formatFCFA(driverClose.totalRevenue)}
-                          </div>
+                          <div className="font-medium text-green-600">{formatFCFA(driverClose.totalCommission)}</div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1 text-xs text-gray-500">
