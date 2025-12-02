@@ -23,16 +23,11 @@ import {
 import {
   Calendar,
   Eye,
-  Search,
-  Filter,
-  TrendingUp,
-  ShoppingCart,
-  DollarSign,
+
   Users,
   ChevronLeft,
   ChevronRight,
   Clock,
-  Receipt,
   Truck,
   MapPin,
   Loader2

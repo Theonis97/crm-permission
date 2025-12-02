@@ -153,11 +153,49 @@ export async function PATCH(
       },
     })
 
-    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct UNIQUEMENT quand le magasin marque la commande comme DELIVERED
+    // 🔥 IMPORTANT: Gestion complète du stock UNIQUEMENT quand le magasin marque la commande comme DELIVERED
     // Le stock n'est PAS modifié lors de l'approbation (APPROVED), préparation (PREPARING) ou expédition (SHIPPED)
     if (status === "DELIVERED") {
+      console.log(`📦 [STOCK] Début du transfert de stock pour commande ${order.number}`)
+      console.log(`📦 [STOCK] Magasin destination: ${order.store?.name} (${order.storeId})`)
+      
       for (const item of order.items) {
-        // Vérifier si le produit existe déjà dans le magasin
+        const quantity = item.requestedQuantity || 0
+        console.log(`  ➡️ Produit: ${item.product?.name || item.name} (${item.productId}) - Quantité: ${quantity}`)
+        
+        // ============================================
+        // 1. DÉCRÉMENTER LE STOCK DE L'ENTREPÔT (Product.stock)
+        // ============================================
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+        })
+        
+        if (product) {
+          const newWarehouseStock = Math.max(0, product.stock - quantity) // Éviter les stocks négatifs
+          await prisma.product.update({
+            where: { id: item.productId },
+            data: { stock: newWarehouseStock },
+          })
+          console.log(`    📉 Stock entrepôt: ${product.stock} → ${newWarehouseStock} (-${quantity})`)
+        }
+        
+        // ============================================
+        // 2. CRÉER UN MOUVEMENT DE STOCK SORTANT (StockMovement)
+        // ============================================
+        await prisma.stockMovement.create({
+          data: {
+            productId: item.productId,
+            quantity: -quantity, // Négatif = sortie
+            type: "TRANSFER_OUT",
+            note: `Transfert vers magasin ${order.store?.name || order.storeId} - Commande ${order.number}`,
+            userId: user.id,
+          },
+        })
+        console.log(`    📝 Mouvement de stock créé: TRANSFER_OUT -${quantity}`)
+        
+        // ============================================
+        // 3. INCRÉMENTER LE STOCK DU MAGASIN (StoreProduct.stock)
+        // ============================================
         const existingStoreProduct = await prisma.storeProduct.findFirst({
           where: {
             storeId: order.storeId,
@@ -166,25 +204,26 @@ export async function PATCH(
         })
 
         if (existingStoreProduct) {
-          // Mettre à jour le stock existant (ajouter la quantité)
+          const newStoreStock = existingStoreProduct.stock + quantity
           await prisma.storeProduct.update({
             where: { id: existingStoreProduct.id },
-            data: {
-              stock: existingStoreProduct.stock + item.requestedQuantity,
-            },
+            data: { stock: newStoreStock },
           })
+          console.log(`    📈 Stock magasin: ${existingStoreProduct.stock} → ${newStoreStock} (+${quantity})`)
         } else {
-          // Créer un nouveau StoreProduct pour ce magasin
           await prisma.storeProduct.create({
             data: {
               storeId: order.storeId,
               productId: item.productId,
-              stock: item.requestedQuantity,
+              stock: quantity,
               minStock: 10, // Valeur par défaut
             },
           })
+          console.log(`    🆕 Nouveau StoreProduct créé avec stock: ${quantity}`)
         }
       }
+      
+      console.log(`✅ [STOCK] Transfert terminé pour commande ${order.number}`)
     }
 
     return NextResponse.json(updatedOrder)

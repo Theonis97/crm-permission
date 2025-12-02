@@ -109,50 +109,19 @@ export async function PATCH(
       },
     })
 
-    // 🔥 IMPORTANT: Créer/Mettre à jour les StoreProduct quand la commande est approuvée ou livrée
-    if (status === "APPROVED" || status === "DELIVERED") {
-      console.log("🚀 Début création StoreProduct pour la commande:", order.id)
-      console.log("📦 Magasin ID:", order.storeId)
-      console.log("📋 Nombre d'items:", order.items.length)
-      
-      for (const item of order.items) {
-        const requestedQty = item.requestedQuantity || 0
-        console.log(`  ➡️ Traitement produit: ${item.name} (${item.productId}) - Quantité: ${requestedQty}`)
-        
-        // Vérifier si le produit existe déjà dans le magasin
-        const existingStoreProduct = await prisma.storeProduct.findFirst({
-          where: {
-            storeId: order.storeId,
-            productId: item.productId,
-          },
-        })
-
-        if (existingStoreProduct) {
-          console.log(`    ✅ StoreProduct existe déjà (ID: ${existingStoreProduct.id}), mise à jour du stock`)
-          // Mettre à jour le stock existant (ajouter la quantité)
-          await prisma.storeProduct.update({
-            where: { id: existingStoreProduct.id },
-            data: {
-              stock: existingStoreProduct.stock + requestedQty,
-            },
-          })
-          console.log(`    📈 Stock mis à jour: ${existingStoreProduct.stock} → ${existingStoreProduct.stock + requestedQty}`)
-        } else {
-          console.log(`    🆕 Création nouveau StoreProduct`)
-          // Créer un nouveau StoreProduct pour ce magasin
-          const newStoreProduct = await prisma.storeProduct.create({
-            data: {
-              storeId: order.storeId,
-              productId: item.productId,
-              stock: requestedQty,
-              minStock: 10, // Valeur par défaut
-            },
-          })
-          console.log(`    ✨ StoreProduct créé avec succès (ID: ${newStoreProduct.id})`)
-        }
-      }
-      
-      console.log("✅ Tous les StoreProduct ont été créés/mis à jour avec succès")
+    // 🔥 IMPORTANT: NE PAS modifier le stock ici !
+    // Le stock du magasin est incrémenté UNIQUEMENT quand le magasin marque la commande comme DELIVERED
+    // via la route /api/restocking-orders/[id]/status
+    // L'entrepôt (warehouse) ne fait que changer le statut (APPROVED, PREPARING, SHIPPED)
+    // sans toucher au stock du magasin
+    
+    // Log pour traçabilité
+    if (status === "APPROVED") {
+      console.log(`📋 Commande ${order.id} approuvée par l'entrepôt - Stock magasin NON modifié (sera modifié à la livraison)`)
+    } else if (status === "PREPARING") {
+      console.log(`📦 Commande ${order.id} en préparation - Stock magasin NON modifié`)
+    } else if (status === "SHIPPED") {
+      console.log(`🚚 Commande ${order.id} expédiée - Stock magasin NON modifié (sera modifié à la réception par le magasin)`)
     }
 
     return NextResponse.json(updatedOrder)
