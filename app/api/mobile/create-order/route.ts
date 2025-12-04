@@ -28,6 +28,9 @@ function checkPointInZone(lat: number, lon: number, polygon: any): boolean {
 /**
  * POST /api/mobile/create-order
  * Créer une commande depuis l'app mobile (par le livreur)
+ * - La commande est directement en statut CONFIRMED (acceptée par le livreur)
+ * - Le stock du livreur est automatiquement déstocké
+ * - Le stock du magasin n'est PAS affecté
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { items, customer, deliveryAddress, notes, status } = body;
+    const { items, customer, deliveryAddress, notes } = body;
 
     // Validation
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -78,6 +81,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Récupérer le livreur avec sa boutique
+    const deliveryPerson = await prisma.deliveryPerson.findUnique({
+      where: { id: user.id },
+      include: {
+        store: true,
+      },
+    });
+
+    if (!deliveryPerson) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Livreur non trouvé' 
+        },
+        { status: 404 }
+      );
+    }
+
+    // Vérifier le stock du livreur pour chaque produit AVANT de créer la commande
+    const stockErrors: string[] = [];
+    for (const item of items) {
+      const driverStock = await prisma.deliveryPersonStock.findFirst({
+        where: {
+          deliveryPersonId: user.id,
+          productId: item.productId,
+          variantId: item.variantId || null,
+        },
+      });
+
+      const availableQty = driverStock ? (driverStock.quantity - driverStock.reserved) : 0;
+      
+      if (!driverStock || availableQty < item.quantity) {
+        stockErrors.push(`Stock insuffisant pour "${item.productName}": ${availableQty} disponible(s), ${item.quantity} demandé(s)`);
+      }
+    }
+
+    if (stockErrors.length > 0) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: stockErrors.join('. '),
+          stockErrors,
+        },
+        { status: 400 }
+      );
+    }
+
     // Géocoder l'adresse pour obtenir les coordonnées GPS
     let latitude: number | null = null;
     let longitude: number | null = null;
@@ -100,7 +150,6 @@ export async function POST(request: NextRequest) {
         // Chercher si l'adresse est dans une zone
         for (const zone of zones) {
           if (zone.coordinates && geocodeResult.coordinates) {
-            // Vérifier si les coordonnées sont dans la zone
             const isInZone = checkPointInZone(geocodeResult.coordinates.lat, geocodeResult.coordinates.lng, zone.coordinates);
             if (isInZone) {
               deliveryZoneId = zone.id;
@@ -112,24 +161,6 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('❌ Erreur géocodage:', error);
       // On continue quand même sans coordonnées GPS
-    }
-
-    // Récupérer le livreur avec sa boutique
-    const deliveryPerson = await prisma.deliveryPerson.findUnique({
-      where: { id: user.id },
-      include: {
-        store: true,
-      },
-    });
-
-    if (!deliveryPerson) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Livreur non trouvé' 
-        },
-        { status: 404 }
-      );
     }
 
     // Calculer les totaux
@@ -144,42 +175,103 @@ export async function POST(request: NextRequest) {
     });
     const orderNumber = `${deliveryPerson.store.name.toUpperCase().substring(0, 3)}-${String(orderCount + 1).padStart(6, '0')}`;
 
-    // Créer la commande
-    const order = await prisma.storeOrder.create({
-      data: {
-        number: orderNumber,
-        storeId: deliveryPerson.storeId,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        customerEmail: customer.email || null,
-        deliveryAddress,
-        deliveryLatitude: latitude || null,
-        deliveryLongitude: longitude || null,
-        deliveryZoneId: deliveryZoneId,
-        notes: notes || null,
-        status: status || 'PENDING',
-        subtotal,
-        total,
-        paymentMethod: 'CASH',
-        paymentStatus: 'PENDING',
-        deliveryPersonId: user.id, // Auto-assigner le livreur
-        createdById: user.id, // Créé par le livreur
-        items: {
-          create: items.map((item: any) => ({
-            productId: item.productId,
-            name: item.productName,
-            quantity: item.quantity,
-            unitPrice: item.price,
-            total: item.price * item.quantity,
-          })),
+    // Transaction atomique : créer la commande + déstocker le livreur + créer les mouvements
+    const order = await prisma.$transaction(async (tx) => {
+      // Trouver un utilisateur système ou créer avec un utilisateur par défaut
+      // Pour l'instant, on va chercher le premier utilisateur admin du magasin
+      const storeUser = await tx.user.findFirst({
+        where: {
+          storeUserRoles: {
+            some: {
+              storeId: deliveryPerson.storeId,
+            },
+          },
         },
-      },
-      include: {
-        items: true,
-      },
+      });
+
+      if (!storeUser) {
+        throw new Error('Aucun utilisateur trouvé pour ce magasin. Impossible de créer la commande.');
+      }
+
+      // 1. Créer la commande avec statut CONFIRMED (directement acceptée)
+      const newOrder = await tx.storeOrder.create({
+        data: {
+          number: orderNumber,
+          storeId: deliveryPerson.storeId,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerEmail: customer.email || null,
+          deliveryAddress,
+          deliveryLatitude: latitude || null,
+          deliveryLongitude: longitude || null,
+          deliveryZoneId: deliveryZoneId,
+          notes: notes || null,
+          status: 'CONFIRMED', // Directement confirmée car créée par le livreur
+          subtotal,
+          total,
+          paymentMethod: 'CASH',
+          paymentStatus: 'PENDING',
+          deliveryPersonId: user.id, // Auto-assigner le livreur
+          createdById: storeUser.id, // Utilisateur du magasin
+          orderSource: 'mobile_driver', // Indiquer que c'est créé par le livreur
+          items: {
+            create: items.map((item: any) => ({
+              productId: item.productId,
+              variantId: item.variantId || null,
+              name: item.productName,
+              quantity: item.quantity,
+              unitPrice: item.price,
+              total: item.price * item.quantity,
+            })),
+          },
+        },
+        include: {
+          items: true,
+        },
+      });
+
+      // 2. Déstocker le stock du livreur et créer les mouvements de stock
+      for (const item of items) {
+        // Mettre à jour le stock du livreur (décrémenter la quantité)
+        await tx.deliveryPersonStock.updateMany({
+          where: {
+            deliveryPersonId: user.id,
+            productId: item.productId,
+            variantId: item.variantId || null,
+          },
+          data: {
+            quantity: {
+              decrement: item.quantity,
+            },
+          },
+        });
+
+        // Créer le mouvement de stock (type SALE = vente)
+        await tx.deliveryStockMovement.create({
+          data: {
+            deliveryPersonId: user.id,
+            productId: item.productId,
+            variantId: item.variantId || null,
+            type: 'SALE',
+            quantity: -item.quantity, // Négatif car c'est une sortie
+            storeOrderId: newOrder.id,
+            notes: `Vente - Commande ${orderNumber} (créée par livreur)`,
+            createdById: null, // Pas d'utilisateur système pour les mouvements créés par livreur
+          },
+        });
+      }
+
+      return newOrder;
     });
 
-    console.log('✅ Commande créée:', order.id);
+    console.log('✅ Commande créée et stock livreur déstocké:', {
+      orderId: order.id,
+      orderNumber: order.number,
+      status: order.status,
+      itemsCount: order.items.length,
+      total: order.total,
+      deliveryPersonId: user.id,
+    });
 
     return NextResponse.json({
       success: true,
@@ -189,6 +281,7 @@ export async function POST(request: NextRequest) {
         status: order.status,
         total: order.total,
       },
+      message: 'Commande créée avec succès',
     });
   } catch (error: any) {
     console.error('❌ Erreur création commande:', error);
