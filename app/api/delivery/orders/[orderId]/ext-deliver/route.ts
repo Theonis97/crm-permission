@@ -1,7 +1,8 @@
 "use server"
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { consumeDeliveryPersonStock } from '@/lib/delivery-stock-validator';
+import { consumeDeliveryPersonStock, validateDeliveryPersonStock } from '@/lib/delivery-stock-validator';
 import { Prisma } from '@prisma/client';
 
 /**
@@ -22,13 +23,23 @@ export async function POST(
 ) {
   try {
     const { orderId } = await params;
-    const body = await request.json();
-    const {
-      driverEmail,
-      amountReceived,
-      paymentMethod = 'CASH',
-      notes,
-    } = body;
+    console.log('[EXT] orderId reçu =', orderId);
+
+    const url = new URL(request.url);
+    const queryDriverEmail = url.searchParams.get('driverEmail');
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch (e) {}
+
+    // Priorité : query param > body, puis trim
+    const rawDriverEmail = queryDriverEmail ?? body.driverEmail;
+    const driverEmail: string | null = rawDriverEmail
+      ? String(rawDriverEmail).trim()
+      : null;
+
+    console.log('[EXT] driverEmail reçu =', driverEmail);
 
     // Validation des paramètres requis
     if (!driverEmail) {
@@ -38,17 +49,17 @@ export async function POST(
       );
     }
 
-    if (!amountReceived || amountReceived <= 0) {
-      return NextResponse.json(
-        { success: false, error: 'Montant reçu requis et doit être positif' },
-        { status: 400 }
-      );
-    }
-
-    // Récupérer le livreur par email
-    const driver = await prisma.deliveryPerson.findUnique({
-      where: { email: driverEmail },
+    // Récupérer le livreur par email (recherche insensible à la casse)
+    const driver = await prisma.deliveryPerson.findFirst({
+      where: {
+        email: {
+          equals: driverEmail,
+          mode: 'insensitive',
+        },
+      },
     });
+
+    console.log('[EXT] driver trouvé =', driver);
 
     if (!driver) {
       return NextResponse.json(
@@ -57,19 +68,21 @@ export async function POST(
       );
     }
 
-    // Vérifier que la commande existe
-    const order = await prisma.storeOrder.findUnique({
-      where: { id: orderId },
+    // Vérifier que la commande existe (modèle Order: approvisionnement)
+    // On accepte que orderId soit soit l'id interne (Order.id), soit le number lisible (Order.number)
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: orderId },
+          { number: orderId },
+        ],
+      },
       include: {
-        deliveryPerson: true,
-        items: {
-          include: {
-            product: true,
-            variant: true,
-          },
-        },
+        items: true,
       },
     });
+
+    console.log('[EXT] order trouvé =', order && { id: order.id, number: order.number });
 
     if (!order) {
       return NextResponse.json(
@@ -78,88 +91,58 @@ export async function POST(
       );
     }
 
-    // Vérifier que la commande est en cours de livraison
-    if (order.status !== 'DELIVERING') {
+    // (Optionnel) on peut garder une contrainte de statut si tu veux
+    // Ici je la commente pour suivre ton flow exact où seule l'existence de la commande est obligatoire
+    // if (order.status !== 'DELIVERING') {
+    //   return NextResponse.json(
+    //     {
+    //       success: false,
+    //       error: `Cette commande doit être en cours de livraison (statut actuel: ${order.status})`,
+    //     },
+    //     { status: 400 }
+    //   );
+    // }
+
+    // 4 - Vérifier que le livreur a le stock demandé pour cette commande
+    // OrderItem utilise requestedQuantity comme quantité demandée
+    const stockItems = order.items.map((item) => ({
+      productId: item.productId,
+      variantId: null,
+      quantity: item.requestedQuantity,
+    }));
+
+    const stockValidation = await validateDeliveryPersonStock(driver.id, stockItems);
+
+    if (!stockValidation.valid) {
       return NextResponse.json(
         {
           success: false,
-          error: `Cette commande doit être en cours de livraison (statut actuel: ${order.status})`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Vérifier que la commande est bien assignée à ce livreur (via son id)
-    if (order.deliveryPersonId !== driver.id) {
-      return NextResponse.json(
-        { success: false, error: "Cette commande n'est pas assignée à ce livreur" },
-        { status: 403 }
-      );
-    }
-
-    // Calculer la monnaie à rendre
-    const changeGiven = Math.max(0, amountReceived - order.total);
-
-    // Validation du montant reçu
-    if (amountReceived < order.total) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Montant insuffisant. Total: ${order.total} FCFA, Reçu: ${amountReceived} FCFA`,
+          error: 'Stock insuffisant pour livrer cette commande',
+          details: stockValidation.insufficientItems,
         },
         { status: 400 },
       );
     }
 
-    // Préparer les items pour la consommation du stock
-    const stockItems = order.items.map((item: { productId: any; variantId: any; quantity: any }) => ({
-      productId: item.productId,
-      variantId: item.variantId,
-      quantity: item.quantity,
-    }));
-
-    // Transaction pour mettre à jour la commande et consommer le stock
+    // 5 & 6 - Marquer la commande comme DELIVERED et déstocker le livreur
     const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // 1. Mettre à jour la commande avec les nouveaux champs
-      const updated = await tx.storeOrder.update({
-        where: { id: orderId },
+      // 5 - Marquer la commande comme DELIVERED
+      const updated = await tx.order.update({
+        where: { id: order.id },
         data: {
           status: 'DELIVERED',
           deliveredAt: new Date(),
-          paymentStatus: 'PAID',
-          paidAt: new Date(),
-          amountReceived,
-          changeGiven,
-          paymentMethod,
-          notes: notes || 'Livraison confirmée (service externe)',
           updatedAt: new Date(),
-        },
-        include: {
-          deliveryPerson: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
-          },
-          deliveryZone: {
-            select: {
-              id: true,
-              name: true,
-              color: true,
-            },
-          },
         },
       });
 
-      // 2. Consommer le stock du livreur et créer les mouvements de vente
-      await consumeDeliveryPersonStock(driver.id, orderId, stockItems, order.createdById, tx);
+      // 6 - Consommer le stock du livreur et créer les mouvements de vente
+      await consumeDeliveryPersonStock(driver.id, order.id, stockItems, order.requestedBy, tx);
 
       return updated;
     });
 
-    console.log(`✅ [EXT] Commande ${order.number} livrée par ${updatedOrder.deliveryPerson?.name || 'livreur inconnu'} (email: ${driverEmail})`);
-    console.log(`💰 Montant reçu: ${amountReceived} FCFA, Monnaie rendue: ${changeGiven} FCFA`);
+    console.log(`✅ [EXT] Commande ${order.number} livrée par le livreur (email: ${driverEmail})`);
 
     return NextResponse.json({
       success: true,
@@ -169,11 +152,6 @@ export async function POST(
         number: updatedOrder.number,
         status: updatedOrder.status,
         deliveredAt: updatedOrder.deliveredAt,
-        amountReceived: updatedOrder.amountReceived,
-        changeGiven: updatedOrder.changeGiven,
-        paymentMethod: updatedOrder.paymentMethod,
-        deliveryPerson: updatedOrder.deliveryPerson,
-        deliveryZone: updatedOrder.deliveryZone,
       },
     });
   } catch (error) {
