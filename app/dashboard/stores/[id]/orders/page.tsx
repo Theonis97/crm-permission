@@ -103,6 +103,7 @@ interface Order {
     lastName: string
     email: string
   } | null
+  cancelReason?: string | null
 }
 
 interface OrderItem {
@@ -548,10 +549,17 @@ export default function OrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={cn("text-xs", statusConfig.color)}>
-                            <div className={cn("w-2 h-2 rounded-full mr-1", statusConfig.dot)} />
-                            {statusConfig.label}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <Badge className={cn("text-xs w-fit", statusConfig.color)}>
+                              <div className={cn("w-2 h-2 rounded-full mr-1", statusConfig.dot)} />
+                              {statusConfig.label}
+                            </Badge>
+                            {order.status === "CANCELLED" && order.cancelReason && (
+                              <span className="text-xs text-red-600 break-words max-w-xs">
+                                {order.cancelReason}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {order.deliveryPerson ? (
