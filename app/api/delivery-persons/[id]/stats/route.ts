@@ -25,13 +25,27 @@ export async function GET(
     endOfDay.setHours(23, 59, 59, 999)
 
     // Récupérer toutes les commandes du livreur pour aujourd'hui
+    // Inclure les commandes créées aujourd'hui ET les commandes livrées aujourd'hui
     const todayOrders = await prisma.storeOrder.findMany({
       where: {
         deliveryPersonId,
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
+        OR: [
+          // Commandes créées aujourd'hui (pour les stats en cours)
+          {
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+          // Commandes livrées aujourd'hui (pour les stats de livraison)
+          {
+            status: 'DELIVERED',
+            deliveredAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+        ],
       },
       select: {
         id: true,
@@ -51,15 +65,21 @@ export async function GET(
     })
 
     // Statistiques du jour
-    const deliveredOrders = todayOrders.filter(o => o.status === "DELIVERED")
+    // Séparer les commandes livrées aujourd'hui des autres
+    const deliveredTodayOrders = todayOrders.filter(o => 
+      o.status === "DELIVERED" && 
+      o.deliveredAt && 
+      new Date(o.deliveredAt) >= startOfDay && 
+      new Date(o.deliveredAt) <= endOfDay
+    )
     const deliveringOrders = todayOrders.filter(o => o.status === "DELIVERING")
     const pendingOrders = todayOrders.filter(o => 
       ["PENDING", "CONFIRMED", "PREPARING", "READY"].includes(o.status)
     )
 
-    // Calcul du chiffre d'affaires (somme des commandes livrées)
-    const todayRevenue = deliveredOrders.reduce((sum, order) => sum + order.total, 0)
-    const todayDeliveryFees = deliveredOrders.reduce((sum, order) => sum + order.deliveryFee, 0)
+    // Calcul du chiffre d'affaires (somme des commandes livrées AUJOURD'HUI)
+    const todayRevenue = deliveredTodayOrders.reduce((sum, order) => sum + order.total, 0)
+    const todayDeliveryFees = deliveredTodayOrders.reduce((sum, order) => sum + order.deliveryFee, 0)
 
     // Statistiques globales (tous les temps)
     const allTimeStats = await prisma.storeOrder.groupBy({
@@ -121,7 +141,7 @@ export async function GET(
 
     return NextResponse.json({
       today: {
-        delivered: deliveredOrders.length,
+        delivered: deliveredTodayOrders.length,
         delivering: deliveringOrders.length,
         pending: pendingOrders.length,
         total: todayOrders.length,
