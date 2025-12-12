@@ -133,6 +133,9 @@ model Store {
   
   // Clôtures de journée
   dayCloses DayClose[]
+  
+  // SAV - Retours de produits
+  productReturns ProductReturn[]
 
   @@map("stores")
 }
@@ -202,6 +205,7 @@ model Product {
   deliveryPersonStocks    DeliveryPersonStock[] // Stock des livreurs
   deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs
   restockingRequestItems  RestockingRequestItem[] // Items des demandes d'approvisionnement
+  productReturnItems      ProductReturnItem[] // SAV - Items retournés
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -421,6 +425,9 @@ model StoreOrder {
   items                  StoreOrderItem[]
   whatsappMessages       WhatsAppMessage[]
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock liés à cette commande
+  
+  // SAV - Retours de produits
+  productReturns         ProductReturn[]
 
   @@map("store_orders")
 }
@@ -444,6 +451,9 @@ model StoreOrderItem {
   storeOrder StoreOrder      @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
   product    Product         @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  
+  // SAV - Items retournés
+  productReturnItems ProductReturnItem[]
 
   @@map("store_order_items")
 }
@@ -799,6 +809,10 @@ model User {
   
   // Clôtures de journée effectuées
   dayCloses DayClose[]
+  
+  // SAV - Retours de produits
+  processedProductReturns ProductReturn[] @relation("ProductReturnProcessor")
+  createdProductReturns   ProductReturn[] @relation("ProductReturnCreator")
 
   @@map("users")
 }
@@ -1424,5 +1438,108 @@ model DayClose {
   @@index([userId])
   @@index([closeDate])
   @@map("day_closes")
+}
+
+// ============================================================================
+// SERVICE APRÈS-VENTE (SAV)
+// ============================================================================
+
+// Motif de retour d'un produit
+enum ProductReturnReason {
+  DEFECTIVE       // Défectueux
+  BROKEN          // Cassé
+  NOT_SATISFIED   // Pas satisfait
+  NON_FUNCTIONAL  // Non fonctionnel
+  WRONG_PRODUCT   // Mauvais produit livré
+  OTHER           // Autre
+}
+
+// Statut du retour
+enum ProductReturnStatus {
+  PENDING     // En attente de traitement
+  APPROVED    // Approuvé
+  REFUNDED    // Remboursé (produit retourné en stock)
+  EXCHANGED   // Échangé (pas de mouvement de stock)
+  REJECTED    // Rejeté
+}
+
+// Retour de produit (lié à une commande)
+model ProductReturn {
+  id              String              @id @default(cuid())
+  number          String              @unique // Numéro de retour (ex: RET-20231215-001)
+  storeId         String              @map("store_id")
+  storeOrderId    String              @map("store_order_id")
+  
+  // Informations client (snapshot de la commande)
+  customerName    String              @map("customer_name")
+  customerPhone   String              @map("customer_phone")
+  
+  // Statut et résolution
+  status          ProductReturnStatus @default(PENDING)
+  resolution      String?             // Notes sur la résolution
+  
+  // Montants
+  totalRefundAmount Float             @default(0) @map("total_refund_amount") // Montant total remboursé
+  
+  // Traitement
+  processedById   String?             @map("processed_by_id")
+  processedAt     DateTime?           @map("processed_at")
+  
+  // Notes
+  notes           String?
+  
+  createdById     String              @map("created_by_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeOrder      StoreOrder          @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
+  processedBy     User?               @relation("ProductReturnProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  createdBy       User                @relation("ProductReturnCreator", fields: [createdById], references: [id])
+  
+  // Items retournés
+  items           ProductReturnItem[]
+
+  @@index([storeId])
+  @@index([storeOrderId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("product_returns")
+}
+
+// Item retourné (un produit spécifique du retour)
+model ProductReturnItem {
+  id                String              @id @default(cuid())
+  productReturnId   String              @map("product_return_id")
+  productId         String              @map("product_id")
+  storeOrderItemId  String              @map("store_order_item_id") // Lien vers l'item de la commande originale
+  
+  // Informations produit (snapshot)
+  productName       String              @map("product_name")
+  productSku        String?             @map("product_sku")
+  
+  // Quantité et prix
+  quantity          Int                 // Quantité retournée
+  unitPrice         Float               @map("unit_price") // Prix unitaire au moment de l'achat
+  refundAmount      Float               @map("refund_amount") // Montant remboursé pour cet item
+  
+  // Motif du retour
+  reason            ProductReturnReason
+  reasonDetails     String?             @map("reason_details") // Détails supplémentaires
+  
+  // Résolution spécifique à cet item
+  isRefunded        Boolean             @default(false) @map("is_refunded") // true = remboursé (stock +), false = échangé
+  
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  // Relations
+  productReturn     ProductReturn       @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
+  product           Product             @relation(fields: [productId], references: [id])
+  storeOrderItem    StoreOrderItem      @relation(fields: [storeOrderItemId], references: [id])
+
+  @@index([productReturnId])
+  @@index([productId])
+  @@map("product_return_items")
 }
 

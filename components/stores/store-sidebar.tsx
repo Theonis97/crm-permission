@@ -39,6 +39,7 @@ import {
   Shield,
   UserCog,
   Calendar,
+  RotateCcw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
@@ -160,6 +161,12 @@ const menuItems: MenuItem[] = [
     href: "/movements",
     permission: STORE_PERMISSIONS.MOVEMENTS_VIEW
   },
+  { 
+    icon: RotateCcw, 
+    label: "SAV", 
+    href: "/sav",
+    permission: STORE_PERMISSIONS.SAV_VIEW
+  },
 ]
 
 const adminItems: MenuItem[] = [
@@ -204,7 +211,11 @@ export function StoreSidebar({
         const response = await fetch(`/api/users/${session.user.id}/permissions`)
         if (response.ok) {
           const data = await response.json()
+          console.log("🔐 Permissions reçues:", data.permissions)
+          console.log("🔐 Permissions SAV:", data.permissions?.filter((p: string) => p.includes('sav')))
           setUserPermissions(data.permissions || [])
+        } else {
+          console.error("❌ Erreur API permissions:", response.status)
         }
       } catch (error) {
         console.error("Error fetching user permissions:", error)

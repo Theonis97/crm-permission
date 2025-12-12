@@ -100,6 +100,11 @@ export const STORE_PERMISSIONS = {
   MOVEMENTS_VIEW: 'store.movements.view',
   MOVEMENTS_CREATE: 'store.movements.create',
   
+  // SAV (Service Après-Vente)
+  SAV_VIEW: 'store.sav.view',
+  SAV_CREATE: 'store.sav.create',
+  SAV_PROCESS: 'store.sav.process',
+  
   // Administration magasin
   USERS_VIEW: 'store.users.view',
   USERS_INVITE: 'store.users.invite',
@@ -158,6 +163,11 @@ export const STORE_PERMISSION_GROUPS = {
   movements: [
     STORE_PERMISSIONS.MOVEMENTS_VIEW,
     STORE_PERMISSIONS.MOVEMENTS_CREATE,
+  ],
+  sav: [
+    STORE_PERMISSIONS.SAV_VIEW,
+    STORE_PERMISSIONS.SAV_CREATE,
+    STORE_PERMISSIONS.SAV_PROCESS,
   ],
   users: [
     STORE_PERMISSIONS.USERS_VIEW,

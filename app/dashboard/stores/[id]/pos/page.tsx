@@ -141,8 +141,8 @@ export default function PosPage() {
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
-  const [checkoutStep, setCheckoutStep] = useState(0)
-  const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER" | null>(null)
+  const [checkoutStep, setCheckoutStep] = useState(1) // Commence directement à l'étape 1 (formulaire client)
+  const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER">("CLIENT_STORE") // Mode vente directe par défaut
   
   // États pour l'impression
   const [showPrintDialog, setShowPrintDialog] = useState(false)
@@ -727,10 +727,10 @@ export default function PosPage() {
   // Générer les données du ticket d'impression
   const generateTicketData = (sale: any, saleData: any): TicketData => {
     return {
-      // Informations du magasin (utiliser les paramètres personnalisés en priorité)
-      storeName: printerSettings.storeName || storeInfo?.name || "Magasin",
-      storeAddress: printerSettings.storeAddress || storeInfo?.address || undefined,
-      storePhone: printerSettings.storePhone || storeInfo?.phone || undefined,
+      // Informations du magasin (utiliser storeInfo en priorité, puis les paramètres personnalisés)
+      storeName: storeInfo?.name || printerSettings.storeName || "Magasin",
+      storeAddress: storeInfo?.address || printerSettings.storeAddress || undefined,
+      storePhone: storeInfo?.phone || printerSettings.storePhone || undefined,
       storeLogo: (printerSettings.showLogo && storeInfo?.logo) ? storeInfo.logo : undefined,
       
       // Informations de la vente
@@ -768,8 +768,8 @@ export default function PosPage() {
   }
 
   const resetCheckoutForm = () => {
-    setCheckoutStep(0)
-    setOrderType(null)
+    setCheckoutStep(1) // Revenir à l'étape 1 (formulaire client)
+    setOrderType("CLIENT_STORE") // Mode vente directe par défaut
     setSelectedContactId(null)
     setContactSearch("")
     setCustomerFirstName("")
@@ -927,10 +927,10 @@ export default function PosPage() {
     const settings = currentSettings ? JSON.parse(currentSettings) : {}
     
     return {
-      // Informations du magasin
-      storeName: settings.storeName || storeInfo?.name || "Magasin",
-      storeAddress: settings.storeAddress || storeInfo?.address || undefined,
-      storePhone: settings.storePhone || storeInfo?.phone || undefined,
+      // Informations du magasin (utiliser storeInfo en priorité)
+      storeName: storeInfo?.name || settings.storeName || "Magasin",
+      storeAddress: storeInfo?.address || settings.storeAddress || undefined,
+      storePhone: storeInfo?.phone || settings.storePhone || undefined,
       storeLogo: (settings.showLogo && storeInfo?.logo) ? storeInfo.logo : undefined,
       
       // Informations de la clôture
@@ -1474,140 +1474,17 @@ export default function PosPage() {
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="text-xl">Finaliser la commande</DialogTitle>
+            <DialogTitle className="text-xl">Vente au magasin</DialogTitle>
             <DialogDescription>
-              {checkoutStep === 0 && "Sélectionnez le type de transaction"}
-              {checkoutStep === 1 && (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE" ? "Sélectionnez ou créez un client" : "Sélectionnez le livreur")}
-              {checkoutStep === 2 && "Configurez la livraison"}
-              {checkoutStep === 3 && "Confirmez le paiement"}
+              {checkoutStep === 1 && "Renseignez les informations du client"}
+              {checkoutStep === 2 && "Confirmez le paiement"}
             </DialogDescription>
-            
-            {/* Indicateur d'étapes - seulement pour CLIENT_DELIVERY */}
-            {orderType === "CLIENT_DELIVERY" && checkoutStep > 0 && (
-              <div className="flex items-center gap-2 mt-4">
-                {[1, 2, 3].map((step) => (
-                  <div key={step} className="flex items-center flex-1">
-                    <div className={cn(
-                      "flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold transition-colors",
-                      checkoutStep === step ? "bg-blue-600 text-white" :
-                      checkoutStep > step ? "bg-green-500 text-white" :
-                      "bg-gray-200 text-gray-500"
-                    )}>
-                      {checkoutStep > step ? "✓" : step}
-                    </div>
-                    {step < 3 && (
-                      <div className={cn(
-                        "flex-1 h-1 mx-2 rounded",
-                        checkoutStep > step ? "bg-green-500" : "bg-gray-200"
-                      )} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </DialogHeader>
 
           {/* Contenu scrollable */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {/* ÉTAPE 0: Sélection du type de transaction */}
-            {checkoutStep === 0 && (
-              <div className="space-y-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-lg font-semibold mb-2">Type de transaction</h3>
-                  <p className="text-sm text-gray-600">
-                    Choisissez le type de commande selon la situation
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  {/* Option Client à livrer */}
-                  <button
-                    onClick={() => {
-                      setOrderType("CLIENT_DELIVERY")
-                      setCheckoutStep(1)
-                    }}
-                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all"
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center group-hover:from-blue-500 group-hover:to-blue-600 transition-all">
-                        <Truck className="h-8 w-8 text-blue-600 group-hover:text-white transition-colors" />
-                      </div>
-                      <div className="text-center">
-                        <h4 className="text-base font-semibold mb-1 group-hover:text-blue-600 transition-colors">
-                          Client à livrer
-                        </h4>
-                        <p className="text-xs text-gray-500 leading-tight">
-                          Commande avec livraison
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Option Client au magasin */}
-                  <button
-                    onClick={() => {
-                      setOrderType("CLIENT_STORE")
-                      setCheckoutStep(1)
-                    }}
-                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-purple-500 hover:shadow-lg transition-all"
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center group-hover:from-purple-500 group-hover:to-purple-600 transition-all">
-                        <User className="h-8 w-8 text-purple-600 group-hover:text-white transition-colors" />
-                      </div>
-                      <div className="text-center">
-                        <h4 className="text-base font-semibold mb-1 group-hover:text-purple-600 transition-colors">
-                          Client au magasin
-                        </h4>
-                        <p className="text-xs text-gray-500 leading-tight">
-                          Vente directe POS
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Option Livreur */}
-                  <button
-                    onClick={() => {
-                      setOrderType("DRIVER")
-                      setCheckoutStep(1)
-                    }}
-                    className="group relative p-6 rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all"
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center group-hover:from-green-500 group-hover:to-green-600 transition-all">
-                        <Package className="h-8 w-8 text-green-600 group-hover:text-white transition-colors" />
-                      </div>
-                      <div className="text-center">
-                        <h4 className="text-base font-semibold mb-1 group-hover:text-green-600 transition-colors">
-                          Transfert Livreur
-                        </h4>
-                        <p className="text-xs text-gray-500 leading-tight">
-                          Approvisionnement
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-                  <div className="flex items-start gap-3">
-                    <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-                    <div className="text-sm text-blue-900">
-                      <p className="font-medium mb-1">Information</p>
-                      <ul className="space-y-1 text-blue-700">
-                        <li>• <strong>Client à livrer :</strong> Commande avec livraison (ne déstocke pas le magasin)</li>
-                        <li>• <strong>Client au magasin :</strong> Vente directe POS (déstocke le magasin)</li>
-                        <li>• <strong>Transfert Livreur :</strong> Demande d'approvisionnement pour le livreur</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ÉTAPE 1: Client ou Livreur selon le type */}
-            {checkoutStep === 1 && (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE") && (
+            {/* ÉTAPE 1: Informations client */}
+            {checkoutStep === 1 && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
@@ -1701,312 +1578,8 @@ export default function PosPage() {
               </div>
             )}
 
-            {/* ÉTAPE 1: Sélection du livreur (Mode DRIVER) */}
-            {checkoutStep === 1 && orderType === "DRIVER" && (
-              <div className="space-y-4">
-                
-
-                <div className="space-y-3">
-                  <Label htmlFor="driverSelect" className="text-base font-semibold">
-                    Sélectionner le livreur *
-                  </Label>
-                  
-                  {isLoadingDrivers ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                    </div>
-                  ) : deliveryPersons.filter(d => d.status === "AVAILABLE" || d.status === "BUSY").length === 0 ? (
-                    <div className="p-8 text-center border-2 border-dashed rounded-lg">
-                      <Truck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p className="text-gray-500">Aucun livreur disponible</p>
-                      <p className="text-xs text-gray-400 mt-2">Les livreurs doivent être disponibles ou occupés</p>
-                    </div>
-                  ) : (
-                    <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
-                      <SelectTrigger className="w-full h-14 text-base py-8">
-                        <SelectValue placeholder="Choisir un livreur..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {deliveryPersons
-                          .filter(d => d.status === "AVAILABLE" || d.status === "BUSY")
-                          .map((driver) => (
-                            <SelectItem key={driver.id} value={driver.id} className="py-2">
-                              <div className="flex items-center gap-3 w-full">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center font-semibold text-green-700">
-                                  {driver.name.substring(0, 2).toUpperCase()}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{driver.name}</span>
-                                    <Badge 
-                                      variant={driver.status === "AVAILABLE" ? "default" : "secondary"}
-                                      className={cn(
-                                        "text-xs",
-                                        driver.status === "AVAILABLE" 
-                                          ? "bg-green-100 text-green-700 border-green-200" 
-                                          : "bg-amber-100 text-amber-700 border-amber-200"
-                                      )}
-                                    >
-                                      {driver.status === "AVAILABLE" ? "Disponible" : "Occupé"}
-                                    </Badge>
-                                  </div>
-                                  <span className="text-sm text-gray-600">{driver.phone}</span>
-                                </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-              
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <Label htmlFor="driverNotes">Notes (optionnel)</Label>
-                  <Textarea
-                    id="driverNotes"
-                    placeholder="Ex: Stock pour la tournée du matin..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                {/* Récapitulatif du transfert */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-semibold">Récapitulatif du transfert</h3>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Nombre d'articles:</span>
-                      <span className="font-medium">{cartItemsCount}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Valeur totale:</span>
-                      <span className="font-medium">{cartSubtotal.toLocaleString()} FCFA</span>
-                    </div>
-                    {selectedDeliveryPerson && (
-                      <div className="flex justify-between text-green-700">
-                        <span>Livreur:</span>
-                        <span className="font-medium">
-                          {deliveryPersons.find(d => d.id === selectedDeliveryPerson)?.name}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <Separator />
-
-                  <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
-                    <div className="flex items-start gap-2">
-                      <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="font-medium mb-1">Mouvements automatiques :</p>
-                        <ul className="space-y-0.5">
-                          <li>• <strong>Magasin :</strong> Sortie de stock enregistrée</li>
-                          <li>• <strong>Livreur :</strong> Entrée de stock enregistrée</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ÉTAPE 2: Livraison (seulement pour CLIENT_DELIVERY) */}
-            {checkoutStep === 2 && orderType === "CLIENT_DELIVERY" && (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Truck className="h-4 w-4" />
-                    Adresse de livraison *
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    Vous pouvez entrer une adresse manuellement ou sélectionner une suggestion avec géolocalisation
-                  </p>
-                  <div className="relative" ref={addressDropdownRef}>
-                    <div className="relative">
-                      <Input
-                        placeholder="Tapez une adresse (ex: Boulevard Triomphal, Libreville)..."
-                        value={deliveryAddress}
-                        onChange={(e) => handleAddressSearch(e.target.value)}
-                        onFocus={() => {
-                          if (addressSuggestions.length > 0) {
-                            setShowAddressSuggestions(true)
-                          }
-                        }}
-                        className="flex-1 pr-10"
-                      />
-                      {loadingAddresses && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Dropdown d'autocomplete */}
-                    {showAddressSuggestions && addressSuggestions.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                        {addressSuggestions.map((suggestion, index) => (
-                          <button
-                            key={index}
-                            onClick={() => handleSelectAddress(suggestion)}
-                            className="w-full p-3 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors"
-                          >
-                            <div className="flex items-start gap-2">
-                              <Package className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm text-gray-900">
-                                  {suggestion.display_name}
-                                </div>
-                                {suggestion.address && (
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    {[
-                                      suggestion.address.road,
-                                      suggestion.address.suburb || suggestion.address.neighbourhood,
-                                      suggestion.address.city || suggestion.address.town,
-                                    ].filter(Boolean).join(", ")}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {deliveryLatitude && deliveryLongitude && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
-                      <div className="flex items-center gap-2 text-green-700 font-medium mb-1">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Localisation confirmée
-                      </div>
-                      <div className="text-green-600 text-xs">
-                        Lat: {deliveryLatitude.toFixed(6)}, Lng: {deliveryLongitude.toFixed(6)}
-                      </div>
-                    </div>
-                  )}
-
-                  {detectedZone && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 text-blue-700 font-medium mb-2">
-                        <Info className="h-4 w-4" />
-                        Zone de livraison détectée
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Zone:</span>
-                          <span className="font-medium">{detectedZone.name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Frais de livraison:</span>
-                          <span className="font-medium">{detectedZone.deliveryFee} FCFA</span>
-                        </div>
-                        {detectedZone.estimatedTime && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Temps estimé:</span>
-                            <span className="font-medium">{detectedZone.estimatedTime} min</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {deliveryLatitude && deliveryLongitude && !detectedZone && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
-                      <div className="flex items-center gap-2 text-amber-700">
-                        <AlertTriangle className="h-4 w-4" />
-                        <span>Cette adresse n'est dans aucune zone de livraison configurée</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {deliveryAddress && !deliveryLatitude && !deliveryLongitude && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-                      <div className="flex items-start gap-2 text-blue-700">
-                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-medium mb-1">Adresse manuelle</p>
-                          <p className="text-xs">
-                            Vous avez saisi une adresse manuellement. La détection automatique de zone et les frais de livraison ne seront pas calculés automatiquement.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Date de livraison souhaitée */}
-                <div className="space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Date de livraison souhaitée
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    Sélectionnez la date à laquelle le client souhaite recevoir sa commande
-                  </p>
-                  <Input
-                    type="date"
-                    value={requestedDeliveryDate}
-                    onChange={(e) => setRequestedDeliveryDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]} // Minimum aujourd'hui
-                    className="w-full"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Par défaut: {new Date(requestedDeliveryDate).toLocaleDateString('fr-FR', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </p>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <h3 className="font-semibold">Configuration de la livraison (optionnel)</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="deliveryPerson">Livreur (optionnel)</Label>
-                      <Select value={selectedDeliveryPerson} onValueChange={setSelectedDeliveryPerson}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Aucun livreur</SelectItem>
-                          {deliveryPersons
-                            .filter(d => d.status === "AVAILABLE")
-                            .map((person) => (
-                              <SelectItem key={person.id} value={person.id}>
-                                {person.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="deliveryFee">Frais (FCFA)</Label>
-                      <Input
-                        id="deliveryFee"
-                        type="number"
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(Number(e.target.value))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ÉTAPE 2: Paiement direct (CLIENT_STORE uniquement) */}
-            {checkoutStep === 2 && orderType === "CLIENT_STORE" && (
+            {/* ÉTAPE 2: Paiement direct */}
+            {checkoutStep === 2 && (
               <div className="space-y-4">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-center gap-3">
@@ -2086,142 +1659,16 @@ export default function PosPage() {
               </div>
             )}
 
-            {/* ÉTAPE 3: Paiement et confirmation (CLIENT_DELIVERY uniquement) */}
-            {checkoutStep === 3 && orderType === "CLIENT_DELIVERY" && (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Mode de paiement
-                  </h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    {paymentMethods.map((method) => (
-                      <button
-                        key={method.id}
-                        onClick={() => setPaymentMethod(method.id)}
-                        className={cn(
-                          "p-4 rounded-lg border-2 transition-all flex flex-col items-center gap-2",
-                          paymentMethod === method.id
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <method.icon className="h-6 w-6" />
-                        <span className="text-sm font-medium">{method.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <Label htmlFor="notes">Notes (optionnel)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Ajoutez des instructions spéciales..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                <Separator />
-
-                {/* Récapitulatif final */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-semibold">Récapitulatif de la commande</h3>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Client:</span>
-                      <span className="font-medium">
-                        {customerFirstName} {customerLastName} • {customerPhone}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Livraison:</span>
-                      <span className="font-medium text-right max-w-xs truncate">
-                        {deliveryAddress || "Non spécifiée"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Date souhaitée:</span>
-                      <span className="font-medium">
-                        {new Date(requestedDeliveryDate).toLocaleDateString('fr-FR', { 
-                          weekday: 'short', 
-                          day: 'numeric', 
-                          month: 'short' 
-                        })}
-                      </span>
-                    </div>
-                    {detectedZone && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Zone:</span>
-                        <span className="font-medium">{detectedZone.name}</span>
-                      </div>
-                    )}
-                    {selectedDeliveryPerson && selectedDeliveryPerson !== "none" && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Livreur:</span>
-                        <span className="font-medium">
-                          {deliveryPersons.find(d => d.id === selectedDeliveryPerson)?.name || "Non spécifié"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>Articles ({cartItemsCount})</span>
-                      <span>{cartSubtotal.toLocaleString()} FCFA</span>
-                    </div>
-                    
-                    {/* Afficher la remise globale si applicable */}
-                    {globalDiscountApplied > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>Remise globale</span>
-                        <span>-{globalDiscountApplied.toLocaleString()} FCFA</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between text-gray-600">
-                      <span>TVA</span>
-                      <span>{cartTax.toLocaleString()} FCFA</span>
-                    </div>
-                    <div className="flex justify-between text-gray-600">
-                      <span>Livraison</span>
-                      <span>{deliveryFee.toLocaleString()} FCFA</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between text-lg font-bold pt-2">
-                      <span>Total à payer</span>
-                      <span className="text-blue-600">{cartTotal.toLocaleString()} FCFA</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Footer fixe avec boutons de navigation */}
           <div className="shrink-0 border-t bg-white p-6">
             <div className="flex items-center justify-between gap-3">
               {/* Bouton Précédent ou Annuler */}
-              {checkoutStep > 0 && ((orderType === "CLIENT_DELIVERY" && checkoutStep > 1) || (orderType === "CLIENT_STORE" && checkoutStep > 1) || (orderType === "DRIVER" && checkoutStep > 1)) ? (
+              {checkoutStep === 2 ? (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    if (checkoutStep === 1 && orderType) {
-                      // Retour à la sélection du type
-                      setCheckoutStep(0)
-                      setOrderType(null)
-                    } else {
-                      setCheckoutStep(checkoutStep - 1)
-                    }
-                  }}
+                  onClick={() => setCheckoutStep(1)}
                   disabled={isSubmitting}
                 >
                   Précédent
@@ -2230,51 +1677,25 @@ export default function PosPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (checkoutStep === 0 || (checkoutStep === 1 && orderType)) {
-                      // Permettre de revenir à l'étape 0 si on est à l'étape 1
-                      if (checkoutStep === 1 && orderType) {
-                        setCheckoutStep(0)
-                        setOrderType(null)
-                      } else {
-                        setIsCheckoutOpen(false)
-                        resetCheckoutForm()
-                      }
-                    } else {
-                      setIsCheckoutOpen(false)
-                      resetCheckoutForm()
-                    }
+                    setIsCheckoutOpen(false)
+                    resetCheckoutForm()
                   }}
                   disabled={isSubmitting}
                 >
-                  {checkoutStep === 1 && orderType ? "Retour" : "Annuler"}
+                  Annuler
                 </Button>
               )}
 
               {/* Bouton Suivant ou Valider */}
-              {checkoutStep === 0 ? (
-                // Pas de bouton suivant à l'étape 0, la sélection se fait via les cards
-                <div></div>
-              ) : orderType === "DRIVER" && checkoutStep === 1 ? (
-                // Pour DRIVER, bouton de validation direct à l'étape 1
+              {checkoutStep === 1 ? (
                 <Button
-                  onClick={handleCreateOrder}
-                  disabled={isSubmitting || !canSubmitDriverOrder()}
-                  className="bg-green-600 hover:bg-green-700"
+                  onClick={() => setCheckoutStep(2)}
+                  disabled={!customerPhone.trim()}
+                  className="bg-purple-600 hover:bg-purple-700"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Transfert en cours...
-                    </>
-                  ) : (
-                    <>
-                      <Truck className="h-4 w-4 mr-2" />
-                      Transférer au livreur
-                    </>
-                  )}
+                  Suivant
                 </Button>
-              ) : orderType === "CLIENT_STORE" && checkoutStep === 2 ? (
-                // Pour CLIENT_STORE, bouton de validation à l'étape 2
+              ) : checkoutStep === 2 ? (
                 <Button
                   onClick={handleCreateOrder}
                   disabled={isSubmitting}
@@ -2291,46 +1712,6 @@ export default function PosPage() {
                       Finaliser la vente
                     </>
                   )}
-                </Button>
-              ) : orderType === "CLIENT_DELIVERY" && checkoutStep < 3 ? (
-                // Pour CLIENT_DELIVERY, bouton suivant jusqu'à l'étape 3
-                <Button
-                  onClick={() => setCheckoutStep(checkoutStep + 1)}
-                  disabled={
-                    (checkoutStep === 1 && !canProceedToStep2()) ||
-                    (checkoutStep === 2 && !canProceedToStep3())
-                  }
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Suivant
-                </Button>
-              ) : orderType === "CLIENT_DELIVERY" && checkoutStep === 3 ? (
-                // Pour CLIENT_DELIVERY, bouton de validation finale à l'étape 3
-                <Button
-                  onClick={handleCreateOrder}
-                  disabled={isSubmitting}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Création...
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingCart className="h-4 w-4 mr-2" />
-                      Créer la commande
-                    </>
-                  )}
-                </Button>
-              ) : orderType === "CLIENT_STORE" && checkoutStep === 1 ? (
-                // Pour CLIENT_STORE, bouton suivant à l'étape 1
-                <Button
-                  onClick={() => setCheckoutStep(2)}
-                  disabled={!customerPhone.trim()}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  Suivant
                 </Button>
               ) : null}
             </div>
