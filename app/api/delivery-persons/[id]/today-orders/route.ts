@@ -30,13 +30,27 @@ export async function GET(
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
 
     // Récupérer les commandes du jour pour ce livreur
+    // Inclure les commandes créées aujourd'hui ET les commandes livrées aujourd'hui
     const orders = await prisma.storeOrder.findMany({
       where: {
         deliveryPersonId: driverId,
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
+        OR: [
+          // Commandes créées aujourd'hui (pour les stats en cours)
+          {
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+          // Commandes livrées aujourd'hui (pour les stats de livraison)
+          {
+            status: 'DELIVERED',
+            deliveredAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+        ],
       },
       select: {
         id: true,
@@ -56,18 +70,22 @@ export async function GET(
     })
 
     // Calculer les statistiques
+    // Séparer les commandes livrées aujourd'hui pour le calcul des revenus
+    const deliveredTodayOrders = orders.filter(o => 
+      o.status === "DELIVERED" && 
+      o.deliveredAt && 
+      new Date(o.deliveredAt) >= startOfDay && 
+      new Date(o.deliveredAt) <= endOfDay
+    )
+    
     const stats = {
       delivered: orders.filter(o => o.status === "DELIVERED").length,
       delivering: orders.filter(o => o.status === "DELIVERING").length,
       confirmed: orders.filter(o => o.status === "CONFIRMED").length,
       pending: orders.filter(o => o.status === "PENDING").length,
       total: orders.length,
-      revenue: orders
-        .filter(o => o.status === "DELIVERED")
-        .reduce((sum, o) => sum + (o.total || 0), 0),
-      deliveryFees: orders
-        .filter(o => o.status === "DELIVERED")
-        .reduce((sum, o) => sum + (o.deliveryFee || 0), 0),
+      revenue: deliveredTodayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+      deliveryFees: deliveredTodayOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0),
       orders: orders.map(order => ({
         id: order.id,
         number: order.number,

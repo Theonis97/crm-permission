@@ -5,7 +5,8 @@ import { calculateCommission } from '@/lib/commission-calculator';
 
 /**
  * GET /api/mobile/deliveries
- * Récupère les livraisons du livreur groupées par jour
+ * Récupère les livraisons EFFECTIVES du livreur groupées par date de livraison (deliveredAt)
+ * Seules les commandes avec statut DELIVERED sont incluses pour une meilleure traçabilité des commissions
  * Inclut le statut de clôture pour chaque jour
  */
 export async function GET(request: NextRequest) {
@@ -38,11 +39,13 @@ export async function GET(request: NextRequest) {
 
     console.log(`🔍 Récupération livraisons pour ${user.name} du ${startDate.toISOString()} au ${endDate.toISOString()}`);
 
-    // Récupérer toutes les commandes du livreur dans la période
+    // Récupérer uniquement les commandes LIVRÉES du livreur dans la période
+    // Groupement par deliveredAt pour une meilleure traçabilité des commissions
     const orders = await prisma.storeOrder.findMany({
       where: {
         deliveryPersonId: user.id,
-        createdAt: {
+        status: 'DELIVERED', // Uniquement les commandes livrées
+        deliveredAt: {
           gte: startDate,
           lte: endDate,
         },
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        deliveredAt: 'desc',
       },
     });
 
@@ -94,7 +97,8 @@ export async function GET(request: NextRequest) {
     const deliveriesByDay = new Map<string, any>();
 
     orders.forEach(order => {
-      const orderDate = new Date(order.createdAt);
+      // Grouper par date de livraison effective (deliveredAt)
+      const orderDate = new Date(order.deliveredAt!); // ! car on filtre déjà sur DELIVERED
       const dayKey = orderDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
       if (!deliveriesByDay.has(dayKey)) {
@@ -133,7 +137,7 @@ export async function GET(request: NextRequest) {
         statusLabel: getStatusLabel(order.status),
         statusColor: getStatusColor(order.status),
         total: order.total,
-        commission: order.status === 'DELIVERED' ? calculateCommission(order.total) : 0,
+        commission: calculateCommission(order.total), // Toujours calculer car toutes les commandes sont DELIVERED
         itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
         items: order.items.map(item => ({
           id: item.id,
@@ -156,22 +160,10 @@ export async function GET(request: NextRequest) {
         createdAt: order.createdAt,
       });
 
-      // Mettre à jour les statistiques
+      // Mettre à jour les statistiques (toutes les commandes sont DELIVERED)
       dayData.stats.total++;
-      switch (order.status) {
-        case 'DELIVERED':
-          dayData.stats.delivered++;
-          dayData.commission += calculateCommission(order.total);
-          break;
-        case 'CANCELLED':
-          dayData.stats.cancelled++;
-          break;
-        case 'DELIVERING':
-          dayData.stats.delivering++;
-          break;
-        default:
-          dayData.stats.pending++;
-      }
+      dayData.stats.delivered++;
+      dayData.commission += calculateCommission(order.total);
     });
 
     // Ajouter les informations de clôture
