@@ -4,10 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { consumeDeliveryPersonStock, validateDeliveryPersonStock } from '@/lib/delivery-stock-validator';
 import { Prisma } from '@prisma/client';
+import { requireApiKey } from '@/lib/api-key-auth';
 
 /**
  * POST /api/delivery/orders/[orderId]/ext-deliver
  * Marquer une commande comme livrée depuis un service externe
+ * Authentification via x-api-key header
  * Body:
  * {
  *   orderId,
@@ -21,6 +23,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
+  // Vérifier la clé API
+  const authError = requireApiKey(request);
+  if (authError) return authError;
+
   try {
     const { orderId } = await params;
     console.log('[EXT] orderId reçu =', orderId);
