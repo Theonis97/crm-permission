@@ -637,17 +637,24 @@ export default function PosPage() {
   }
 
   const handleCreateClientStoreOrder = async () => {
-    // Créer ou récupérer le contact
+    // Vérifier si le client est renseigné (au moins un champ rempli)
+    const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
+    
+    // Valeurs par défaut si client non renseigné
+    const defaultCustomerName = "Client"
+    const defaultCustomerPhone = "+241xxxxxx"
+    
+    // Créer ou récupérer le contact seulement si le client est renseigné
     let contactId = selectedContactId
-    if (!contactId && (customerFirstName || customerLastName || customerPhone)) {
+    if (!contactId && isCustomerProvided) {
       // Créer le contact et l'associer automatiquement à la boutique
       const contactResponse = await fetch(`/api/stores/${storeId}/contacts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName: customerFirstName,
-          lastName: customerLastName,
-          phone: customerPhone,
+          firstName: customerFirstName || "Client",
+          lastName: customerLastName || "",
+          phone: customerPhone || defaultCustomerPhone,
           email: customerEmail || null,
           type: "PERSONNE",
           status: "CLIENT",
@@ -667,8 +674,8 @@ export default function PosPage() {
     const saleData = {
       storeId,
       contactId: contactId || null,
-      customerName: `${customerFirstName} ${customerLastName}`.trim() || "Client",
-      customerPhone,
+      customerName: isCustomerProvided ? `${customerFirstName} ${customerLastName}`.trim() || defaultCustomerName : defaultCustomerName,
+      customerPhone: isCustomerProvided ? customerPhone || defaultCustomerPhone : defaultCustomerPhone,
       customerEmail: customerEmail || null,
       paymentMethod: "CASH", // Toujours en espèces pour les ventes au magasin
       notes: notes || "Vente directe POS",
@@ -677,6 +684,8 @@ export default function PosPage() {
         quantity: item.quantity,
         unitPrice: item.product.prixVente,
       })),
+      // Flag pour indiquer si le client est anonyme (pour le ticket)
+      isAnonymousCustomer: !isCustomerProvided,
     }
 
     const response = await fetch(`/api/stores/${storeId}/pos-sale`, {
@@ -726,6 +735,9 @@ export default function PosPage() {
 
   // Générer les données du ticket d'impression
   const generateTicketData = (sale: any, saleData: any): TicketData => {
+    // Ne pas afficher les informations client si c'est un client anonyme
+    const showCustomerInfo = !saleData.isAnonymousCustomer
+    
     return {
       // Informations du magasin (utiliser storeInfo en priorité, puis les paramètres personnalisés)
       storeName: storeInfo?.name || printerSettings.storeName || "Magasin",
@@ -738,9 +750,9 @@ export default function PosPage() {
       date: new Date(),
       cashier: session?.user?.name || "Caissier",
       
-      // Client
-      customerName: saleData.customerName || undefined,
-      customerPhone: saleData.customerPhone || undefined,
+      // Client - masquer si client anonyme
+      customerName: showCustomerInfo ? saleData.customerName : undefined,
+      customerPhone: showCustomerInfo ? saleData.customerPhone : undefined,
       
       // Articles
       items: cart.map(item => ({
@@ -1293,23 +1305,14 @@ export default function PosPage() {
                           {item.product.prixVente} F x {item.quantity}
                         </div>
                         
-                        {/* Réductions par article */}
+                        {/* Réduction par article - uniquement montant fixe */}
                         <div className="flex gap-1 mt-1">
                           <Input
                             type="number"
-                            placeholder="% remise"
-                            value={item.discount || ''}
-                            onChange={(e) => updateItemDiscount(item.product.id, Number(e.target.value))}
-                            className="h-7 text-xs w-36"
-                            min="0"
-                            max="100"
-                          />
-                          <Input
-                            type="number"
-                            placeholder="FCFA"
+                            placeholder="Remise FCFA"
                             value={item.discountAmount || ''}
                             onChange={(e) => updateItemDiscountAmount(item.product.id, Number(e.target.value))}
-                            className="h-7 text-xs w-36"
+                            className="h-7 text-xs w-24"
                             min="0"
                           />
                         </div>
@@ -1388,34 +1391,20 @@ export default function PosPage() {
             {/* Footer Panier - Total */}
             {cart.length > 0 && (
               <div className="border-t p-3 space-y-3">
-                {/* Remise globale */}
+                {/* Remise globale - uniquement montant fixe */}
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-gray-700">Remise globale</div>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      placeholder="% remise"
-                      value={globalDiscount || ''}
-                      onChange={(e) => {
-                        setGlobalDiscount(Number(e.target.value))
-                        setGlobalDiscountAmount(0) // Reset l'autre type de remise
-                      }}
-                      className="h-8 text-sm flex-1"
-                      min="0"
-                      max="100"
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Montant FCFA"
-                      value={globalDiscountAmount || ''}
-                      onChange={(e) => {
-                        setGlobalDiscountAmount(Number(e.target.value))
-                        setGlobalDiscount(0) // Reset l'autre type de remise
-                      }}
-                      className="h-8 text-sm flex-1"
-                      min="0"
-                    />
-                  </div>
+                  <Input
+                    type="number"
+                    placeholder="Montant remise FCFA"
+                    value={globalDiscountAmount || ''}
+                    onChange={(e) => {
+                      setGlobalDiscountAmount(Number(e.target.value))
+                      setGlobalDiscount(0)
+                    }}
+                    className="h-8 text-sm"
+                    min="0"
+                  />
                 </div>
 
                 <Separator />
@@ -1616,7 +1605,10 @@ export default function PosPage() {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Client:</span>
                       <span className="font-medium">
-                        {customerFirstName} {customerLastName} • {customerPhone}
+                        {(customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()) 
+                          ? `${customerFirstName} ${customerLastName}${customerPhone ? ` • ${customerPhone}` : ''}`.trim()
+                          : <span className="text-gray-400 italic">Client anonyme</span>
+                        }
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1690,7 +1682,6 @@ export default function PosPage() {
               {checkoutStep === 1 ? (
                 <Button
                   onClick={() => setCheckoutStep(2)}
-                  disabled={!customerPhone.trim()}
                   className="bg-purple-600 hover:bg-purple-700"
                 >
                   Suivant
