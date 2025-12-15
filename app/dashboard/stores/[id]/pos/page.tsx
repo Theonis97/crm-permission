@@ -141,7 +141,7 @@ export default function PosPage() {
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [cart, setCart] = useState<CartItem[]>([])
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
-  const [checkoutStep, setCheckoutStep] = useState(1) // Commence directement à l'étape 1 (formulaire client)
+  const [checkoutStep, setCheckoutStep] = useState(2) // Commence directement à l'étape 2 (récapitulatif)
   const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER">("CLIENT_STORE") // Mode vente directe par défaut
   
   // États pour l'impression
@@ -484,7 +484,7 @@ export default function PosPage() {
     }
 
     // Validation selon le type de commande
-    if (orderType === "CLIENT_DELIVERY" || orderType === "CLIENT_STORE") {
+    if (orderType === "CLIENT_DELIVERY") {
       if (!customerPhone) {
         toast.error("Téléphone du client requis")
         return
@@ -780,7 +780,7 @@ export default function PosPage() {
   }
 
   const resetCheckoutForm = () => {
-    setCheckoutStep(1) // Revenir à l'étape 1 (formulaire client)
+    setCheckoutStep(2) // Revenir à l'étape 2 (récapitulatif)
     setOrderType("CLIENT_STORE") // Mode vente directe par défaut
     setSelectedContactId(null)
     setContactSearch("")
@@ -1584,19 +1584,6 @@ export default function PosPage() {
 
                 <Separator />
 
-                <div>
-                  <Label htmlFor="notes">Notes (optionnel)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Ajoutez des notes sur cette vente..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                <Separator />
-
                 {/* Récapitulatif vente directe */}
                 <div className="bg-purple-50 rounded-lg p-4 space-y-3">
                   <h3 className="font-semibold text-purple-900">Récapitulatif de la vente</h3>
@@ -1656,55 +1643,36 @@ export default function PosPage() {
           {/* Footer fixe avec boutons de navigation */}
           <div className="shrink-0 border-t bg-white p-6">
             <div className="flex items-center justify-between gap-3">
-              {/* Bouton Précédent ou Annuler */}
-              {checkoutStep === 2 ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setCheckoutStep(1)}
-                  disabled={isSubmitting}
-                >
-                  Précédent
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsCheckoutOpen(false)
-                    resetCheckoutForm()
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Annuler
-                </Button>
-              )}
+              {/* Bouton Annuler */}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCheckoutOpen(false)
+                  resetCheckoutForm()
+                }}
+                disabled={isSubmitting}
+              >
+                Annuler
+              </Button>
 
-              {/* Bouton Suivant ou Valider */}
-              {checkoutStep === 1 ? (
-                <Button
-                  onClick={() => setCheckoutStep(2)}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  Suivant
-                </Button>
-              ) : checkoutStep === 2 ? (
-                <Button
-                  onClick={handleCreateOrder}
-                  disabled={isSubmitting}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Vente en cours...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Finaliser la vente
-                    </>
-                  )}
-                </Button>
-              ) : null}
+              {/* Bouton Lancer l'impression */}
+              <Button
+                onClick={handleCreateOrder}
+                disabled={isSubmitting}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Vente en cours...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Lancer l'impression
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

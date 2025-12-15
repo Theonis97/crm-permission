@@ -132,11 +132,51 @@ export async function POST(
     }, 0)
     const total = subtotal + taxAmount
 
-    // Transaction pour mettre à jour les stocks et créer les mouvements
+    // Transaction pour créer la commande, mettre à jour les stocks et créer les mouvements
     const result = await prisma.$transaction(async (tx) => {
+      // 1. Créer la commande StoreOrder
+      const storeOrder = await tx.storeOrder.create({
+        data: {
+          number: saleNumber,
+          storeId,
+          contactId: contactId || null,
+          customerName,
+          customerPhone,
+          customerEmail: customerEmail || null,
+          status: "DELIVERED", // Vente directe = Livrée instantanément
+          priority: "NORMAL",
+          subtotal,
+          totalTax: taxAmount,
+          deliveryFee: 0,
+          total,
+          paymentMethod: paymentMethod || "CASH",
+          paymentStatus: "PAID", // Vente directe = Payée instantanément
+          paidAt: new Date(),
+          deliveredAt: new Date(),
+          notes: notes || null,
+          orderSource: "POS",
+          createdById: user.id,
+          // Créer les items de la commande
+          items: {
+            create: items.map((item: any) => {
+              const storeProduct = storeProducts.find(sp => sp.productId === item.productId)!
+              return {
+                productId: item.productId,
+                name: storeProduct.product.name,
+                sku: storeProduct.product.sku,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                total: item.quantity * item.unitPrice,
+                taxRate: 0, // À ajuster si gestion TVA
+              }
+            })
+          }
+        }
+      })
+
       const movements = []
 
-      // Pour chaque produit : décrémenter le stock et créer un mouvement
+      // 2. Pour chaque produit : décrémenter le stock et créer un mouvement
       for (const item of items) {
         const { productId, quantity, unitPrice } = item
         
@@ -183,7 +223,7 @@ export async function POST(
         movements.push(movement)
       }
 
-      return { movements, saleNumber, total }
+      return { movements, saleNumber, total, orderId: storeOrder.id }
     }, {
       maxWait: 5000,
       timeout: 15000,
@@ -194,6 +234,7 @@ export async function POST(
       number: result.saleNumber,
       total: result.total,
       movements: result.movements,
+      orderId: result.orderId,
       message: `Vente ${result.saleNumber} enregistrée avec succès`,
     })
   } catch (error: any) {
