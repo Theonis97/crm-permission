@@ -76,7 +76,7 @@ export function ProductFormDialog({
     description: "",
     prixVente: "",
     prixAchat: "",
-    tva: "20",
+    tva: "0",
     stock: "0",
     minStock: "10",
     maxStock: "",
@@ -118,7 +118,7 @@ export function ProductFormDialog({
       description: "",
       prixVente: "",
       prixAchat: "",
-      tva: "20",
+      tva: "0",
       stock: "0",
       minStock: "10",
       maxStock: "",
@@ -539,7 +539,7 @@ export function ProductFormDialog({
                     className="h-12"
                   />
                   <p className="text-xs text-gray-500">
-                    Taux de TVA applicable (par défaut 20%)
+                    Taux de TVA applicable (par défaut 0%)
                   </p>
                 </div>
 

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         photos: photos || [],
         prixVente: Number(prixVente),
         prixAchat: Number(prixAchat),
-        tva: Number(tva) || 20,
+        tva: tva !== undefined && tva !== null ? Number(tva) : 0,
         stock: Number(stock) || 0,
         minStock: Number(minStock) || 0,
         maxStock: maxStock ? Number(maxStock) : null,

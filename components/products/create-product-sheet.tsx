@@ -27,7 +27,7 @@ export function CreateProductSheet({ open, onOpenChange, onProductCreated, categ
     photos: [],
     prixVente: 0,
     prixAchat: 0,
-    tva: 20,
+    tva: 0,
     stock: 0,
     categoryId: "none", // Updated default value to be a non-empty string
   })
@@ -61,7 +61,7 @@ export function CreateProductSheet({ open, onOpenChange, onProductCreated, categ
           photos: [],
           prixVente: 0,
           prixAchat: 0,
-          tva: 20,
+          tva: 0,
           stock: 0,
           categoryId: "none", // Reset default value to be a non-empty string
         })
