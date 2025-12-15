@@ -107,7 +107,7 @@ export async function PUT(request: NextRequest, { params }: { params:Promise<{ i
         photos: photos || [],
         prixVente: Number(prixVente),
         prixAchat: Number(prixAchat),
-        tva: Number(tva) || 20,
+        tva: tva !== undefined && tva !== null ? Number(tva) : 20,
         stock: Number(stock),
         minStock: Number(minStock) || 0,
         maxStock: maxStock ? Number(maxStock) : null,
