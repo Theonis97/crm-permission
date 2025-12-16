@@ -296,8 +296,8 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
 
 // Destinataires des emails de ventes POS
 const POS_SALES_EMAIL_RECIPIENTS = [
-  'intechgabon241@gmail.com',
-  'asselidas50@gmail.com'
+  'gabinmoundziegou@gmail.com',
+  'steevennguembi@gmail.com'
 ];
 
 /**
@@ -346,8 +346,44 @@ export async function sendDailyPosSalesEmail(
       return { success: false, error: 'Magasin non trouvé' };
     }
 
-    // Formater la date pour l'objet (format court : 16 Déc 2025)
+    // Récupérer le CA du jour AVANT cette nouvelle vente
     const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Récupérer toutes les ventes POS du jour (sauf la nouvelle qui vient d'être créée)
+    const previousSales = await prisma.storeOrder.findMany({
+      where: {
+        storeId,
+        orderSource: 'POS',
+        createdAt: {
+          gte: today,
+          lt: tomorrow
+        },
+        number: {
+          not: newSale.number // Exclure la vente actuelle
+        }
+      },
+      select: {
+        total: true,
+        totalDiscount: true
+      }
+    });
+
+    // Calculer le CA avant cette vente
+    const previousCA = previousSales.reduce((sum, sale) => sum + sale.total, 0);
+    const previousTotalDiscount = previousSales.reduce((sum, sale) => sum + (sale.totalDiscount || 0), 0);
+    
+    // Nouveau CA total (CA précédent + nouvelle vente)
+    const newTotalCA = previousCA + newSale.total;
+    const totalDailyDiscount = previousTotalDiscount + (newSale.totalDiscount || 0);
+    
+    // Nombre de ventes du jour (y compris la nouvelle)
+    const dailySalesCount = previousSales.length + 1;
+
+    // Formater la date pour l'objet (format court : 16 Déc 2025)
     const dateShort = now.toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'short',
@@ -485,6 +521,37 @@ export async function sendDailyPosSalesEmail(
               <div style="font-size: 28px; font-weight: bold;">${formatFCFA(newSale.total)}</div>
             </div>
 
+            <!-- Chiffre d'affaires du jour -->
+            <div style="background: #1e40af; color: white; padding: 20px; margin-top: 15px; border-radius: 10px;">
+              <div style="text-align: center; margin-bottom: 15px;">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">📊 CHIFFRE D'AFFAIRES DU JOUR</div>
+                <div style="font-size: 12px; opacity: 0.8;">${dailySalesCount} vente(s) aujourd'hui</div>
+              </div>
+              
+              <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                <table style="width: 100%; color: white;">
+                  <tr>
+                    <td style="padding: 5px 0; font-size: 14px;">CA avant cette vente :</td>
+                    <td style="padding: 5px 0; text-align: right; font-size: 14px;">${formatFCFA(previousCA)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 5px 0; font-size: 14px; color: #86efac;">+ Nouvelle vente :</td>
+                    <td style="padding: 5px 0; text-align: right; font-size: 14px; color: #86efac;">+${formatFCFA(newSale.total)}</td>
+                  </tr>
+                  ${totalDailyDiscount > 0 ? `
+                  <tr>
+                    <td style="padding: 5px 0; font-size: 12px; color: #fca5a5;">Remises totales du jour :</td>
+                    <td style="padding: 5px 0; text-align: right; font-size: 12px; color: #fca5a5;">-${formatFCFA(totalDailyDiscount)}</td>
+                  </tr>
+                  ` : ''}
+                  <tr style="border-top: 1px solid rgba(255,255,255,0.3);">
+                    <td style="padding: 10px 0 5px 0; font-size: 16px; font-weight: bold;">NOUVEAU CA :</td>
+                    <td style="padding: 10px 0 5px 0; text-align: right; font-size: 24px; font-weight: bold;">${formatFCFA(newTotalCA)}</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+
             <!-- Footer -->
             <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
               <p>Cet email a été envoyé automatiquement par le système ERP-CRM.</p>
@@ -511,6 +578,12 @@ ARTICLES
 ${newSale.items.map(item => `- ${item.name} x${item.quantity} @ ${formatFCFA(item.unitPrice)} = ${formatFCFA(item.total)}`).join('\n')}
 
 ${newSale.subtotal ? `Sous-total : ${formatFCFA(newSale.subtotal)}\n` : ''}${newSale.totalDiscount && newSale.totalDiscount > 0 ? `Remise : -${formatFCFA(newSale.totalDiscount)}\n` : ''}TOTAL : ${formatFCFA(newSale.total)}
+
+CHIFFRE D'AFFAIRES DU JOUR (${dailySalesCount} vente(s))
+---------------------------------------------------------
+CA avant cette vente : ${formatFCFA(previousCA)}
++ Nouvelle vente : +${formatFCFA(newSale.total)}
+${totalDailyDiscount > 0 ? `Remises totales du jour : -${formatFCFA(totalDailyDiscount)}\n` : ''}NOUVEAU CA : ${formatFCFA(newTotalCA)}
 
 ---
 Cet email a été envoyé automatiquement par le système ERP-CRM.
