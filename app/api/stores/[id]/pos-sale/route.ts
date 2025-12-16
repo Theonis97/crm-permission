@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { sendDailyPosSalesEmail } from "@/lib/email-service"
 
 // POST - Créer une vente directe POS (client au magasin)
 export async function POST(
@@ -25,6 +26,7 @@ export async function POST(
       paymentMethod,
       notes,
       items,
+      globalDiscount = 0,
     } = body
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -122,15 +124,24 @@ export async function POST(
 
     const saleNumber = `POS-${year}${month}${day}-${hours}${minutes}${seconds}${milliseconds}`
 
-    // Calculer le total
+    // Calculer le total avec les remises
     const subtotal = items.reduce((sum: number, item: any) => sum + (item.unitPrice * item.quantity), 0)
+    
+    // Calculer les remises par article
+    const itemsDiscount = items.reduce((sum: number, item: any) => sum + (item.discount || 0), 0)
+    
+    // Total des remises (articles + globale)
+    const totalDiscount = itemsDiscount + (globalDiscount || 0)
+    
     const taxAmount = items.reduce((sum: number, item: any) => {
       const storeProduct = storeProducts.find(sp => sp.productId === item.productId)
-      const itemTotal = item.unitPrice * item.quantity
+      const itemTotal = item.unitPrice * item.quantity - (item.discount || 0)
       const tva = storeProduct?.product ? 0 : 0 // TVA à récupérer depuis le produit si nécessaire
       return sum + (itemTotal * tva / 100)
     }, 0)
-    const total = subtotal + taxAmount
+    
+    // Total final = sous-total - remises + taxes
+    const total = subtotal - totalDiscount + taxAmount
 
     // Transaction pour créer la commande, mettre à jour les stocks et créer les mouvements
     const result = await prisma.$transaction(async (tx) => {
@@ -146,6 +157,7 @@ export async function POST(
           status: "DELIVERED", // Vente directe = Livrée instantanément
           priority: "NORMAL",
           subtotal,
+          totalDiscount,
           totalTax: taxAmount,
           deliveryFee: 0,
           total,
@@ -160,13 +172,16 @@ export async function POST(
           items: {
             create: items.map((item: any) => {
               const storeProduct = storeProducts.find(sp => sp.productId === item.productId)!
+              const itemDiscount = item.discount || 0
+              const itemTotal = (item.quantity * item.unitPrice) - itemDiscount
               return {
                 productId: item.productId,
                 name: storeProduct.product.name,
                 sku: storeProduct.product.sku,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
-                total: item.quantity * item.unitPrice,
+                discount: itemDiscount,
+                total: itemTotal,
                 taxRate: 0, // À ajuster si gestion TVA
               }
             })
@@ -227,6 +242,33 @@ export async function POST(
     }, {
       maxWait: 5000,
       timeout: 15000,
+    })
+
+    // Envoyer l'email récapitulatif des ventes POS du jour (en arrière-plan)
+    const saleItems = items.map((item: any) => {
+      const storeProduct = storeProducts.find(sp => sp.productId === item.productId)!
+      const itemDiscount = item.discount || 0
+      const itemTotal = (item.quantity * item.unitPrice) - itemDiscount
+      return {
+        name: storeProduct.product.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: itemDiscount,
+        total: itemTotal
+      }
+    })
+
+    // Envoi asynchrone pour ne pas bloquer la réponse
+    sendDailyPosSalesEmail(storeId, {
+      number: result.saleNumber,
+      customerName: customerName || 'Client anonyme',
+      customerPhone: customerPhone || '',
+      subtotal,
+      totalDiscount,
+      total: result.total,
+      items: saleItems
+    }).catch(err => {
+      console.error('❌ Erreur envoi email POS (non bloquant):', err)
     })
 
     return NextResponse.json({

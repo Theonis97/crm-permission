@@ -70,6 +70,7 @@ interface Order {
   status: string
   priority: string
   subtotal: number
+  totalDiscount: number
   totalTax: number
   deliveryFee: number
   total: number
@@ -541,6 +542,11 @@ export default function OrdersPage() {
                         <TableCell className="font-semibold">
                           <div className="flex flex-col">
                             <span>{order.total.toLocaleString()} F</span>
+                            {order.totalDiscount > 0 && (
+                              <span className="text-xs text-red-500">
+                                -{order.totalDiscount.toLocaleString()} F remise
+                              </span>
+                            )}
                             {order.deliveryFee > 0 && (
                               <span className="text-xs text-gray-500">
                                 +{order.deliveryFee.toLocaleString()} F livraison

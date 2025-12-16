@@ -679,11 +679,23 @@ export default function PosPage() {
       customerEmail: customerEmail || null,
       paymentMethod: "CASH", // Toujours en espèces pour les ventes au magasin
       notes: notes || "Vente directe POS",
-      items: cart.map(item => ({
-        productId: item.product.id,
-        quantity: item.quantity,
-        unitPrice: item.product.prixVente,
-      })),
+      items: cart.map(item => {
+        const originalTotal = item.product.prixVente * item.quantity
+        let itemDiscount = 0
+        if (item.discount && item.discount > 0) {
+          itemDiscount = originalTotal * (item.discount / 100)
+        } else if (item.discountAmount && item.discountAmount > 0) {
+          itemDiscount = Math.min(item.discountAmount, originalTotal)
+        }
+        return {
+          productId: item.product.id,
+          quantity: item.quantity,
+          unitPrice: item.product.prixVente,
+          discount: itemDiscount,
+        }
+      }),
+      // Remise globale
+      globalDiscount: globalDiscountApplied,
       // Flag pour indiquer si le client est anonyme (pour le ticket)
       isAnonymousCustomer: !isCustomerProvided,
     }

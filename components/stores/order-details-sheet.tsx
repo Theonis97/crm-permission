@@ -42,6 +42,7 @@ interface Order {
   status: string
   priority: string
   subtotal: number
+  totalDiscount?: number
   totalTax: number
   deliveryFee: number
   total: number
@@ -298,6 +299,12 @@ export function OrderDetailsSheet({
                   <span className="text-gray-600">Sous-total</span>
                   <span className="font-medium">{order.subtotal.toLocaleString()} FCFA</span>
                 </div>
+                {order.totalDiscount && order.totalDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-red-600">Remise</span>
+                    <span className="font-medium text-red-600">-{order.totalDiscount.toLocaleString()} FCFA</span>
+                  </div>
+                )}
                 {order.totalTax > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">TVA</span>
