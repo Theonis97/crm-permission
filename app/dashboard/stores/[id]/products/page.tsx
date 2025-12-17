@@ -24,6 +24,7 @@ import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { StoreProductDetailsSheet } from "@/components/stores/store-product-details-sheet"
 import { RestockingRequestDialog } from "@/components/stores/restocking-request-dialog"
 import { RestockingOrdersSheet } from "@/components/stores/restocking-orders-sheet"
+import { BarcodePrintDialog } from "@/components/products/barcode-print-dialog"
 import {
   Package,
   Search,
@@ -43,6 +44,7 @@ import {
   Truck,
   ClipboardList,
   ImageIcon,
+  Barcode,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -101,6 +103,12 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [barcodePrintDialogOpen, setBarcodePrintDialogOpen] = useState(false)
+  const [selectedProductForBarcode, setSelectedProductForBarcode] = useState<{
+    id: string
+    name: string
+    sku: string | null
+  } | null>(null)
   const [storeName, setStoreName] = useState<string>("")
   const itemsPerPage = 10
 
@@ -171,6 +179,16 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   const handleViewProduct = (id: string) => {
     setSelectedProductId(id)
     setDetailsOpen(true)
+  }
+
+  const handleOpenBarcodeDialog = (product: Product, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedProductForBarcode({
+      id: product.id,
+      name: product.name,
+      sku: product.sku
+    })
+    setBarcodePrintDialogOpen(true)
   }
 
   const handleEditProduct = async (product: Product) => {
@@ -274,49 +292,47 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   }
 
   return (
-    <>
-      <div>
-        <StorePageHeader
-          title="Produits"
-          description="Gérez votre inventaire et vos stocks"
-          icon={Package}
-          actions={
-            <div className="flex items-center gap-3">
-              <ButtonGroup aria-label="Approvisionnement">
-                <Button
-                  onClick={() => setRestockingDialogOpen(true)}
-                  variant="outline"
-                >
-                  <Truck className="h-4 w-4 mr-2" />
-                  Faire une demande
-                </Button>
-                <Button
-                  onClick={() => setRestockingOrdersSheetOpen(true)}
-                  variant="outline"
-                >
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  Voir les demandes
-                </Button>
-              </ButtonGroup>
-                <StorePermissionGuard 
-                  storeId={storeId} 
-                  permission={STORE_PERMISSIONS.PRODUCTS_CREATE}
-                  fallback={null}
-                >
-                  <Button
-                    onClick={() => setCreateProductDialogOpen(true)}
-                    variant="outline"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Créer un produit
-                  </Button>
-                </StorePermissionGuard>
-              </div>
-            }
-          />
-        </div>
+    <div className="flex flex-col min-h-screen">
+      <StorePageHeader
+        title="Produits"
+        description="Gérez votre inventaire et vos stocks"
+        icon={Package}
+        actions={
+          <div className="flex items-center gap-3">
+            <ButtonGroup aria-label="Approvisionnement">
+              <Button
+                onClick={() => setRestockingDialogOpen(true)}
+                variant="outline"
+              >
+                <Truck className="h-4 w-4 mr-2" />
+                Faire une demande
+              </Button>
+              <Button
+                onClick={() => setRestockingOrdersSheetOpen(true)}
+                variant="outline"
+              >
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Voir les demandes
+              </Button>
+            </ButtonGroup>
+            <StorePermissionGuard 
+              storeId={storeId} 
+              permission={STORE_PERMISSIONS.PRODUCTS_CREATE}
+              fallback={null}
+            >
+              <Button
+                onClick={() => setCreateProductDialogOpen(true)}
+                variant="outline"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Créer un produit
+              </Button>
+            </StorePermissionGuard>
+          </div>
+        }
+      />
 
-      <main className="py-8">
+      <main className="flex-1 py-8">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-6">
           {/* Stats */}
           <div className="grid gap-4 md:grid-cols-5">
@@ -567,13 +583,18 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                                     </DropdownMenuItem>
                                   )}
                                   {hasPermission(STORE_PERMISSIONS.PRODUCTS_DELETE) && (
-                                    <DropdownMenuItem 
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product); }} 
+                                    <><DropdownMenuItem
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product) } }
                                       className="text-red-600"
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
                                       Retirer du magasin
-                                    </DropdownMenuItem>
+                                    </DropdownMenuItem><DropdownMenuItem
+                                      onClick={(e) => handleOpenBarcodeDialog(product, e)}
+                                    >
+                                        <Barcode className="mr-2 h-4 w-4" />
+                                        Imprimer code-barres
+                                      </DropdownMenuItem></>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -681,22 +702,18 @@ export default function ProductsPage({ params }: ProductsPageProps) {
         onUpdated={() => loadProducts(storeId)}
       />
 
-      <RestockingRequestDialog
-        open={restockingDialogOpen}
-        onOpenChange={setRestockingDialogOpen}
-        storeId={storeId}
-        storeName={storeName}
-        onSuccess={() => {
-          setRestockingOrdersSheetOpen(true)
-        }}
-      />
-
-      <RestockingOrdersSheet
-        open={restockingOrdersSheetOpen}
-        onOpenChange={setRestockingOrdersSheetOpen}
-        storeId={storeId}
-        storeName={storeName}
-      />
-    </>
+      {selectedProductForBarcode && (
+        <BarcodePrintDialog
+          open={barcodePrintDialogOpen}
+          onOpenChange={setBarcodePrintDialogOpen}
+          product={{
+            id: selectedProductForBarcode.id,
+            name: selectedProductForBarcode.name,
+            sku: selectedProductForBarcode.sku
+          }}
+          storeId={storeId}
+        />
+      )}
+    </div>
   )
 }
