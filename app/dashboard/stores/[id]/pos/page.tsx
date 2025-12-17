@@ -207,6 +207,10 @@ export default function PosPage() {
   // Refs
   const addressDropdownRef = useRef<HTMLDivElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Scanner de code-barres
+  const barcodeBufferRef = useRef<string>("")
+  const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Charger les données au montage
   useEffect(() => {
@@ -236,6 +240,112 @@ export default function PosPage() {
       document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [showAddressSuggestions])
+
+  // Scanner de code-barres - Écoute les entrées clavier rapides (lecteur USB)
+  useEffect(() => {
+    let lastKeyTime = 0
+    
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const currentTime = Date.now()
+      const timeDiff = currentTime - lastKeyTime
+      lastKeyTime = currentTime
+      
+      // Si c'est Enter, traiter le buffer s'il contient quelque chose
+      if (event.key === 'Enter') {
+        if (barcodeBufferRef.current.length >= 3) { // Au moins 3 caractères pour un code valide
+          event.preventDefault()
+          event.stopPropagation()
+          const scannedCode = barcodeBufferRef.current.trim()
+          console.log('🔍 Code-barres scanné:', scannedCode)
+          barcodeBufferRef.current = ""
+          
+          if (barcodeTimeoutRef.current) {
+            clearTimeout(barcodeTimeoutRef.current)
+            barcodeTimeoutRef.current = null
+          }
+          
+          handleBarcodeScanned(scannedCode)
+        }
+        return
+      }
+      
+      // Ignorer les touches de contrôle et spéciales
+      if (event.key.length !== 1) {
+        return
+      }
+      
+      // Ignorer si on est dans un champ de saisie et que c'est une saisie lente (> 50ms entre touches)
+      const target = event.target as HTMLElement
+      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+      
+      if (isInputField && timeDiff > 50 && barcodeBufferRef.current.length === 0) {
+        return
+      }
+      
+      // Ajouter le caractère au buffer
+      barcodeBufferRef.current += event.key
+      
+      // Réinitialiser le timeout
+      if (barcodeTimeoutRef.current) {
+        clearTimeout(barcodeTimeoutRef.current)
+      }
+      
+      // Vider le buffer après 200ms d'inactivité (saisie manuelle probable)
+      barcodeTimeoutRef.current = setTimeout(() => {
+        if (barcodeBufferRef.current.length > 0) {
+          console.log('⏱️ Buffer vidé (timeout):', barcodeBufferRef.current)
+        }
+        barcodeBufferRef.current = ""
+      }, 200)
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true) // Capture phase
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      if (barcodeTimeoutRef.current) {
+        clearTimeout(barcodeTimeoutRef.current)
+      }
+    }
+  }, [products])
+
+  // Fonction pour traiter un code-barres scanné
+  const handleBarcodeScanned = (code: string) => {
+    // Chercher le produit par SKU ou ID
+    const product = products.find(p => 
+      p.sku === code || 
+      p.id === code ||
+      p.sku?.toLowerCase() === code.toLowerCase()
+    )
+    
+    if (product) {
+      if (product.stock <= 0) {
+        toast.error(`${product.name} - Stock épuisé !`)
+        return
+      }
+      
+      // Ajouter au panier
+      setCart(prev => {
+        const existingItem = prev.find(item => item.product.id === product.id)
+        if (existingItem) {
+          if (existingItem.quantity >= product.stock) {
+            toast.warning(`Stock maximum atteint pour ${product.name}`)
+            return prev
+          }
+          return prev.map(item =>
+            item.product.id === product.id
+              ? { ...item, quantity: Math.min(item.quantity + 1, product.stock) }
+              : item
+          )
+        }
+        return [...prev, { product, quantity: 1 }]
+      })
+      
+      toast.success(`📦 ${product.name} scanné et ajouté au panier`)
+    } else {
+      toast.error(`Produit non trouvé : ${code}`)
+    }
+  }
 
   const loadProducts = async () => {
     try {
