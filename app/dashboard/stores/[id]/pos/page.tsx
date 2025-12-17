@@ -1016,7 +1016,7 @@ export default function PosPage() {
       }
       
       const closeData = await closeResponse.json()
-      toast.success('Journée clôturée avec succès !')
+      toast.success(closeData.isUpdate ? 'Clôture mise à jour avec succès !' : 'Journée clôturée avec succès !')
       
       // 2. Récupérer le résumé pour l'impression
       const summaryResponse = await fetch(`/api/stores/${storeId}/day-close-summary`)
@@ -1170,12 +1170,12 @@ export default function PosPage() {
             {/* Bouton Clôture de journée */}
             <div className="pt-3 mt-auto border-t">
               <button
-                onClick={dayCloseSummary?.isAlreadyClosed ? loadDayCloseSummary : handleDayClose}
+                onClick={handleDayClose}
                 disabled={isLoadingDayClose}
                 className={cn(
                   "w-full flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
                   dayCloseSummary?.isAlreadyClosed
-                    ? "bg-green-100 text-green-700 border border-green-200"
+                    ? "bg-green-100 text-green-700 border border-green-200 hover:bg-green-200"
                     : "bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-200"
                 )}
               >
@@ -1187,7 +1187,7 @@ export default function PosPage() {
                   <Calendar className="h-6 w-6" />
                 )}
                 <span className="font-medium text-xs text-center">
-                  {dayCloseSummary?.isAlreadyClosed ? "Journée clôturée" : "Clôturer"}
+                  {dayCloseSummary?.isAlreadyClosed ? "Mettre à jour" : "Clôturer"}
                 </span>
               </button>
             </div>

@@ -57,35 +57,27 @@ export async function GET(
       }
     })
 
-    // Récupérer tous les mouvements de stock de type SALE pour aujourd'hui
-    const salesMovements = await prisma.stockMovement.findMany({
+    // Récupérer les commandes du jour créées par l'utilisateur connecté (hors annulées)
+    const orders = await prisma.storeOrder.findMany({
       where: {
-        type: "SALE",
+        storeId,
+        createdById: user.id,
         createdAt: {
           gte: startOfDay,
           lte: endOfDay
         },
-        product: {
-          storeProducts: {
-            some: {
-              storeId: storeId
-            }
-          }
+        status: {
+          not: "CANCELLED"
         }
       },
       include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            prixVente: true,
-            tva: true
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            name: true
+        items: {
+          include: {
+            product: {
+              select: {
+                name: true
+              }
+            }
           }
         }
       },
@@ -94,76 +86,35 @@ export async function GET(
       }
     })
 
-    // Grouper les mouvements par transaction (basé sur l'heure et l'utilisateur)
-    const salesByTransaction = new Map<string, {
-      id: string
-      createdAt: Date
-      customerName: string
-      items: Array<{
-        productName: string
-        quantity: number
-        unitPrice: number
-        total: number
-      }>
-      itemCount: number
-      subtotal: number
-      tax: number
-      total: number
-    }>()
+    // Transformer les commandes en format de ventes
+    const sales = orders.map(order => ({
+      id: order.id,
+      number: order.number,
+      createdAt: order.createdAt,
+      customerName: order.customerName || 'Client anonyme',
+      items: order.items.map(item => ({
+        productName: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        total: item.total
+      })),
+      itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      subtotal: order.subtotal,
+      tax: order.totalTax,
+      discount: order.totalDiscount,
+      total: order.total
+    }))
 
-    salesMovements.forEach((movement) => {
-      // Créer une clé unique basée sur l'heure (arrondie à la minute) et l'utilisateur
-      const timeKey = new Date(movement.createdAt).toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM
-      const transactionKey = `${timeKey}_${movement.userId}`
-      
-      if (!salesByTransaction.has(transactionKey)) {
-        // Extraire le nom du client depuis les notes si disponible
-        const customerName = extractCustomerNameFromNote(movement.note) || 'Client anonyme'
-        
-        salesByTransaction.set(transactionKey, {
-          id: transactionKey,
-          createdAt: movement.createdAt,
-          customerName,
-          items: [],
-          itemCount: 0,
-          subtotal: 0,
-          tax: 0,
-          total: 0
-        })
-      }
-
-      const transaction = salesByTransaction.get(transactionKey)!
-      const itemTotal = movement.product.prixVente * Math.abs(movement.quantity)
-      const itemTax = itemTotal * (movement.product.tva / 100)
-
-      transaction.items.push({
-        productName: movement.product.name,
-        quantity: Math.abs(movement.quantity),
-        unitPrice: movement.product.prixVente,
-        total: itemTotal
-      })
-
-      transaction.itemCount += Math.abs(movement.quantity)
-      transaction.subtotal += itemTotal
-      transaction.tax += itemTax
-      transaction.total = transaction.subtotal + transaction.tax
-    })
-
-    // Convertir en array et trier par date
-    const sales = Array.from(salesByTransaction.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-    )
-
-    // Calculer les totaux
-    const totalSales = sales.length
-    const totalItems = sales.reduce((sum, sale) => sum + sale.itemCount, 0)
-    const subtotal = sales.reduce((sum, sale) => sum + sale.subtotal, 0)
-    const totalTax = sales.reduce((sum, sale) => sum + sale.tax, 0)
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0)
-
-    // Pour l'instant, on ne calcule pas les remises car elles ne sont pas encore stockées
-    // TODO: Ajouter le calcul des remises quand elles seront persistées
-    const totalDiscounts = 0
+    // Calculer les totaux à partir des commandes
+    const totalSales = orders.length
+    const totalItems = orders.reduce((sum, order) => {
+      return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0)
+    }, 0)
+    const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0)
+    const totalTax = orders.reduce((sum, order) => sum + order.totalTax, 0)
+    const totalDiscounts = orders.reduce((sum, order) => sum + order.totalDiscount, 0)
+    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0)
 
     const summary = {
       storeName: store.name,
@@ -176,9 +127,11 @@ export async function GET(
       totalRevenue,
       sales: sales.map(sale => ({
         id: sale.id,
+        number: sale.number,
         createdAt: sale.createdAt,
         customerName: sale.customerName,
         itemCount: sale.itemCount,
+        discount: sale.discount,
         total: sale.total
       })),
       isAlreadyClosed: !!existingDayClose,
@@ -221,24 +174,3 @@ export async function GET(
   }
 }
 
-// Fonction utilitaire pour extraire le nom du client depuis les notes
-function extractCustomerNameFromNote(note: string | null): string | null {
-  if (!note) return null
-  
-  // Chercher des patterns comme "Vente POS [numéro] - [Nom] ([téléphone])"
-  const patterns = [
-    /Vente POS \w+ - (.+?) \(/i, // Pattern pour nos nouvelles notes POS
-    /Vente à (.+?)(?:\s|$)/i,
-    /Client:?\s*(.+?)(?:\s|$)/i,
-    /^(.+?)\s*-/i // Nom au début suivi d'un tiret
-  ]
-  
-  for (const pattern of patterns) {
-    const match = note.match(pattern)
-    if (match && match[1]) {
-      return match[1].trim()
-    }
-  }
-  
-  return null
-}

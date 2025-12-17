@@ -53,68 +53,74 @@ export async function POST(
       },
     })
 
-    if (existingClose) {
-      return NextResponse.json(
-        { error: "La journée a déjà été clôturée" },
-        { status: 400 }
-      )
-    }
-
-    // Calculer les statistiques de la journée
+    // Calculer les statistiques de la journée basées sur les commandes clients
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
     
-    const sales = await prisma.stockMovement.findMany({
+    // Récupérer les commandes du jour créées par l'utilisateur connecté (hors annulées)
+    const orders = await prisma.storeOrder.findMany({
       where: {
-        type: "SALE",
+        storeId,
+        createdById: user.id,
         createdAt: {
           gte: startOfDay,
           lte: endOfDay,
         },
-        product: {
-          storeProducts: {
-            some: {
-              storeId,
-            },
-          },
+        status: {
+          not: "CANCELLED",
         },
       },
       include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            prixVente: true,
-          },
-        },
+        items: true,
       },
     })
 
-    // Calculer les totaux
-    const totalSales = sales.length
-    const totalItems = Math.abs(sales.reduce((sum, sale) => sum + sale.quantity, 0))
-    const subtotal = sales.reduce((sum, sale) => {
-      return sum + (Math.abs(sale.quantity) * (sale.product?.prixVente || 0))
+    // Calculer les totaux à partir des commandes
+    const totalSales = orders.length
+    const totalItems = orders.reduce((sum, order) => {
+      return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0)
     }, 0)
-    const totalTax = 0 // À calculer selon les règles de TVA
-    const totalDiscounts = 0 // À calculer selon les remises
-    const totalRevenue = subtotal - totalDiscounts + totalTax
+    const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0)
+    const totalTax = orders.reduce((sum, order) => sum + order.totalTax, 0)
+    const totalDiscounts = orders.reduce((sum, order) => sum + order.totalDiscount, 0)
+    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0)
 
-    // Créer l'enregistrement de clôture
-    const dayClose = await prisma.dayClose.create({
-      data: {
-        storeId,
-        userId: user.id,
-        closeDate: todayDate,
-        totalSales,
-        totalItems,
-        subtotal,
-        totalTax,
-        totalDiscounts,
-        totalRevenue,
-        notes: `Clôture automatique - ${totalSales} ventes, ${totalItems} articles, ${totalRevenue} FCFA`,
-      },
-    })
+    let dayClose
+    const isUpdate = !!existingClose
+
+    if (existingClose) {
+      // Mettre à jour la clôture existante
+      dayClose = await prisma.dayClose.update({
+        where: { id: existingClose.id },
+        data: {
+          userId: user.id,
+          totalSales,
+          totalItems,
+          subtotal,
+          totalTax,
+          totalDiscounts,
+          totalRevenue,
+          notes: `Clôture mise à jour - ${totalSales} ventes, ${totalItems} articles, ${totalRevenue} FCFA`,
+          updatedAt: new Date(),
+        },
+      })
+    } else {
+      // Créer une nouvelle clôture
+      dayClose = await prisma.dayClose.create({
+        data: {
+          storeId,
+          userId: user.id,
+          closeDate: todayDate,
+          totalSales,
+          totalItems,
+          subtotal,
+          totalTax,
+          totalDiscounts,
+          totalRevenue,
+          notes: `Clôture automatique - ${totalSales} ventes, ${totalItems} articles, ${totalRevenue} FCFA`,
+        },
+      })
+    }
 
     // Envoyer l'email de clôture de journée (en arrière-plan)
     sendDayClosureEmail(storeId, user.id).catch(err => {
@@ -123,6 +129,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
+      isUpdate,
       dayClose,
       summary: {
         totalSales,
