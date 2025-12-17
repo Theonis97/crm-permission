@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { StorePageHeader } from "@/components/stores/store-page-header"
 import {
   Table,
   TableBody,
@@ -56,6 +55,16 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { CancelOrderDialog } from "@/components/stores/cancel-order-dialog"
 import { OrderDetailsSheet } from "@/components/stores/order-details-sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 interface Order {
   id: string
@@ -199,6 +208,10 @@ export default function OrdersPage() {
   // Modal d'annulation
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null)
+  
+  // Modal d'annulation groupée
+  const [showBulkCancelDialog, setShowBulkCancelDialog] = useState(false)
+  const [bulkCancelReason, setBulkCancelReason] = useState("")
   
   // Sheet de détails
   const [showOrderDetails, setShowOrderDetails] = useState(false)
@@ -347,6 +360,22 @@ export default function OrdersPage() {
     } finally {
       setIsPerformingAction(false)
     }
+  }
+
+  // Annulation groupée avec motif obligatoire
+  const handleBulkCancel = async () => {
+    if (!bulkCancelReason.trim()) {
+      toast.error("Le motif d'annulation est obligatoire")
+      return
+    }
+    
+    await handleBulkAction("updateStatus", { 
+      status: "CANCELLED", 
+      cancelReason: bulkCancelReason.trim() 
+    })
+    
+    setShowBulkCancelDialog(false)
+    setBulkCancelReason("")
   }
 
   const stats = useMemo(() => ({
@@ -735,7 +764,7 @@ export default function OrdersPage() {
                       Livrée
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleBulkAction("updateStatus", { status: "CANCELLED" })} className="text-red-600">
+                    <DropdownMenuItem onClick={() => setShowBulkCancelDialog(true)} className="text-red-600">
                       <XCircle className="h-4 w-4 mr-2" />
                       Annuler
                     </DropdownMenuItem>
@@ -807,7 +836,72 @@ export default function OrdersPage() {
         open={showOrderDetails}
         onOpenChange={setShowOrderDetails}
         order={selectedOrder}
+        onStatusChange={loadOrders}
       />
+
+      {/* Dialog d'annulation groupée */}
+      <Dialog open={showBulkCancelDialog} onOpenChange={setShowBulkCancelDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <DialogTitle>Annuler les commandes</DialogTitle>
+                <DialogDescription>
+                  {selectedOrders.length} commande(s) sélectionnée(s)
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-700">
+                <strong>Attention :</strong> Cette action annulera les commandes sélectionnées et remettra les produits en stock. Un email de notification sera envoyé aux administrateurs.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bulkCancelReason" className="text-base font-semibold">
+                Motif d'annulation <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="bulkCancelReason"
+                value={bulkCancelReason}
+                onChange={(e) => setBulkCancelReason(e.target.value)}
+                placeholder="Expliquez pourquoi ces commandes sont annulées..."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowBulkCancelDialog(false)
+                setBulkCancelReason("")
+              }}
+              disabled={isPerformingAction}
+            >
+              Fermer
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleBulkCancel}
+              disabled={isPerformingAction || !bulkCancelReason.trim()}
+            >
+              {isPerformingAction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Annuler les commandes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

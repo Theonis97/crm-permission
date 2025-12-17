@@ -61,11 +61,12 @@ export function CancelOrderDialog({
     setLoading(true)
 
     try {
-      const response = await fetch(`/api/store-orders/${order.id}/cancel`, {
-        method: "POST",
+      const response = await fetch(`/api/store-orders/${order.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cancellationNote: cancellationNote.trim(),
+          status: "CANCELLED",
+          cancelReason: cancellationNote.trim(),
         }),
       })
 

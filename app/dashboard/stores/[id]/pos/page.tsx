@@ -1120,13 +1120,13 @@ export default function PosPage() {
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar Marques */}
-          <div className="w-40 bg-white border-r p-3 overflow-y-auto">
+          <div className="w-40 bg-white border-r p-3 overflow-y-auto flex flex-col">
             {isLoadingBrands ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 flex-1">
                 {/* Bouton Toutes */}
                 <button
                   onClick={() => setSelectedBrand("all")}
@@ -1166,6 +1166,31 @@ export default function PosPage() {
                 ))}
               </div>
             )}
+            
+            {/* Bouton Clôture de journée */}
+            <div className="pt-3 mt-auto border-t">
+              <button
+                onClick={dayCloseSummary?.isAlreadyClosed ? loadDayCloseSummary : handleDayClose}
+                disabled={isLoadingDayClose}
+                className={cn(
+                  "w-full flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
+                  dayCloseSummary?.isAlreadyClosed
+                    ? "bg-green-100 text-green-700 border border-green-200"
+                    : "bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-200"
+                )}
+              >
+                {isLoadingDayClose ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : dayCloseSummary?.isAlreadyClosed ? (
+                  <CheckCircle2 className="h-6 w-6" />
+                ) : (
+                  <Calendar className="h-6 w-6" />
+                )}
+                <span className="font-medium text-xs text-center">
+                  {dayCloseSummary?.isAlreadyClosed ? "Journée clôturée" : "Clôturer"}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Grille des Produits */}
@@ -1258,25 +1283,6 @@ export default function PosPage() {
                     title="Configuration d'imprimante"
                   >
                     <Settings className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={dayCloseSummary?.isAlreadyClosed ? loadDayCloseSummary : handleDayClose}
-                    disabled={isLoadingDayClose}
-                    className={cn(
-                      "h-7 w-7 p-0",
-                      dayCloseSummary?.isAlreadyClosed && "text-green-600"
-                    )}
-                    title={dayCloseSummary?.isAlreadyClosed ? "Voir le résumé de journée" : "Clôturer la journée"}
-                  >
-                    {isLoadingDayClose ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : dayCloseSummary?.isAlreadyClosed ? (
-                      <CheckCircle2 className="h-3 w-3" />
-                    ) : (
-                      <Calendar className="h-3 w-3" />
-                    )}
                   </Button>
                   <Badge variant="outline">{cartItemsCount} article{cartItemsCount > 1 ? 's' : ''}</Badge>
                 </div>

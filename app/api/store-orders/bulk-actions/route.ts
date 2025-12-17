@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { sendOrderCancellationEmail, sendOrderDeliveredEmail } from "@/lib/email-service"
 
 // POST - Actions groupées sur les commandes
 export async function POST(request: NextRequest) {
@@ -106,19 +107,287 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        updateData = { status: data.status }
+        // Si on annule des commandes, il faut gérer le retour de stock
+        if (data.status === "CANCELLED") {
+          // Exiger un motif d'annulation
+          if (!data.cancelReason || data.cancelReason.trim().length === 0) {
+            return NextResponse.json(
+              { error: "Le motif d'annulation est obligatoire" },
+              { status: 400 }
+            )
+          }
 
-        // Si le statut est DELIVERED, ajouter la date de livraison
-        if (data.status === "DELIVERED") {
-          updateData.deliveredAt = new Date()
+          // Récupérer les commandes avec leurs items pour le retour de stock
+          const ordersToCancel = await prisma.storeOrder.findMany({
+            where: {
+              id: { in: orderIds },
+              status: { not: "CANCELLED" }, // Seulement celles qui ne sont pas déjà annulées
+            },
+            include: {
+              items: {
+                select: {
+                  productId: true,
+                  quantity: true,
+                  name: true,
+                },
+              },
+            },
+          })
+
+          // Transaction pour annuler et remettre le stock
+          result = await prisma.$transaction(async (tx) => {
+            let updatedCount = 0
+
+            for (const order of ordersToCancel) {
+              // Mettre à jour le statut de la commande
+              await tx.storeOrder.update({
+                where: { id: order.id },
+                data: {
+                  status: "CANCELLED",
+                  cancelReason: data.cancelReason || "Annulation groupée",
+                  updatedAt: new Date(),
+                },
+              })
+
+              // Remettre le stock pour chaque item
+              for (const item of order.items) {
+                const storeProduct = await tx.storeProduct.findFirst({
+                  where: {
+                    storeId: order.storeId,
+                    productId: item.productId,
+                  },
+                })
+
+                if (storeProduct) {
+                  await tx.storeProduct.update({
+                    where: { id: storeProduct.id },
+                    data: {
+                      stock: { increment: item.quantity },
+                    },
+                  })
+                } else {
+                  await tx.storeProduct.create({
+                    data: {
+                      storeId: order.storeId,
+                      productId: item.productId,
+                      stock: item.quantity,
+                      minStock: 0,
+                      maxStock: 0,
+                    },
+                  })
+                }
+
+                // Créer le mouvement de stock
+                await tx.stockMovement.create({
+                  data: {
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    type: "RETURN",
+                    note: `Annulation groupée commande ${order.number}`,
+                    userId: user.id,
+                  },
+                })
+              }
+
+              updatedCount++
+              console.log(`✅ Commande ${order.number} annulée - Stock remis pour ${order.items.length} produit(s)`)
+            }
+
+            return { count: updatedCount }
+          }, {
+            maxWait: 15000,
+            timeout: 30000,
+          })
+
+          // Envoyer les emails d'annulation pour chaque commande
+          const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
+          for (const order of ordersToCancel) {
+            const store = await prisma.store.findUnique({
+              where: { id: order.storeId },
+              select: { id: true, name: true }
+            })
+            const orderWithItems = await prisma.storeOrder.findUnique({
+              where: { id: order.id },
+              include: { items: { select: { name: true, quantity: true, unitPrice: true, total: true } } }
+            })
+            if (store && orderWithItems) {
+              sendOrderCancellationEmail(
+                {
+                  id: order.id,
+                  number: order.number,
+                  customerName: order.customerName,
+                  customerPhone: order.customerPhone || '',
+                  total: order.total,
+                  items: orderWithItems.items.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    total: item.total
+                  }))
+                },
+                store,
+                { id: user.id, name: userName, email: user.email },
+                data.cancelReason
+              ).catch(err => console.error('❌ Erreur envoi email annulation:', err))
+            }
+          }
+        } else {
+          // Vérifier si on réactive des commandes annulées (stock doit être redébité)
+          const ordersToReactivate = await prisma.storeOrder.findMany({
+            where: {
+              id: { in: orderIds },
+              status: "CANCELLED", // Commandes actuellement annulées
+            },
+            include: {
+              items: {
+                select: {
+                  productId: true,
+                  quantity: true,
+                  name: true,
+                },
+              },
+            },
+          })
+
+          if (ordersToReactivate.length > 0) {
+            // Transaction pour réactiver et redébiter le stock
+            result = await prisma.$transaction(async (tx) => {
+              let updatedCount = 0
+
+              // D'abord, traiter les commandes annulées qui doivent être réactivées
+              for (const order of ordersToReactivate) {
+                // Vérifier et débiter le stock pour chaque item
+                for (const item of order.items) {
+                  const storeProduct = await tx.storeProduct.findFirst({
+                    where: {
+                      storeId: order.storeId,
+                      productId: item.productId,
+                    },
+                  })
+
+                  if (storeProduct) {
+                    if (storeProduct.stock < item.quantity) {
+                      throw new Error(`Stock insuffisant pour ${item.name}. Disponible: ${storeProduct.stock}, requis: ${item.quantity}`)
+                    }
+                    
+                    await tx.storeProduct.update({
+                      where: { id: storeProduct.id },
+                      data: {
+                        stock: { decrement: item.quantity },
+                      },
+                    })
+                  } else {
+                    throw new Error(`Produit ${item.name} non trouvé dans le stock du magasin`)
+                  }
+
+                  // Créer le mouvement de stock (SALE)
+                  await tx.stockMovement.create({
+                    data: {
+                      productId: item.productId,
+                      quantity: -item.quantity,
+                      type: "SALE",
+                      note: `Réactivation commande ${order.number}`,
+                      userId: user.id,
+                    },
+                  })
+                }
+
+                // Mettre à jour le statut
+                const orderUpdateData: any = {
+                  status: data.status,
+                  updatedAt: new Date(),
+                }
+                
+                if (data.status === "DELIVERED") {
+                  orderUpdateData.deliveredAt = new Date()
+                  orderUpdateData.paymentStatus = "PAID"
+                }
+
+                await tx.storeOrder.update({
+                  where: { id: order.id },
+                  data: orderUpdateData,
+                })
+
+                updatedCount++
+                console.log(`✅ Commande ${order.number} réactivée - Stock débité pour ${order.items.length} produit(s)`)
+              }
+
+              // Ensuite, mettre à jour les commandes non-annulées (simple update)
+              const nonCancelledOrderIds = orderIds.filter(
+                (id: string) => !ordersToReactivate.find(o => o.id === id)
+              )
+
+              if (nonCancelledOrderIds.length > 0) {
+                const simpleUpdateData: any = { status: data.status, updatedAt: new Date() }
+                
+                if (data.status === "DELIVERED") {
+                  simpleUpdateData.deliveredAt = new Date()
+                  simpleUpdateData.paymentStatus = "PAID"
+                }
+
+                const simpleResult = await tx.storeOrder.updateMany({
+                  where: { id: { in: nonCancelledOrderIds } },
+                  data: simpleUpdateData,
+                })
+                updatedCount += simpleResult.count
+              }
+
+              return { count: updatedCount }
+            }, {
+              maxWait: 15000,
+              timeout: 30000,
+            })
+          } else {
+            // Aucune commande annulée, mise à jour simple
+            updateData = { status: data.status, updatedAt: new Date() }
+
+            if (data.status === "DELIVERED") {
+              updateData.deliveredAt = new Date()
+              updateData.paymentStatus = "PAID"
+            }
+
+            result = await prisma.storeOrder.updateMany({
+              where: {
+                id: { in: orderIds },
+              },
+              data: updateData,
+            })
+          }
+
+          // Envoyer les emails de livraison si le statut est DELIVERED
+          if (data.status === "DELIVERED") {
+            const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
+            const deliveredOrders = await prisma.storeOrder.findMany({
+              where: { id: { in: orderIds }, status: "DELIVERED" },
+              include: { items: { select: { name: true, quantity: true, unitPrice: true, total: true } } }
+            })
+            for (const order of deliveredOrders) {
+              const store = await prisma.store.findUnique({
+                where: { id: order.storeId },
+                select: { id: true, name: true }
+              })
+              if (store) {
+                sendOrderDeliveredEmail(
+                  {
+                    id: order.id,
+                    number: order.number,
+                    customerName: order.customerName,
+                    customerPhone: order.customerPhone || '',
+                    total: order.total,
+                    items: order.items.map(item => ({
+                      name: item.name,
+                      quantity: item.quantity,
+                      unitPrice: item.unitPrice,
+                      total: item.total
+                    }))
+                  },
+                  store,
+                  { id: user.id, name: userName, email: user.email }
+                ).catch(err => console.error('❌ Erreur envoi email livraison:', err))
+              }
+            }
+          }
         }
-
-        result = await prisma.storeOrder.updateMany({
-          where: {
-            id: { in: orderIds },
-          },
-          data: updateData,
-        })
         break
 
       case "assignZone":

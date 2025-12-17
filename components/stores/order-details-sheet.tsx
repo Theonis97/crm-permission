@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -7,6 +8,23 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import {
   Package,
   User,
@@ -21,15 +39,19 @@ import {
   FileText,
   Printer,
   Download,
+  Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 interface OrderDetailsSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   order: Order | null
+  onStatusChange?: () => void
 }
 
 interface Order {
@@ -92,7 +114,68 @@ export function OrderDetailsSheet({
   open,
   onOpenChange,
   order,
+  onStatusChange,
 }: OrderDetailsSheetProps) {
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [currentStatus, setCurrentStatus] = useState<string | null>(null)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+
+  // Synchroniser le statut local avec la commande
+  const displayStatus = currentStatus || order?.status
+
+  const handleStatusChange = async (newStatus: string, reason?: string) => {
+    if (!order) return
+    
+    // Si c'est une annulation, ouvrir le dialog pour saisir le motif
+    if (newStatus === "CANCELLED" && !reason) {
+      setShowCancelDialog(true)
+      return
+    }
+    
+    try {
+      setIsUpdatingStatus(true)
+      const body: any = { status: newStatus }
+      if (newStatus === "CANCELLED" && reason) {
+        body.cancelReason = reason
+      }
+      
+      const response = await fetch(`/api/store-orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur lors de la mise à jour")
+      }
+
+      setCurrentStatus(newStatus)
+      toast.success(`Statut mis à jour : ${statusConfig[newStatus]?.label || newStatus}`)
+      onStatusChange?.()
+    } catch (error: any) {
+      toast.error(error.message || "Erreur lors de la mise à jour du statut")
+    } finally {
+      setIsUpdatingStatus(false)
+    }
+  }
+
+  const handleConfirmCancel = async () => {
+    if (!cancelReason.trim()) {
+      toast.error("Le motif d'annulation est obligatoire")
+      return
+    }
+    await handleStatusChange("CANCELLED", cancelReason.trim())
+    setShowCancelDialog(false)
+    setCancelReason("")
+  }
+
+  // Reset le statut local quand la commande change
+  if (order && currentStatus && currentStatus !== order.status && !isUpdatingStatus) {
+    setCurrentStatus(null)
+  }
+
   if (!order) return null
 
   const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
@@ -118,10 +201,11 @@ export function OrderDetailsSheet({
     FAILED: { label: "Échouée", color: "bg-red-100 text-red-700" },
   }
 
-  const currentStatus = statusConfig[order.status] || statusConfig.PENDING
-  const StatusIcon = currentStatus.icon
+  const currentStatusConfig = statusConfig[displayStatus || 'PENDING'] || statusConfig.PENDING
+  const StatusIcon = currentStatusConfig.icon
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-3xl p-0 flex flex-col h-full">
         {/* Header fixe */}
@@ -131,10 +215,68 @@ export function OrderDetailsSheet({
               <h2 className="text-3xl font-bold text-gray-900">FACTURE</h2>
               <p className="text-sm text-gray-500 mt-1">N° {order.number}</p>
             </div>
-            <Badge className={cn("text-sm px-4 py-1.5 border", currentStatus.color)}>
-              <StatusIcon className="h-4 w-4 mr-1.5" />
-              {currentStatus.label}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {isUpdatingStatus && <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
+              <Select 
+                value={displayStatus} 
+                onValueChange={handleStatusChange}
+                disabled={isUpdatingStatus}
+              >
+                <SelectTrigger className={cn(
+                  "w-auto min-w-[160px] border",
+                  currentStatusConfig.color
+                )}>
+                  <div className="flex items-center gap-1.5">
+                    <StatusIcon className="h-4 w-4" />
+                    <SelectValue />
+                  </div>
+                </SelectTrigger>
+                <SelectContent className="z-[9999]">
+                  <SelectItem value="PENDING">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-yellow-600" />
+                      En attente
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="CONFIRMED">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                      Confirmée
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="PREPARING">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-purple-600" />
+                      En préparation
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="READY">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Prête
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="DELIVERING">
+                    <div className="flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-indigo-600" />
+                      En livraison
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="DELIVERED">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Livrée
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="CANCELLED">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      Annulée
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <div className="flex items-center justify-between text-sm">
@@ -389,5 +531,70 @@ export function OrderDetailsSheet({
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* Dialog d'annulation avec motif obligatoire - EN DEHORS du Sheet */}
+    <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+              <XCircle className="h-5 w-5 text-red-600" />
+            </div>
+            <div>
+              <DialogTitle>Annuler la commande</DialogTitle>
+              <DialogDescription>
+                Commande {order?.number}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-sm text-red-700">
+              <strong>Attention :</strong> Cette action annulera la commande et remettra les produits en stock. Un email de notification sera envoyé aux administrateurs.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="cancelReason" className="text-base font-semibold">
+              Motif d'annulation <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              id="cancelReason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Expliquez pourquoi cette commande est annulée..."
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setShowCancelDialog(false)
+              setCancelReason("")
+            }}
+            disabled={isUpdatingStatus}
+          >
+            Fermer
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleConfirmCancel}
+            disabled={isUpdatingStatus || !cancelReason.trim()}
+          >
+            {isUpdatingStatus && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Annuler la commande
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
