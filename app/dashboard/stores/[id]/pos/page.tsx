@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { ChangeCalculator } from "./components/ChangeCalculator"
 import {
   Search,
   Plus,
@@ -1969,21 +1970,8 @@ export default function PosPage() {
             {/* Footer Panier - Total */}
             {cart.length > 0 && (
               <div className="border-t p-3 space-y-3">
-                {/* Remise globale - uniquement montant fixe */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-gray-700">Remise globale</div>
-                  <Input
-                    type="number"
-                    placeholder="Montant remise FCFA"
-                    value={globalDiscountAmount || ''}
-                    onChange={(e) => {
-                      setGlobalDiscountAmount(Number(e.target.value))
-                      setGlobalDiscount(0)
-                    }}
-                    className="h-8 text-sm"
-                    min="0"
-                  />
-                </div>
+                {/* Calculateur de monnaie (Remplace la remise globale) */}
+                <ChangeCalculator totalToPay={cartTotal} />
 
                 <Separator />
 
@@ -2001,14 +1989,8 @@ export default function PosPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">TVA</span>
-                    <span className="font-medium">{cartTax.toLocaleString()} F</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Frais livraison</span>
-                    <span className="font-medium">{deliveryFee.toLocaleString()} F</span>
-                  </div>
+
+
                   <Separator />
                   <div className="flex justify-between text-lg font-bold pt-1">
                     <span>Total</span>
