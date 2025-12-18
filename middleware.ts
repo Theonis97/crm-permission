@@ -5,6 +5,7 @@ export function middleware(request: NextRequest) {
   const allowedOrigins = [
     'https://inotech-gabon.com',
     'https://livreur.inotech-gabon.com',
+    'https://sous-caisse.inotech-gabon.com',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
@@ -12,7 +13,7 @@ export function middleware(request: NextRequest) {
   ];
 
   const origin = request.headers.get('origin');
-  const allowedOrigin = process.env.NODE_ENV === 'production' 
+  const allowedOrigin = process.env.NODE_ENV === 'production'
     ? (allowedOrigins.includes(origin || '') ? (origin || 'https://inotech-gabon.com') : 'https://inotech-gabon.com')
     : '*';
 
@@ -24,7 +25,7 @@ export function middleware(request: NextRequest) {
         'Access-Control-Allow-Origin': allowedOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-        'Access-Control-Allow-Credentials': 'false',
+        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400',
       },
     });
@@ -33,12 +34,12 @@ export function middleware(request: NextRequest) {
   // Ajouter les headers CORS à toutes les réponses API
   if (request.nextUrl.pathname.startsWith('/api/')) {
     const response = NextResponse.next();
-    
+
     response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    response.headers.set('Access-Control-Allow-Credentials', 'false');
-    
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+
     return response;
   }
 
