@@ -76,7 +76,19 @@ class BambooPayService {
    * Effectue une requête POST vers l'API BambooPay
    */
   private async post<T>(endpoint: string, body?: object): Promise<T> {
-    const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+    const url = `${this.config.baseUrl}${endpoint}`
+
+    // Log de la requête (masquer le password dans l'auth)
+    console.log(`🌐 [BambooPay] Request to: ${url}`)
+    console.log(`📤 [BambooPay] Body:`, JSON.stringify(body, null, 2))
+
+    // Debug: Vérifier l'authentification
+    const authHeader = this.getAuthHeader()
+    console.log(`🔑 [BambooPay] Auth header:`, authHeader.substring(0, 20) + '...')
+    console.log(`🔑 [BambooPay] Username:`, this.config.username)
+    console.log(`🔑 [BambooPay] Merchant ID:`, this.config.merchantId)
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -85,15 +97,30 @@ class BambooPayService {
       body: body ? JSON.stringify(body) : undefined,
     })
 
+    console.log(`📥 [BambooPay] Response status: ${response.status} ${response.statusText}`)
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      const error: any = new Error(errorData.message || `HTTP ${response.status}`)
+      const errorText = await response.text()
+      console.log(`❌ [BambooPay] Error response (raw):`, errorText)
+
+      let errorData: any = {}
+      try {
+        errorData = JSON.parse(errorText)
+        console.log(`❌ [BambooPay] Error response (parsed):`, errorData)
+      } catch (e) {
+        console.log(`❌ [BambooPay] Could not parse error as JSON`)
+        errorData = { message: errorText }
+      }
+
+      const error: any = new Error(errorData.message || errorText || `HTTP ${response.status}`)
       error.status = response.status
       error.data = errorData
       throw error
     }
 
-    return response.json()
+    const responseData = await response.json()
+    console.log(`✅ [BambooPay] Success response:`, responseData)
+    return responseData
   }
 
   /**
@@ -115,22 +142,22 @@ class BambooPayService {
   formatPhoneNumber(phone: string): string {
     // Supprimer les espaces et caractères spéciaux
     let cleaned = phone.replace(/[\s\-\.\(\)]/g, "")
-    
+
     // Supprimer le + au début
     if (cleaned.startsWith("+")) {
       cleaned = cleaned.substring(1)
     }
-    
+
     // Supprimer le préfixe 241 (Gabon)
     if (cleaned.startsWith("241")) {
       cleaned = cleaned.substring(3)
     }
-    
+
     // S'assurer que le numéro commence par 0
     if (!cleaned.startsWith("0") && cleaned.length === 8) {
       cleaned = "0" + cleaned
     }
-    
+
     return cleaned
   }
 
@@ -145,8 +172,8 @@ class BambooPayService {
   }
 
   /**
-   * Initie un paiement instantané (Mobile Money)
-   * Le client reçoit un push sur son téléphone pour valider le paiement
+   * Initie un paiement avec redirection vers Bamboo Pay
+   * Renvoie une URL de redirection vers la plateforme de paiement
    */
   async initiateInstantPayment(
     phone: string,
@@ -166,46 +193,55 @@ class BambooPayService {
     const paymentReference = reference || this.generateReference()
 
     try {
-      console.log(`🔄 [BambooPay] Initiation paiement: ${formattedPhone} - ${amount} FCFA - Ref: ${paymentReference}`)
 
-      const response = await this.post<BambooPayInstantPaymentResponse>(
-        "/mobile/instant-payment",
+      console.log(`🔄 [BambooPay] Initiation paiement avec redirection: ${formattedPhone} - ${amount} FCFA - Ref: ${paymentReference}`)
+
+      // Utiliser l'endpoint /send pour le paiement avec redirection
+      const response = await this.post<{ redirect_url: string }>(
+        "/send",
         {
-          phone: formattedPhone,
-          amount: amount.toString(),
-          payer_name: payerName,
-          reference: paymentReference,
+          payerName: payerName,
+          matricule: paymentReference, // Utiliser la référence comme matricule
+          raisonSociale: "Vente POS",
+          billingId: paymentReference,
+          transactionAmount: amount.toString(),
           merchant_id: this.config.merchantId,
-          callback_url: this.config.callbackUrl,
-          operateur: null, // Auto-détection par BambooPay
+          phone: formattedPhone,
+          return_url: this.config.callbackUrl || null,
+          update_status_url: this.config.callbackUrl || null,
         }
       )
 
-      console.log(`✅ [BambooPay] Paiement initié:`, response)
+      console.log(`✅ [BambooPay] Paiement initié avec succès:`, response)
 
-      if (response.status) {
+      if (response.redirect_url) {
         return {
           success: true,
           status: "pending",
-          reference: response.reference,
-          referenceBp: response.reference_bp,
-          message: "Paiement initié. En attente de validation par le client.",
+          reference: paymentReference,
+          referenceBp: response.redirect_url, // Stocker l'URL de redirection
+          message: "Paiement initié. Redirection vers Bamboo Pay...",
         }
       } else {
         return {
           success: false,
           status: "failed",
           reference: paymentReference,
-          error: response.message || "Erreur lors de l'initiation du paiement",
+          error: "Aucune URL de redirection reçue",
         }
       }
     } catch (error: any) {
       console.error(`❌ [BambooPay] Erreur initiation:`, error.data || error.message)
-      
+
       let errorMessage = "Erreur de connexion au service de paiement"
-      
+
       if (error.status === 401) {
-        errorMessage = "Identifiants BambooPay invalides"
+        // Distinguer entre identifiants invalides et compte non activé
+        if (error.data?.message?.includes("permission")) {
+          errorMessage = "Votre compte Bamboo Pay n'est pas encore activé pour les APIs. Contactez Bamboo Pay."
+        } else {
+          errorMessage = "Identifiants BambooPay invalides"
+        }
       } else if (error.status === 422) {
         errorMessage = "Données de paiement invalides"
       } else if (error.data?.message) {

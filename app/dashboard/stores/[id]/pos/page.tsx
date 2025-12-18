@@ -138,7 +138,7 @@ export default function PosPage() {
   const params = useParams()
   const storeId = params.id as string
   const { data: session } = useSession()
-  
+
   // États
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -147,13 +147,13 @@ export default function PosPage() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState(2) // Commence directement à l'étape 2 (récapitulatif)
   const [orderType, setOrderType] = useState<"CLIENT_DELIVERY" | "CLIENT_STORE" | "DRIVER">("CLIENT_STORE") // Mode vente directe par défaut
-  
+
   // États pour l'impression
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [showPrinterSettings, setShowPrinterSettings] = useState(false)
   const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const printerSettings = usePrinterSettings(storeId)
-  
+
   // Données
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -162,13 +162,13 @@ export default function PosPage() {
   const [contacts, setContacts] = useState<any[]>([])
   const [deliveryZones, setDeliveryZones] = useState<any[]>([])
   const [storeInfo, setStoreInfo] = useState<any>(null)
-  
+
   // Commandes sous-caisse
   const [subBoxOrders, setSubBoxOrders] = useState<any[]>([])
   const [isLoadingSubBoxOrders, setIsLoadingSubBoxOrders] = useState(true)
   const [subBoxOrderSearch, setSubBoxOrderSearch] = useState("")
   const [selectedSubBoxOrder, setSelectedSubBoxOrder] = useState<any>(null)
-  
+
   // Loading states
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const [isLoadingCategories, setIsLoadingCategories] = useState(true)
@@ -176,7 +176,7 @@ export default function PosPage() {
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [searchingLocation, setSearchingLocation] = useState(false)
-  
+
   // Formulaire checkout - Étape 1: Client
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
   const [contactSearch, setContactSearch] = useState("")
@@ -184,7 +184,7 @@ export default function PosPage() {
   const [customerLastName, setCustomerLastName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [customerEmail, setCustomerEmail] = useState("")
-  
+
   // Formulaire checkout - Étape 2: Livraison
   const [deliveryAddress, setDeliveryAddress] = useState("")
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([])
@@ -200,7 +200,7 @@ export default function PosPage() {
     const today = new Date()
     return today.toISOString().split('T')[0] // Format YYYY-MM-DD
   })
-  
+
   // Formulaire checkout - Étape 3: Paiement
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [notes, setNotes] = useState("")
@@ -226,7 +226,7 @@ export default function PosPage() {
   // Refs
   const addressDropdownRef = useRef<HTMLDivElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   // Scanner de code-barres
   const barcodeBufferRef = useRef<string>("")
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -264,12 +264,12 @@ export default function PosPage() {
   // Scanner de code-barres - Écoute les entrées clavier rapides (lecteur USB)
   useEffect(() => {
     let lastKeyTime = 0
-    
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const currentTime = Date.now()
       const timeDiff = currentTime - lastKeyTime
       lastKeyTime = currentTime
-      
+
       // Si c'est Enter, traiter le buffer s'il contient quelque chose
       if (event.key === 'Enter') {
         if (barcodeBufferRef.current.length >= 3) { // Au moins 3 caractères pour un code valide
@@ -278,38 +278,38 @@ export default function PosPage() {
           const scannedCode = barcodeBufferRef.current.trim()
           console.log('🔍 Code-barres scanné:', scannedCode)
           barcodeBufferRef.current = ""
-          
+
           if (barcodeTimeoutRef.current) {
             clearTimeout(barcodeTimeoutRef.current)
             barcodeTimeoutRef.current = null
           }
-          
+
           handleBarcodeScanned(scannedCode)
         }
         return
       }
-      
+
       // Ignorer les touches de contrôle et spéciales
       if (event.key.length !== 1) {
         return
       }
-      
+
       // Ignorer si on est dans un champ de saisie et que c'est une saisie lente (> 50ms entre touches)
       const target = event.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-      
+
       if (isInputField && timeDiff > 50 && barcodeBufferRef.current.length === 0) {
         return
       }
-      
+
       // Ajouter le caractère au buffer
       barcodeBufferRef.current += event.key
-      
+
       // Réinitialiser le timeout
       if (barcodeTimeoutRef.current) {
         clearTimeout(barcodeTimeoutRef.current)
       }
-      
+
       // Vider le buffer après 200ms d'inactivité (saisie manuelle probable)
       barcodeTimeoutRef.current = setTimeout(() => {
         if (barcodeBufferRef.current.length > 0) {
@@ -320,7 +320,7 @@ export default function PosPage() {
     }
 
     window.addEventListener('keydown', handleKeyDown, true) // Capture phase
-    
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
       if (barcodeTimeoutRef.current) {
@@ -332,18 +332,18 @@ export default function PosPage() {
   // Fonction pour traiter un code-barres scanné
   const handleBarcodeScanned = (code: string) => {
     // Chercher le produit par SKU ou ID
-    const product = products.find(p => 
-      p.sku === code || 
+    const product = products.find(p =>
+      p.sku === code ||
       p.id === code ||
       p.sku?.toLowerCase() === code.toLowerCase()
     )
-    
+
     if (product) {
       if (product.stock <= 0) {
         toast.error(`${product.name} - Stock épuisé !`)
         return
       }
-      
+
       // Ajouter au panier
       setCart(prev => {
         const existingItem = prev.find(item => item.product.id === product.id)
@@ -360,7 +360,7 @@ export default function PosPage() {
         }
         return [...prev, { product, quantity: 1 }]
       })
-      
+
       toast.success(`📦 ${product.name} scanné et ajouté au panier`)
     } else {
       toast.error(`Produit non trouvé : ${code}`)
@@ -469,14 +469,14 @@ export default function PosPage() {
   const loadSubBoxOrderToCart = (order: any) => {
     // Vider le panier actuel
     setCart([])
-    
+
     // Charger les produits de la commande dans le panier
     const newCartItems: CartItem[] = []
-    
+
     for (const item of order.items) {
       // Trouver le produit correspondant dans la liste des produits
       const product = products.find(p => p.id === item.productId)
-      
+
       if (product) {
         newCartItems.push({
           product,
@@ -487,7 +487,7 @@ export default function PosPage() {
         toast.error(`Produit "${item.name}" non trouvé dans le stock`)
       }
     }
-    
+
     if (newCartItems.length > 0) {
       setCart(newCartItems)
       setSelectedSubBoxOrder(order)
@@ -502,9 +502,9 @@ export default function PosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, action: "validate" }),
       })
-      
+
       if (!response.ok) throw new Error("Erreur validation")
-      
+
       // Recharger les commandes
       loadSubBoxOrders()
       setSelectedSubBoxOrder(null)
@@ -520,7 +520,7 @@ export default function PosPage() {
       if (!response.ok) throw new Error("Erreur chargement magasin")
       const data = await response.json()
       setStoreInfo(data)
-      
+
       // Mettre à jour les paramètres d'imprimante avec les infos du magasin
       const currentSettings = localStorage.getItem(`printer-settings-${storeId}`)
       if (!currentSettings) {
@@ -550,18 +550,18 @@ export default function PosPage() {
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesCategory = selectedCategories.length === 0 || 
-                            selectedCategories.includes(product.categoryId)
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesCategory = selectedCategories.length === 0 ||
+        selectedCategories.includes(product.categoryId)
       const matchesBrand = selectedBrand === "all" || product.brandId === selectedBrand
-      
+
       return matchesSearch && matchesCategory && matchesBrand && product.stock > 0
     })
   }, [searchTerm, selectedCategories, selectedBrand, products])
 
   const toggleCategory = (categoryId: string) => {
-    setSelectedCategories(prev => 
-      prev.includes(categoryId) 
+    setSelectedCategories(prev =>
+      prev.includes(categoryId)
         ? prev.filter(id => id !== categoryId)
         : [...prev, categoryId]
     )
@@ -598,12 +598,12 @@ export default function PosPage() {
   // Autocomplétion d'adresses avec OpenStreetMap (avec debouncing)
   const handleAddressSearch = (query: string) => {
     setDeliveryAddress(query)
-    
+
     // Clear le timer précédent
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
     }
-    
+
     if (query.length < 3) {
       setAddressSuggestions([])
       setShowAddressSuggestions(false)
@@ -631,7 +631,7 @@ export default function PosPage() {
           }
         )
         const data = await response.json()
-        
+
         setAddressSuggestions(data)
         setShowAddressSuggestions(data.length > 0)
       } catch (error: any) {
@@ -648,13 +648,13 @@ export default function PosPage() {
   const handleSelectAddress = (suggestion: any) => {
     const lat = parseFloat(suggestion.lat)
     const lng = parseFloat(suggestion.lon)
-    
+
     setDeliveryAddress(suggestion.display_name)
     setDeliveryLatitude(lat)
     setDeliveryLongitude(lng)
     setShowAddressSuggestions(false)
     setAddressSuggestions([])
-    
+
     // Détecter automatiquement la zone
     const zone = detectDeliveryZone(lat, lng)
     if (zone) {
@@ -730,11 +730,11 @@ export default function PosPage() {
           status: "CLIENT",
         }),
       })
-      
+
       if (contactResponse.ok) {
         const newContact = await contactResponse.json()
         contactId = newContact.id
-        
+
         // Recharger la liste des contacts pour inclure le nouveau
         loadContacts()
       }
@@ -785,12 +785,12 @@ export default function PosPage() {
 
     const order = await response.json()
     toast.success(`Commande ${order.number} créée avec succès !`)
-    
+
     // Réinitialiser
     resetCheckoutForm()
     clearCart()
     setIsCheckoutOpen(false)
-    
+
     // Recharger les produits pour mettre à jour les stocks
     loadProducts()
   }
@@ -821,25 +821,25 @@ export default function PosPage() {
     }
 
     const result = await response.json()
-    
+
     toast.success(`Demande d'approvisionnement créée avec succès ! (ID: ${result.data.id.slice(-8).toUpperCase()})`)
-    
+
     // Réinitialiser
     resetCheckoutForm()
     clearCart()
     setIsCheckoutOpen(false)
-    
+
     // Pas besoin de recharger les produits car c'est une demande, pas un transfert direct
   }
 
   const handleCreateClientStoreOrder = async () => {
     // Vérifier si le client est renseigné (au moins un champ rempli)
     const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
-    
+
     // Valeurs par défaut si client non renseigné
     const defaultCustomerName = "Client"
     const defaultCustomerPhone = "+241xxxxxx"
-    
+
     // Créer ou récupérer le contact seulement si le client est renseigné
     let contactId = selectedContactId
     if (!contactId && isCustomerProvided) {
@@ -856,11 +856,11 @@ export default function PosPage() {
           status: "CLIENT",
         }),
       })
-      
+
       if (contactResponse.ok) {
         const newContact = await contactResponse.json()
         contactId = newContact.id
-        
+
         // Recharger la liste des contacts pour inclure le nouveau
         loadContacts()
       }
@@ -909,11 +909,11 @@ export default function PosPage() {
 
     const sale = await response.json()
     toast.success(`Vente ${sale.number || 'POS'} enregistrée avec succès !`)
-    
+
     // Générer le ticket d'impression
     const ticket = generateTicketData(sale, saleData)
     setTicketData(ticket)
-    
+
     // Impression automatique ou affichage du dialog selon les paramètres
     if (printerSettings.autoprint) {
       // Impression automatique
@@ -931,12 +931,12 @@ export default function PosPage() {
       // Afficher le dialog d'impression
       setShowPrintDialog(true)
     }
-    
+
     // Réinitialiser
     resetCheckoutForm()
     clearCart()
     setIsCheckoutOpen(false)
-    
+
     // Recharger les produits pour mettre à jour les stocks
     loadProducts()
   }
@@ -945,23 +945,23 @@ export default function PosPage() {
   const generateTicketData = (sale: any, saleData: any): TicketData => {
     // Ne pas afficher les informations client si c'est un client anonyme
     const showCustomerInfo = !saleData.isAnonymousCustomer
-    
+
     return {
       // Informations du magasin (utiliser storeInfo en priorité, puis les paramètres personnalisés)
       storeName: storeInfo?.name || printerSettings.storeName || "Magasin",
       storeAddress: storeInfo?.address || printerSettings.storeAddress || undefined,
       storePhone: storeInfo?.phone || printerSettings.storePhone || undefined,
       storeLogo: (printerSettings.showLogo && storeInfo?.logo) ? storeInfo.logo : undefined,
-      
+
       // Informations de la vente
       ticketNumber: sale.number || `POS-${Date.now()}`,
       date: new Date(),
       cashier: session?.user?.name || "Caissier",
-      
+
       // Client - masquer si client anonyme
       customerName: showCustomerInfo ? saleData.customerName : undefined,
       customerPhone: showCustomerInfo ? saleData.customerPhone : undefined,
-      
+
       // Articles
       items: cart.map(item => ({
         name: item.product.name,
@@ -972,16 +972,16 @@ export default function PosPage() {
         discount: item.discount,
         discountAmount: item.discountAmount
       })),
-      
+
       // Totaux
       subtotal: cartSubtotal,
       tax: cartTax,
       discount: globalDiscountApplied,
       total: cartTotal,
-      
+
       // Paiement
       paymentMethod: saleData.paymentMethod || "CASH",
-      
+
       // Notes
       notes: saleData.notes || undefined
     }
@@ -1013,10 +1013,10 @@ export default function PosPage() {
     setGlobalDiscount(0)
     setGlobalDiscountAmount(0)
     // Réinitialiser les réductions par article
-    setCart(prev => prev.map(item => ({ 
-      ...item, 
-      discount: undefined, 
-      discountAmount: undefined 
+    setCart(prev => prev.map(item => ({
+      ...item,
+      discount: undefined,
+      discountAmount: undefined
     })))
     // Réinitialiser BambooPay
     resetBambooPayState()
@@ -1055,22 +1055,54 @@ export default function PosPage() {
         body: JSON.stringify({
           phone: bambooPayPhone,
           amount: totalAmount,
-          payerName: customerFirstName.trim() || customerLastName.trim() 
-            ? `${customerFirstName} ${customerLastName}`.trim() 
+          payerName: customerFirstName.trim() || customerLastName.trim()
+            ? `${customerFirstName} ${customerLastName}`.trim()
             : "Client POS",
         }),
       })
 
       const data = await response.json()
 
+      // Debug: Afficher la réponse complète
+      console.log('🔍 [BambooPay] Response:', {
+        status: response.status,
+        ok: response.ok,
+        data: data
+      })
+
+      if (!response.ok) {
+        // Erreur HTTP (400, 401, 500, etc.)
+        setBambooPayStatus("failed")
+        setBambooPayMessage(data.error || data.details || "Erreur lors de l'initiation du paiement")
+        toast.error(data.error || data.details || "Erreur lors de l'initiation du paiement")
+        return
+      }
+
       if (data.success && data.referenceBp) {
-        setBambooPayReference(data.referenceBp)
+        // data.referenceBp contient maintenant l'URL de redirection
+        const redirectUrl = data.referenceBp
+
+        setBambooPayReference(data.reference)
         setBambooPayStatus("waiting")
-        setBambooPayMessage("En attente de validation sur le téléphone du client...")
-        setBambooPayAttempt(1)
-        
-        // Démarrer le polling pour vérifier le statut
-        startBambooPayPolling(data.referenceBp)
+        setBambooPayMessage("Veuillez compléter le paiement sur la page Bamboo Pay...")
+
+        // Ouvrir la page de paiement Bamboo Pay dans une popup
+        const popup = window.open(
+          redirectUrl,
+          'BambooPay',
+          'width=600,height=800,scrollbars=yes,resizable=yes'
+        )
+
+        if (!popup) {
+          toast.error("Veuillez autoriser les popups pour ce site")
+          setBambooPayStatus("failed")
+          setBambooPayMessage("Impossible d'ouvrir la page de paiement")
+        } else {
+          toast.info("Page de paiement ouverte. Complétez le paiement sur Bamboo Pay.")
+        }
+
+        // Note : Le retour se fera via return_url configuré dans Bamboo Pay
+        // Pas de polling nécessaire
       } else {
         setBambooPayStatus("failed")
         setBambooPayMessage(data.error || "Erreur lors de l'initiation du paiement")
@@ -1130,7 +1162,7 @@ export default function PosPage() {
         setBambooPayStatus("success")
         setBambooPayMessage("Paiement confirmé !")
         toast.success("Paiement BambooPay confirmé !")
-        
+
         // Lancer automatiquement la création de la vente et l'impression
         await handleCreateClientStoreOrderAfterBambooPay()
       } else if (data.status === "failed") {
@@ -1154,12 +1186,12 @@ export default function PosPage() {
   const handleCreateClientStoreOrderAfterBambooPay = async () => {
     try {
       setIsSubmitting(true)
-      
+
       // Vérifier si le client est renseigné
       const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
       const defaultCustomerName = "Client"
       const defaultCustomerPhone = "+241xxxxxx"
-      
+
       // Créer ou récupérer le contact
       let contactId = selectedContactId
       if (!contactId && isCustomerProvided) {
@@ -1175,7 +1207,7 @@ export default function PosPage() {
             status: "CLIENT",
           }),
         })
-        
+
         if (contactResponse.ok) {
           const newContact = await contactResponse.json()
           contactId = newContact.id
@@ -1190,7 +1222,7 @@ export default function PosPage() {
         customerName: isCustomerProvided ? `${customerFirstName} ${customerLastName}`.trim() || defaultCustomerName : defaultCustomerName,
         customerPhone: isCustomerProvided ? customerPhone || bambooPayPhone || defaultCustomerPhone : defaultCustomerPhone,
         customerEmail: customerEmail || null,
-        paymentMethod: "BAMBOO_PAY",
+        paymentMethod: "MOBILE",
         paymentReference: bambooPayReference,
         notes: notes || `Vente POS - Paiement BambooPay (Ref: ${bambooPayReference})`,
         items: cart.map(item => {
@@ -1225,11 +1257,11 @@ export default function PosPage() {
 
       const sale = await response.json()
       toast.success(`Vente ${sale.number || 'POS'} enregistrée avec succès !`)
-      
+
       // Générer le ticket d'impression
       const ticket = generateTicketData(sale, saleData)
       setTicketData(ticket)
-      
+
       // Impression automatique
       if (printerSettings.autoprint) {
         try {
@@ -1244,7 +1276,7 @@ export default function PosPage() {
       } else {
         setShowPrintDialog(true)
       }
-      
+
       // Réinitialiser
       resetCheckoutForm()
       clearCart()
@@ -1300,7 +1332,7 @@ export default function PosPage() {
   const cartSubtotal = cart.reduce((sum, item) => {
     const itemPrice = item.product.prixVente
     const itemTotal = itemPrice * item.quantity
-    
+
     // Appliquer la réduction par article
     let discountedTotal = itemTotal
     if (item.discount && item.discount > 0) {
@@ -1308,16 +1340,16 @@ export default function PosPage() {
     } else if (item.discountAmount && item.discountAmount > 0) {
       discountedTotal = Math.max(0, itemTotal - item.discountAmount)
     }
-    
+
     return sum + discountedTotal
   }, 0)
-  
+
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0)
-  
+
   const cartTax = cart.reduce((sum, item) => {
     const itemPrice = item.product.prixVente
     const itemTotal = itemPrice * item.quantity
-    
+
     // Appliquer la réduction par article pour calculer la TVA sur le montant réduit
     let discountedTotal = itemTotal
     if (item.discount && item.discount > 0) {
@@ -1325,14 +1357,14 @@ export default function PosPage() {
     } else if (item.discountAmount && item.discountAmount > 0) {
       discountedTotal = Math.max(0, itemTotal - item.discountAmount)
     }
-    
+
     return sum + (discountedTotal * item.product.tva / 100)
   }, 0)
-  
+
   // Appliquer la remise globale
   let finalSubtotal = cartSubtotal
   let globalDiscountApplied = 0
-  
+
   if (globalDiscount > 0) {
     globalDiscountApplied = cartSubtotal * (globalDiscount / 100)
     finalSubtotal = cartSubtotal - globalDiscountApplied
@@ -1340,7 +1372,7 @@ export default function PosPage() {
     globalDiscountApplied = Math.min(globalDiscountAmount, cartSubtotal)
     finalSubtotal = cartSubtotal - globalDiscountApplied
   }
-  
+
   const cartTotal = finalSubtotal + cartTax + deliveryFee
 
   const addToCart = (product: Product) => {
@@ -1363,7 +1395,7 @@ export default function PosPage() {
       removeFromCart(productId)
       return
     }
-    
+
     setCart(prev =>
       prev.map(item =>
         item.product.id === productId
@@ -1383,16 +1415,16 @@ export default function PosPage() {
 
   // Fonctions pour gérer les réductions par article
   const updateItemDiscount = (productId: string, discount: number) => {
-    setCart(prev => prev.map(item => 
-      item.product.id === productId 
+    setCart(prev => prev.map(item =>
+      item.product.id === productId
         ? { ...item, discount: Math.max(0, Math.min(100, discount)), discountAmount: undefined }
         : item
     ))
   }
 
   const updateItemDiscountAmount = (productId: string, discountAmount: number) => {
-    setCart(prev => prev.map(item => 
-      item.product.id === productId 
+    setCart(prev => prev.map(item =>
+      item.product.id === productId
         ? { ...item, discountAmount: Math.max(0, discountAmount), discount: undefined }
         : item
     ))
@@ -1402,22 +1434,22 @@ export default function PosPage() {
   const generateDayCloseTicket = (summary: any): TicketData => {
     const currentSettings = localStorage.getItem(`printer-settings-${storeId}`)
     const settings = currentSettings ? JSON.parse(currentSettings) : {}
-    
+
     return {
       // Informations du magasin (utiliser storeInfo en priorité)
       storeName: storeInfo?.name || settings.storeName || "Magasin",
       storeAddress: storeInfo?.address || settings.storeAddress || undefined,
       storePhone: storeInfo?.phone || settings.storePhone || undefined,
       storeLogo: (settings.showLogo && storeInfo?.logo) ? storeInfo.logo : undefined,
-      
+
       // Informations de la clôture
       ticketNumber: `CLOSE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`,
       date: new Date(),
       cashier: session?.user?.name || "Caissier",
-      
+
       // Client (clôture de journée)
       customerName: "CLÔTURE DE JOURNÉE",
-      
+
       // Articles (résumé des ventes)
       items: [
         {
@@ -1439,16 +1471,16 @@ export default function PosPage() {
           total: summary.totalRevenue || 0
         }
       ],
-      
+
       // Totaux
       subtotal: summary.totalRevenue || 0,
       tax: 0,
       discount: 0,
       total: summary.totalRevenue || 0,
-      
+
       // Paiement
       paymentMethod: "ESPECES",
-      
+
       // Notes spéciales pour la clôture
       notes: `Journée du ${new Date().toLocaleDateString('fr-FR')}\nPériode: ${summary.startTime || '00:00'} - ${summary.endTime || new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\nDétail des ventes:\n${summary.sales?.slice(0, 5).map((sale: any, index: number) => `${index + 1}. ${sale.customerName || 'Client'} - ${formatFCFA(sale.total)}`).join('\n') || 'Aucune vente'}${summary.sales?.length > 5 ? `\n... et ${summary.sales.length - 5} autres` : ''}`
     }
@@ -1463,25 +1495,25 @@ export default function PosPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
-      
+
       if (!closeResponse.ok) {
         throw new Error('Erreur lors de l\'enregistrement de la clôture')
       }
-      
+
       const closeData = await closeResponse.json()
       toast.success(closeData.isUpdate ? 'Clôture mise à jour avec succès !' : 'Journée clôturée avec succès !')
-      
+
       // 2. Récupérer le résumé pour l'impression
       const summaryResponse = await fetch(`/api/stores/${storeId}/day-close-summary`)
       if (!summaryResponse.ok) {
         throw new Error('Erreur lors du chargement du résumé')
       }
-      
+
       const summaryData = await summaryResponse.json()
-      
+
       // 3. Générer et imprimer directement le ticket de clôture
       const closeTicket = generateDayCloseTicket(summaryData)
-      
+
       try {
         const { thermalPrinter } = await import('@/lib/thermal-printer')
         await thermalPrinter.printTicket(closeTicket)
@@ -1490,11 +1522,11 @@ export default function PosPage() {
         console.error('Erreur impression clôture:', printError)
         toast.error('Journée clôturée mais erreur d\'impression du ticket')
       }
-      
+
       // 4. Mettre à jour l'état pour afficher le résumé
       setDayCloseSummary(summaryData)
       setShowDayCloseSheet(true)
-      
+
     } catch (error: any) {
       console.error('Erreur:', error)
       toast.error(error?.message || 'Erreur lors de la clôture de la journée')
@@ -1522,6 +1554,57 @@ export default function PosPage() {
     }
   }
 
+  // CORRECTION STALE CLOSURE : Synchroniser la ref de création de commande à chaque rendu
+  const handleCreateOrderRef = useRef(handleCreateClientStoreOrderAfterBambooPay)
+  useEffect(() => {
+    handleCreateOrderRef.current = handleCreateClientStoreOrderAfterBambooPay
+  })
+
+  // Réintroduction du listener Bamboo Pay avec le fix
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Vérifier l'origine pour la sécurité
+      if (event.origin !== window.location.origin) {
+        return
+      }
+
+      // Vérifier que c'est un message Bamboo Pay
+      if (event.data?.type === 'BAMBOO_PAY_RETURN') {
+        const { status, ref } = event.data
+
+        console.log('🔔 [POS] Message reçu de Bamboo Pay:', { status, ref })
+
+        if (status === 'completed') {
+          // Paiement réussi
+          setBambooPayStatus('success')
+          setBambooPayMessage('Paiement confirmé !')
+          toast.success('Paiement Bamboo Pay confirmé !')
+
+          console.log("🛒 [POS] Appel de handleCreateOrderRef.current()")
+          // Appel via la ref pour avoir la fonction AVEC le panier à jour
+          if (handleCreateOrderRef.current) {
+            await handleCreateOrderRef.current()
+          }
+        } else if (status === 'failed') {
+          // Paiement échoué
+          setBambooPayStatus('failed')
+          setBambooPayMessage('Le paiement a échoué')
+          toast.error('Le paiement Bamboo Pay a échoué')
+        } else if (status === 'pending') {
+          // Paiement en attente
+          setBambooPayStatus('waiting')
+          setBambooPayMessage('Paiement en attente...')
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+
+    return () => {
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [])
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Section Gauche - Produits */}
@@ -1539,12 +1622,12 @@ export default function PosPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            
+
             {/* Catégories - 8 colonnes avec scroll strict */}
             <div className="col-span-8 flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap flex-shrink-0">Catégories:</span>
               <div className="flex-1 overflow-hidden">
-                <div 
+                <div
                   className="flex gap-2 overflow-x-auto scrollbar-hide py-1"
                   style={{
                     scrollbarWidth: 'none',
@@ -1585,7 +1668,7 @@ export default function PosPage() {
                   <p className="text-[10px] text-gray-500">{subBoxOrders.length} en attente</p>
                 </div>
               </div>
-              
+
               {/* Recherche par code client */}
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
@@ -1601,7 +1684,7 @@ export default function PosPage() {
                 />
               </div>
             </div>
-            
+
             {/* Liste des commandes */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {isLoadingSubBoxOrders ? (
@@ -1632,13 +1715,13 @@ export default function PosPage() {
                         En attente
                       </Badge>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1">
                       <span>{order.subBox?.name || "Sous-caisse"}</span>
                       <span>•</span>
                       <span>{order.totalItems} article{order.totalItems > 1 ? "s" : ""}</span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-sm text-gray-900">
                         {order.subtotal?.toLocaleString()} F
@@ -1651,7 +1734,7 @@ export default function PosPage() {
                 ))
               )}
             </div>
-            
+
             {/* Footer - Clôture de journée */}
             <div className="p-2 border-t">
               <button
@@ -1680,9 +1763,9 @@ export default function PosPage() {
           <div className="flex-1 p-4 overflow-y-auto">
             <div className="mb-3">
               <h2 className="text-base font-semibold text-gray-900">
-                {selectedCategories.length === 0 ? "Tous les articles" : 
-                 selectedCategories.length === 1 ? categories.find(c => c.id === selectedCategories[0])?.name :
-                 `${selectedCategories.length} catégories sélectionnées`}
+                {selectedCategories.length === 0 ? "Tous les articles" :
+                  selectedCategories.length === 1 ? categories.find(c => c.id === selectedCategories[0])?.name :
+                    `${selectedCategories.length} catégories sélectionnées`}
               </h2>
               <p className="text-xs text-gray-500">
                 {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''} disponible{filteredProducts.length > 1 ? 's' : ''}
@@ -1714,11 +1797,11 @@ export default function PosPage() {
                         Bas
                       </div>
                     )}
-                    
+
                     <div className="text-center">
                       {product.photos && product.photos.length > 0 ? (
-                        <img 
-                          src={product.photos[0]} 
+                        <img
+                          src={product.photos[0]}
                           alt={product.name}
                           className="w-full h-16 object-contain mb-2"
                         />
@@ -1787,8 +1870,8 @@ export default function PosPage() {
                   {cart.map((item) => (
                     <div key={item.product.id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
                       {item.product.photos && item.product.photos.length > 0 ? (
-                        <img 
-                          src={item.product.photos[0]} 
+                        <img
+                          src={item.product.photos[0]}
                           alt={item.product.name}
                           className="w-10 h-10 object-contain bg-white rounded"
                         />
@@ -1797,7 +1880,7 @@ export default function PosPage() {
                           <Package className="h-5 w-5 text-gray-300" />
                         </div>
                       )}
-                      
+
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-xs text-gray-900 truncate">
                           {item.product.name}
@@ -1805,7 +1888,7 @@ export default function PosPage() {
                         <div className="text-xs text-gray-500">
                           {item.product.prixVente} F x {item.quantity}
                         </div>
-                        
+
                         {/* Réduction par article - uniquement montant fixe */}
                         <div className="flex gap-1 mt-1">
                           <Input
@@ -1817,7 +1900,7 @@ export default function PosPage() {
                             min="0"
                           />
                         </div>
-                        
+
                         <div className="flex items-center gap-1 mt-4">
                           <button
                             onClick={(e) => {
@@ -1828,11 +1911,11 @@ export default function PosPage() {
                           >
                             <Minus className="h-2 w-2" />
                           </button>
-                          
+
                           <span className="w-6 text-center text-xs font-medium">
                             {item.quantity}
                           </span>
-                          
+
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -1855,7 +1938,7 @@ export default function PosPage() {
                           )}>
                             {(item.product.prixVente * item.quantity).toLocaleString()} F
                           </div>
-                          
+
                           {/* Prix avec réduction */}
                           {(item.discount || item.discountAmount) && (
                             <div className="font-bold text-sm text-green-600">
@@ -1872,7 +1955,7 @@ export default function PosPage() {
                             </div>
                           )}
                         </div>
-                        
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1915,7 +1998,7 @@ export default function PosPage() {
                     <span className="text-gray-600">Sous-total</span>
                     <span className="font-medium">{cartSubtotal.toLocaleString()} F</span>
                   </div>
-                  
+
                   {/* Afficher la remise globale si applicable */}
                   {globalDiscountApplied > 0 && (
                     <div className="flex justify-between text-red-600">
@@ -1923,7 +2006,7 @@ export default function PosPage() {
                       <span>-{globalDiscountApplied.toLocaleString()} F</span>
                     </div>
                   )}
-                  
+
                   <div className="flex justify-between">
                     <span className="text-gray-600">TVA</span>
                     <span className="font-medium">{cartTax.toLocaleString()} F</span>
@@ -1942,7 +2025,7 @@ export default function PosPage() {
                 {/* Boutons d'action */}
                 <div className="space-y-2">
                   {/* Bouton de validation */}
-                  <Button 
+                  <Button
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                     size="lg"
                     onClick={() => setIsCheckoutOpen(true)}
@@ -1986,7 +2069,7 @@ export default function PosPage() {
                     value={contactSearch}
                     onChange={(e) => setContactSearch(e.target.value)}
                   />
-                  
+
                   {contactSearch && (
                     <div className="border rounded-lg max-h-48 overflow-y-auto">
                       {contacts
@@ -2015,8 +2098,8 @@ export default function PosPage() {
                           c.phone?.includes(contactSearch) ||
                           c.email?.toLowerCase().includes(contactSearch.toLowerCase())
                       }).length === 0 && (
-                        <div className="p-4 text-center text-gray-500 text-sm">Aucun client trouvé</div>
-                      )}
+                          <div className="p-4 text-center text-gray-500 text-sm">Aucun client trouvé</div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -2153,7 +2236,7 @@ export default function PosPage() {
                       <Phone className="h-5 w-5 text-blue-600" />
                       <h4 className="font-medium text-blue-900">Numéro de téléphone pour le paiement</h4>
                     </div>
-                   
+
                     <Input
                       type="tel"
                       placeholder="Ex: 077 00 00 00"
@@ -2189,21 +2272,12 @@ export default function PosPage() {
                         </span>
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-medium text-yellow-900">En attente de validation</h4>
+                        <h4 className="font-medium text-yellow-900">Paiement en cours</h4>
                         <p className="text-sm text-yellow-700">{bambooPayMessage}</p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-yellow-700">Tentative {bambooPayAttempt}/6</span>
-                      <span className="text-yellow-600 font-medium">
-                        Temps restant: ~{Math.max(0, (6 - bambooPayAttempt) * 10)}s
-                      </span>
-                    </div>
-                    <div className="w-full bg-yellow-200 rounded-full h-2">
-                      <div 
-                        className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${(bambooPayAttempt / 6) * 100}%` }}
-                      />
+                    <div className="bg-yellow-100 rounded p-3 text-sm text-yellow-800">
+                      💡 Complétez le paiement sur la page Bamboo Pay qui s'est ouverte.
                     </div>
                     <Button
                       variant="outline"
@@ -2253,18 +2327,18 @@ export default function PosPage() {
                   </div>
                 )}
 
-                
+
                 <Separator />
 
                 {/* Récapitulatif vente directe */}
                 <div className="bg-purple-50 rounded-lg p-4 space-y-3">
                   <h3 className="font-semibold text-purple-900">Récapitulatif de la vente</h3>
-                  
+
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Client:</span>
                       <span className="font-medium">
-                        {(customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()) 
+                        {(customerFirstName.trim() || customerLastName.trim() || customerPhone.trim())
                           ? `${customerFirstName} ${customerLastName}${customerPhone ? ` • ${customerPhone}` : ''}`.trim()
                           : <span className="text-gray-400 italic">Client anonyme</span>
                         }
@@ -2292,7 +2366,7 @@ export default function PosPage() {
                       <span>Articles ({cartItemsCount})</span>
                       <span>{cartSubtotal.toLocaleString()} FCFA</span>
                     </div>
-                    
+
                     {/* Afficher la remise globale si applicable */}
                     {globalDiscountApplied > 0 && (
                       <div className="flex justify-between text-red-600">
@@ -2300,7 +2374,7 @@ export default function PosPage() {
                         <span>-{globalDiscountApplied.toLocaleString()} FCFA</span>
                       </div>
                     )}
-                    
+
                     <div className="flex justify-between text-gray-600">
                       <span>TVA</span>
                       <span>{cartTax.toLocaleString()} FCFA</span>
@@ -2436,11 +2510,11 @@ export default function PosPage() {
                     {dayCloseSummary.storeName}
                   </p>
                   <p className="text-sm text-gray-600">
-                    {new Date().toLocaleDateString('fr-FR', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
+                    {new Date().toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
                     })}
                   </p>
                 </div>
@@ -2473,7 +2547,7 @@ export default function PosPage() {
                 <h3 className="font-semibold text-gray-900 border-b pb-2">
                   Détail des ventes
                 </h3>
-                
+
                 {dayCloseSummary.sales && dayCloseSummary.sales.length > 0 ? (
                   <div className="space-y-2">
                     {dayCloseSummary.sales.map((sale: any, index: number) => (
@@ -2483,7 +2557,7 @@ export default function PosPage() {
                             {sale.customerName || 'Client anonyme'}
                           </div>
                           <div className="text-xs text-gray-600">
-                            {new Date(sale.createdAt).toLocaleTimeString('fr-FR')} • 
+                            {new Date(sale.createdAt).toLocaleTimeString('fr-FR')} •
                             {sale.itemCount} article{sale.itemCount > 1 ? 's' : ''}
                           </div>
                         </div>
@@ -2529,8 +2603,8 @@ export default function PosPage() {
 
               {/* Boutons d'action */}
               <div className="flex gap-2 pt-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full"
                   onClick={() => setShowDayCloseSheet(false)}
                 >

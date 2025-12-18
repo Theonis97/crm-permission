@@ -9,6 +9,7 @@ import { bambooPayService } from "@/lib/bamboo-pay"
  */
 export async function POST(request: NextRequest) {
   try {
+    
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 })

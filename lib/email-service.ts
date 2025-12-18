@@ -7,9 +7,9 @@ export const createTransporter = () => {
   const port = parseInt(process.env.SMTP_PORT || '587');
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const user = process.env.SMTP_USER;
-  
+
   console.log(`📧 Configuration SMTP: host=${host}, port=${port}, secure=${port === 465}, user=${user}`);
-  
+
   return nodemailer.createTransport({
     host: host,
     port: port,
@@ -76,7 +76,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
 
     // Envoyer l'email avec le code
     const transporter = createTransporter();
-    
+
     const mailOptions = {
       from: `"${process.env.APP_NAME || 'ERP-CRM'}" <${process.env.SMTP_USER}>`,
       to: deliveryPerson.email,
@@ -157,9 +157,9 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     return { success: true, code: resetCode };
   } catch (error) {
     console.error('❌ Erreur lors de la demande de réinitialisation:', error);
-    return { 
-      success: false, 
-      error: 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.' 
+    return {
+      success: false,
+      error: 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.'
     };
   }
 }
@@ -180,9 +180,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
     });
 
     if (!deliveryPerson) {
-      return { 
-        success: false, 
-        error: 'Token invalide ou expiré. Veuillez demander un nouveau lien de réinitialisation.' 
+      return {
+        success: false,
+        error: 'Token invalide ou expiré. Veuillez demander un nouveau lien de réinitialisation.'
       };
     }
 
@@ -210,9 +210,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
     return { success: true };
   } catch (error) {
     console.error('❌ Erreur lors de la réinitialisation:', error);
-    return { 
-      success: false, 
-      error: 'Erreur lors de la réinitialisation du mot de passe.' 
+    return {
+      success: false,
+      error: 'Erreur lors de la réinitialisation du mot de passe.'
     };
   }
 }
@@ -263,7 +263,7 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
   try {
     // Vérifier d'abord le code
     const verification = await verifyResetCode(email, code);
-    
+
     if (!verification.success) {
       return verification;
     }
@@ -287,18 +287,16 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
     return { success: true };
   } catch (error) {
     console.error('❌ Erreur lors de la réinitialisation:', error);
-    return { 
-      success: false, 
-      error: 'Erreur lors de la réinitialisation du mot de passe.' 
+    return {
+      success: false,
+      error: 'Erreur lors de la réinitialisation du mot de passe.'
     };
   }
 }
 
 // Destinataires des emails de ventes POS
 const POS_SALES_EMAIL_RECIPIENTS = [
-  'intechgabon241@gmail.com',
-  "mapangoukarl.km@gmail.com",
-  "asselidas50@gmail.com"
+  'gabinmoundziegou@gmail.com',
 ];
 
 /**
@@ -376,11 +374,11 @@ export async function sendDailyPosSalesEmail(
     // Calculer le CA avant cette vente
     const previousCA = previousSales.reduce((sum, sale) => sum + sale.total, 0);
     const previousTotalDiscount = previousSales.reduce((sum, sale) => sum + (sale.totalDiscount || 0), 0);
-    
+
     // Nouveau CA total (CA précédent + nouvelle vente)
     const newTotalCA = previousCA + newSale.total;
     const totalDailyDiscount = previousTotalDiscount + (newSale.totalDiscount || 0);
-    
+
     // Nombre de ventes du jour (y compris la nouvelle)
     const dailySalesCount = previousSales.length + 1;
 
@@ -390,14 +388,14 @@ export async function sendDailyPosSalesEmail(
       month: 'short',
       year: 'numeric'
     });
-    
+
     const dateStr = now.toLocaleDateString('fr-FR', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
-    
+
     const timeStr = now.toLocaleTimeString('fr-FR', {
       hour: '2-digit',
       minute: '2-digit'
@@ -593,11 +591,11 @@ Cet email a été envoyé automatiquement par le système ERP-CRM.
 
     console.log(`📧 Tentative d'envoi d'email POS à: ${POS_SALES_EMAIL_RECIPIENTS.join(', ')}`);
     console.log(`📧 Sujet: ${mailOptions.subject}`);
-    
+
     // Vérifier la connexion SMTP avant d'envoyer
     await transporter.verify();
     console.log('✅ Connexion SMTP vérifiée avec succès');
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log(`📧 Email de vente POS envoyé avec succès!`);
     console.log(`📧 Message ID: ${info.messageId}`);
@@ -608,9 +606,9 @@ Cet email a été envoyé automatiquement par le système ERP-CRM.
     console.error('❌ Erreur lors de l\'envoi de l\'email POS:', error);
     console.error('❌ Code erreur:', error.code);
     console.error('❌ Message:', error.message);
-    return { 
-      success: false, 
-      error: `Erreur SMTP: ${error.message || 'Erreur inconnue'}` 
+    return {
+      success: false,
+      error: `Erreur SMTP: ${error.message || 'Erreur inconnue'}`
     };
   }
 }
@@ -680,7 +678,7 @@ export async function sendDayClosureEmail(
       month: 'short',
       year: 'numeric'
     });
-    
+
     const dateStr = today.toLocaleDateString('fr-FR', {
       weekday: 'long',
       year: 'numeric',
@@ -692,7 +690,7 @@ export async function sendDayClosureEmail(
     const dailyTotalSales = dailySales.length;
     const dailyTotalRevenue = dailySales.reduce((sum, sale) => sum + sale.total, 0);
     const dailyTotalDiscount = dailySales.reduce((sum, sale) => sum + (sale.totalDiscount || 0), 0);
-    const dailyTotalItems = dailySales.reduce((sum, sale) => 
+    const dailyTotalItems = dailySales.reduce((sum, sale) =>
       sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
     );
 
@@ -704,7 +702,7 @@ export async function sendDayClosureEmail(
         hour: '2-digit',
         minute: '2-digit'
       });
-      
+
       const itemsHtml = sale.items.map(item => {
         const hasDiscount = item.discount && item.discount > 0;
         const originalTotal = item.unitPrice * item.quantity;
@@ -874,15 +872,15 @@ CHIFFRE D'AFFAIRES : ${formatFCFA(dailyTotalRevenue)}
 DÉTAIL DES VENTES
 -----------------
 ${dailySales.length > 0 ? dailySales.map((sale, i) => {
-  const saleTime = new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  return `
+        const saleTime = new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        return `
 ${i + 1}. ${sale.number} (${saleTime})
    Client: ${sale.customerName || 'Anonyme'} - ${sale.customerPhone || 'N/A'}
    Articles:
 ${sale.items.map(item => `   - ${item.name} x${item.quantity} = ${formatFCFA(item.total)}`).join('\n')}
    ${sale.totalDiscount && sale.totalDiscount > 0 ? `Remise: -${formatFCFA(sale.totalDiscount)}\n   ` : ''}Total: ${formatFCFA(sale.total)}
 `;
-}).join('\n') : 'Aucune vente pour cette journée'}
+      }).join('\n') : 'Aucune vente pour cette journée'}
 
 ---
 Email de clôture de journée généré automatiquement.
@@ -892,11 +890,11 @@ Email de clôture de journée généré automatiquement.
     console.log(`📧 Tentative d'envoi d'email de clôture à: ${POS_SALES_EMAIL_RECIPIENTS.join(', ')}`);
     console.log(`📧 Sujet: ${mailOptions.subject}`);
     console.log(`📧 Nombre de ventes du jour: ${dailyTotalSales}`);
-    
+
     // Vérifier la connexion SMTP avant d'envoyer
     await transporter.verify();
     console.log('✅ Connexion SMTP vérifiée avec succès');
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log(`📧 Email de clôture envoyé avec succès!`);
     console.log(`📧 Message ID: ${info.messageId}`);
@@ -907,9 +905,9 @@ Email de clôture de journée généré automatiquement.
     console.error('❌ Erreur lors de l\'envoi de l\'email de clôture:', error);
     console.error('❌ Code erreur:', error.code);
     console.error('❌ Message:', error.message);
-    return { 
-      success: false, 
-      error: `Erreur SMTP: ${error.message || 'Erreur inconnue'}` 
+    return {
+      success: false,
+      error: `Erreur SMTP: ${error.message || 'Erreur inconnue'}`
     };
   }
 }
