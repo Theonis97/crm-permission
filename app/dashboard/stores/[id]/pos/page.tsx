@@ -7,13 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import {
   Dialog,
   DialogContent,
@@ -2415,7 +2409,7 @@ export default function PosPage() {
                 <Button
                   onClick={handleCreateOrder}
                   disabled={isSubmitting}
-                  className="bg-purple-600 hover:bg-purple-700"
+                  className="w-[300px] bg-purple-600 hover:bg-purple-700 h-10"
                 >
                   {isSubmitting ? (
                     <>
@@ -2425,7 +2419,7 @@ export default function PosPage() {
                   ) : (
                     <>
                       <Banknote className="h-4 w-4 mr-2" />
-                      Encaisser et imprimer
+                      Encaisser
                     </>
                   )}
                 </Button>

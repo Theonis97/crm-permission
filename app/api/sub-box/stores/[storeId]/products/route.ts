@@ -82,17 +82,42 @@ export async function GET(
     })
 
     // URL de base pour les images
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    // En production, on veut pointer vers le domaine principal où sont stockées les images
+    // On utilise l'origine de la requête comme fallback fiable si les variables d'env ne sont pas définies
+    const origin = request.nextUrl.origin
+    // FALLBACK FORCE : Si aucune variable n'est définie et que l'origine est localhost (cas de proxy ou autre), on force le domaine de prod
+    const defaultBaseUrl = (origin.includes("localhost") && process.env.NODE_ENV === "production")
+      ? "https://inotech-gabon.com"
+      : origin
+
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || defaultBaseUrl).replace(/\/$/, "")
 
     // Fonction pour construire l'URL complète de l'image
     const getFullImageUrl = (imagePath: string | null | undefined): string | null => {
       if (!imagePath) return null
-      // Si c'est déjà une URL complète, la retourner telle quelle
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        return imagePath
+
+      // Nettoyer les URLs localhost ou inotech-gabon génériques si elles sont déjà dans la base
+      // Cela permet de forcer la réutilisation de l'origine correcte détectée plus haut
+      let cleanPath = imagePath
+      if (cleanPath.startsWith("http://localhost:3000")) {
+        cleanPath = cleanPath.replace("http://localhost:3000", "")
+      } else if (cleanPath.startsWith("http://localhost:3001")) {
+        cleanPath = cleanPath.replace("http://localhost:3001", "")
+      } else if (cleanPath.startsWith("https://inotech-gabon.com")) {
+        // En cas de migration de domaine, on peut vouloir nettoyer ça aussi, mais c'est moins critique
+        // cleanPath = cleanPath.replace("https://inotech-gabon.com", "")
       }
-      // Sinon, préfixer avec l'URL de base
-      return `${baseUrl}${imagePath.startsWith("/") ? "" : "/"}${imagePath}`
+
+      // Si après nettoyage il reste un http/https, c'est une image externe valide (ex: S3, CDN externe)
+      if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+        return cleanPath
+      }
+
+      // Nettoyer le chemin pour s'assurer qu'il commence par un slash
+      cleanPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`
+
+      // Retourner l'URL complète avec le bon baseUrl (dynamique)
+      return `${baseUrl}${cleanPath}`
     }
 
     // Formater les produits pour l'affichage
