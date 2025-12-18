@@ -1586,6 +1586,7 @@ model SubBoxOrder {
   
   // Totaux calculés
   subtotal     Float             @default(0)
+  totalDiscount Float            @default(0) @map("total_discount")
   totalItems   Int               @default(0) @map("total_items")
   
   // Notes optionnelles
@@ -1620,6 +1621,7 @@ model SubBoxOrderItem {
   name          String   // Nom du produit
   sku           String?  // SKU du produit
   unitPrice     Float    @map("unit_price") // Prix unitaire
+  discount      Float    @default(0)
   
   quantity      Int      // Quantité
   total         Float    // Total (unitPrice * quantity)

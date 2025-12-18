@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get("Authorization")
-    
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json(
         { success: false, error: "Non autorisé" },
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.replace("Bearer ", "")
-    
+
     // Décoder le token
     let decoded: any
     try {
@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
         clientCode: clientCode.toUpperCase(),
         status: "PENDING",
         subtotal,
+        totalDiscount: body.totalDiscount || 0,
         totalItems,
         notes: notes || null,
         items: {

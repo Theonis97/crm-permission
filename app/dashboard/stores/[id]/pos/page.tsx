@@ -476,6 +476,7 @@ export default function PosPage() {
         newCartItems.push({
           product,
           quantity: item.quantity,
+          discountAmount: item.discount > 0 ? item.discount : undefined,
         })
       } else {
         // Si le produit n'est pas trouvé, on le signale
@@ -485,6 +486,13 @@ export default function PosPage() {
 
     if (newCartItems.length > 0) {
       setCart(newCartItems)
+      // Appliquer la remise globale si présente
+      if (order.totalDiscount > 0) {
+        setGlobalDiscountAmount(order.totalDiscount)
+      } else {
+        setGlobalDiscountAmount(0)
+        setGlobalDiscount(0)
+      }
       setSelectedSubBoxOrder(order)
       toast.success(`Commande ${order.clientCode} chargée (${newCartItems.length} article${newCartItems.length > 1 ? 's' : ''})`)
     }
@@ -1718,12 +1726,26 @@ export default function PosPage() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm text-gray-900">
-                        {order.subtotal?.toLocaleString()} F
-                      </span>
-                      <span className="text-[10px] text-gray-400">
-                        {new Date(order.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-sm text-gray-900">
+                          {((order.subtotal || 0) - (order.totalDiscount || 0)).toLocaleString()} F
+                        </span>
+                        {order.totalDiscount > 0 && (
+                          <span className="text-[10px] text-red-500 line-through">
+                            {order.subtotal?.toLocaleString()} F
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end">
+                        {order.totalDiscount > 0 && (
+                          <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-100 py-0 h-4 mb-1">
+                            -{order.totalDiscount?.toLocaleString()} F
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-gray-400">
+                          {new Date(order.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ))
