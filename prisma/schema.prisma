@@ -136,6 +136,9 @@ model Store {
   
   // SAV - Retours de produits
   productReturns ProductReturn[]
+  
+  // Sous-caisses
+  subBoxes SubBox[]
 
   @@map("stores")
 }
@@ -1541,5 +1544,92 @@ model ProductReturnItem {
   @@index([productReturnId])
   @@index([productId])
   @@map("product_return_items")
+}
+
+// ============================================================================
+// SOUS-CAISSES (SUB-BOXES) - Pour accélérer le processus de vente
+// ============================================================================
+
+// Statut d'une commande de sous-caisse
+enum SubBoxOrderStatus {
+  PENDING   // En attente - le client est encore avec la sous-caisse
+  VALIDATED // Validée - la caisse principale a validé et encaissé
+  CANCELLED // Annulée
+}
+
+// Sous-caisse d'un magasin
+model SubBox {
+  id          String   @id @default(cuid())
+  storeId     String   @map("store_id")
+  name        String   // Prénom de l'opérateur de la sous-caisse
+  code        String   // Code unique de la sous-caisse (ex: "SC01", "SC02")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store       Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders      SubBoxOrder[] // Commandes créées par cette sous-caisse
+
+  @@unique([storeId, code]) // Code unique par magasin
+  @@index([storeId])
+  @@index([isActive])
+  @@map("sub_boxes")
+}
+
+// Commande créée par une sous-caisse
+model SubBoxOrder {
+  id           String            @id @default(cuid())
+  subBoxId     String            @map("sub_box_id")
+  storeId      String            @map("store_id")
+  clientCode   String            @map("client_code") // Code unique donné au client (ex: "A001", "B042")
+  status       SubBoxOrderStatus @default(PENDING)
+  
+  // Totaux calculés
+  subtotal     Float             @default(0)
+  totalItems   Int               @default(0) @map("total_items")
+  
+  // Notes optionnelles
+  notes        String?
+  
+  // Validation par la caisse principale
+  validatedAt  DateTime?         @map("validated_at")
+  cancelledAt  DateTime?         @map("cancelled_at")
+  cancelReason String?           @map("cancel_reason")
+  
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  subBox       SubBox            @relation(fields: [subBoxId], references: [id], onDelete: Cascade)
+  items        SubBoxOrderItem[] // Produits de la commande
+
+  @@index([subBoxId])
+  @@index([storeId])
+  @@index([clientCode])
+  @@index([status])
+  @@index([createdAt])
+  @@map("sub_box_orders")
+}
+
+// Item d'une commande de sous-caisse
+model SubBoxOrderItem {
+  id            String   @id @default(cuid())
+  subBoxOrderId String   @map("sub_box_order_id")
+  productId     String   @map("product_id")
+  
+  // Snapshot du produit au moment de la création
+  name          String   // Nom du produit
+  sku           String?  // SKU du produit
+  unitPrice     Float    @map("unit_price") // Prix unitaire
+  
+  quantity      Int      // Quantité
+  total         Float    // Total (unitPrice * quantity)
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  subBoxOrder   SubBoxOrder @relation(fields: [subBoxOrderId], references: [id], onDelete: Cascade)
+
+  @@index([subBoxOrderId])
+  @@index([productId])
+  @@map("sub_box_order_items")
 }
 

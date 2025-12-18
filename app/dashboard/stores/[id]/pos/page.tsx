@@ -50,11 +50,15 @@ import {
   Calendar,
   Receipt,
   Settings,
+  Phone,
+  Clock,
+  XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { ThermalPrinterDialog } from "@/components/pos/thermal-printer-dialog"
-import { PrinterSettingsDialog, usePrinterSettings } from "@/components/pos/printer-settings-dialog"
+import { usePrinterSettings } from "@/components/pos/printer-settings-dialog"
+import { PosSettingsSheet } from "@/components/pos/pos-settings-sheet"
 import type { TicketData } from "@/lib/thermal-printer"
 
 interface Product {
@@ -159,6 +163,12 @@ export default function PosPage() {
   const [deliveryZones, setDeliveryZones] = useState<any[]>([])
   const [storeInfo, setStoreInfo] = useState<any>(null)
   
+  // Commandes sous-caisse
+  const [subBoxOrders, setSubBoxOrders] = useState<any[]>([])
+  const [isLoadingSubBoxOrders, setIsLoadingSubBoxOrders] = useState(true)
+  const [subBoxOrderSearch, setSubBoxOrderSearch] = useState("")
+  const [selectedSubBoxOrder, setSelectedSubBoxOrder] = useState<any>(null)
+  
   // Loading states
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const [isLoadingCategories, setIsLoadingCategories] = useState(true)
@@ -204,6 +214,15 @@ export default function PosPage() {
   const [dayCloseSummary, setDayCloseSummary] = useState<any>(null)
   const [isLoadingDayClose, setIsLoadingDayClose] = useState(false)
 
+  // BambooPay
+  const [posPaymentMethod, setPosPaymentMethod] = useState<"ESPECE" | "BAMBOO_PAY">("ESPECE")
+  const [bambooPayPhone, setBambooPayPhone] = useState("")
+  const [bambooPayStatus, setBambooPayStatus] = useState<"idle" | "initiating" | "waiting" | "success" | "failed" | "timeout">("idle")
+  const [bambooPayMessage, setBambooPayMessage] = useState("")
+  const [bambooPayAttempt, setBambooPayAttempt] = useState(0)
+  const [bambooPayReference, setBambooPayReference] = useState<string | null>(null)
+  const bambooPayIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
   // Refs
   const addressDropdownRef = useRef<HTMLDivElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -219,6 +238,7 @@ export default function PosPage() {
     loadBrands()
     loadDeliveryPersons()
     loadContacts()
+    loadSubBoxOrders()
     loadDeliveryZones()
     loadStoreInfo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,6 +445,72 @@ export default function PosPage() {
       setDeliveryZones(data.filter((z: any) => z.isActive))
     } catch (error: any) {
       console.error("Error loading delivery zones:", error)
+    }
+  }
+
+  const loadSubBoxOrders = async (search?: string) => {
+    try {
+      setIsLoadingSubBoxOrders(true)
+      const searchParam = search || subBoxOrderSearch
+      const url = `/api/stores/${storeId}/sub-box-orders?status=PENDING${searchParam ? `&search=${searchParam}` : ''}`
+      console.log("[POS] Loading sub-box orders from:", url)
+      const response = await fetch(url)
+      const data = await response.json()
+      console.log("[POS] Sub-box orders response:", data)
+      if (!response.ok) throw new Error("Erreur chargement commandes sous-caisse")
+      setSubBoxOrders(data.data || [])
+    } catch (error: any) {
+      console.error("Error loading sub-box orders:", error)
+    } finally {
+      setIsLoadingSubBoxOrders(false)
+    }
+  }
+
+  const loadSubBoxOrderToCart = (order: any) => {
+    // Vider le panier actuel
+    setCart([])
+    
+    // Charger les produits de la commande dans le panier
+    const newCartItems: CartItem[] = []
+    
+    for (const item of order.items) {
+      // Trouver le produit correspondant dans la liste des produits
+      const product = products.find(p => p.id === item.productId)
+      
+      if (product) {
+        newCartItems.push({
+          product,
+          quantity: item.quantity,
+        })
+      } else {
+        // Si le produit n'est pas trouvé, on le signale
+        toast.error(`Produit "${item.name}" non trouvé dans le stock`)
+      }
+    }
+    
+    if (newCartItems.length > 0) {
+      setCart(newCartItems)
+      setSelectedSubBoxOrder(order)
+      toast.success(`Commande ${order.clientCode} chargée (${newCartItems.length} article${newCartItems.length > 1 ? 's' : ''})`)
+    }
+  }
+
+  const validateSubBoxOrder = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/stores/${storeId}/sub-box-orders`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, action: "validate" }),
+      })
+      
+      if (!response.ok) throw new Error("Erreur validation")
+      
+      // Recharger les commandes
+      loadSubBoxOrders()
+      setSelectedSubBoxOrder(null)
+      toast.success("Commande sous-caisse validée")
+    } catch (error) {
+      toast.error("Erreur lors de la validation")
     }
   }
 
@@ -932,7 +1018,264 @@ export default function PosPage() {
       discount: undefined, 
       discountAmount: undefined 
     })))
+    // Réinitialiser BambooPay
+    resetBambooPayState()
   }
+
+  // Réinitialiser l'état BambooPay
+  const resetBambooPayState = () => {
+    setPosPaymentMethod("ESPECE")
+    setBambooPayPhone("")
+    setBambooPayStatus("idle")
+    setBambooPayMessage("")
+    setBambooPayAttempt(0)
+    setBambooPayReference(null)
+    if (bambooPayIntervalRef.current) {
+      clearInterval(bambooPayIntervalRef.current)
+      bambooPayIntervalRef.current = null
+    }
+  }
+
+  // Initier le paiement BambooPay
+  const initiateBambooPayPayment = async () => {
+    if (!bambooPayPhone.trim()) {
+      toast.error("Veuillez saisir le numéro de téléphone pour le paiement")
+      return
+    }
+
+    const totalAmount = finalSubtotal + cartTax
+
+    try {
+      setBambooPayStatus("initiating")
+      setBambooPayMessage("Envoi de la demande de paiement...")
+
+      const response = await fetch("/api/payments/bamboo-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: bambooPayPhone,
+          amount: totalAmount,
+          payerName: customerFirstName.trim() || customerLastName.trim() 
+            ? `${customerFirstName} ${customerLastName}`.trim() 
+            : "Client POS",
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.referenceBp) {
+        setBambooPayReference(data.referenceBp)
+        setBambooPayStatus("waiting")
+        setBambooPayMessage("En attente de validation sur le téléphone du client...")
+        setBambooPayAttempt(1)
+        
+        // Démarrer le polling pour vérifier le statut
+        startBambooPayPolling(data.referenceBp)
+      } else {
+        setBambooPayStatus("failed")
+        setBambooPayMessage(data.error || "Erreur lors de l'initiation du paiement")
+        toast.error(data.error || "Erreur lors de l'initiation du paiement")
+      }
+    } catch (error: any) {
+      console.error("Erreur BambooPay:", error)
+      setBambooPayStatus("failed")
+      setBambooPayMessage("Erreur de connexion au service de paiement")
+      toast.error("Erreur de connexion au service de paiement")
+    }
+  }
+
+  // Polling pour vérifier le statut du paiement BambooPay
+  const startBambooPayPolling = (transactionId: string) => {
+    const MAX_ATTEMPTS = 6 // 6 tentatives = 1 minute (10s x 6)
+    let currentAttempt = 1
+
+    // Vérifier immédiatement
+    checkBambooPayStatus(transactionId, currentAttempt, MAX_ATTEMPTS)
+
+    // Puis toutes les 10 secondes
+    bambooPayIntervalRef.current = setInterval(async () => {
+      currentAttempt++
+      setBambooPayAttempt(currentAttempt)
+
+      if (currentAttempt > MAX_ATTEMPTS) {
+        // Timeout atteint
+        if (bambooPayIntervalRef.current) {
+          clearInterval(bambooPayIntervalRef.current)
+          bambooPayIntervalRef.current = null
+        }
+        setBambooPayStatus("timeout")
+        setBambooPayMessage("Délai d'attente dépassé. Le paiement n'a pas été confirmé.")
+        toast.error("Délai d'attente dépassé pour le paiement BambooPay")
+        return
+      }
+
+      await checkBambooPayStatus(transactionId, currentAttempt, MAX_ATTEMPTS)
+    }, 10000) // 10 secondes
+  }
+
+  // Vérifier le statut d'un paiement BambooPay
+  const checkBambooPayStatus = async (transactionId: string, attempt: number, maxAttempts: number) => {
+    try {
+      setBambooPayMessage(`Vérification du paiement... (${attempt}/${maxAttempts})`)
+
+      const response = await fetch(`/api/payments/bamboo-pay?transactionId=${transactionId}`)
+      const data = await response.json()
+
+      if (data.status === "completed") {
+        // Paiement confirmé !
+        if (bambooPayIntervalRef.current) {
+          clearInterval(bambooPayIntervalRef.current)
+          bambooPayIntervalRef.current = null
+        }
+        setBambooPayStatus("success")
+        setBambooPayMessage("Paiement confirmé !")
+        toast.success("Paiement BambooPay confirmé !")
+        
+        // Lancer automatiquement la création de la vente et l'impression
+        await handleCreateClientStoreOrderAfterBambooPay()
+      } else if (data.status === "failed") {
+        // Paiement échoué
+        if (bambooPayIntervalRef.current) {
+          clearInterval(bambooPayIntervalRef.current)
+          bambooPayIntervalRef.current = null
+        }
+        setBambooPayStatus("failed")
+        setBambooPayMessage(data.message || "Le paiement a échoué")
+        toast.error(data.message || "Le paiement BambooPay a échoué")
+      }
+      // Si "pending", on continue le polling
+    } catch (error: any) {
+      console.error("Erreur vérification statut:", error)
+      // Ne pas arrêter le polling en cas d'erreur réseau temporaire
+    }
+  }
+
+  // Créer la vente après confirmation du paiement BambooPay
+  const handleCreateClientStoreOrderAfterBambooPay = async () => {
+    try {
+      setIsSubmitting(true)
+      
+      // Vérifier si le client est renseigné
+      const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
+      const defaultCustomerName = "Client"
+      const defaultCustomerPhone = "+241xxxxxx"
+      
+      // Créer ou récupérer le contact
+      let contactId = selectedContactId
+      if (!contactId && isCustomerProvided) {
+        const contactResponse = await fetch(`/api/stores/${storeId}/contacts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: customerFirstName || "Client",
+            lastName: customerLastName || "",
+            phone: customerPhone || bambooPayPhone || defaultCustomerPhone,
+            email: customerEmail || null,
+            type: "PERSONNE",
+            status: "CLIENT",
+          }),
+        })
+        
+        if (contactResponse.ok) {
+          const newContact = await contactResponse.json()
+          contactId = newContact.id
+          loadContacts()
+        }
+      }
+
+      // Créer la vente POS avec paiement BambooPay
+      const saleData = {
+        storeId,
+        contactId: contactId || null,
+        customerName: isCustomerProvided ? `${customerFirstName} ${customerLastName}`.trim() || defaultCustomerName : defaultCustomerName,
+        customerPhone: isCustomerProvided ? customerPhone || bambooPayPhone || defaultCustomerPhone : defaultCustomerPhone,
+        customerEmail: customerEmail || null,
+        paymentMethod: "BAMBOO_PAY",
+        paymentReference: bambooPayReference,
+        notes: notes || `Vente POS - Paiement BambooPay (Ref: ${bambooPayReference})`,
+        items: cart.map(item => {
+          const originalTotal = item.product.prixVente * item.quantity
+          let itemDiscount = 0
+          if (item.discount && item.discount > 0) {
+            itemDiscount = originalTotal * (item.discount / 100)
+          } else if (item.discountAmount && item.discountAmount > 0) {
+            itemDiscount = Math.min(item.discountAmount, originalTotal)
+          }
+          return {
+            productId: item.product.id,
+            quantity: item.quantity,
+            unitPrice: item.product.prixVente,
+            discount: itemDiscount,
+          }
+        }),
+        globalDiscount: globalDiscountApplied,
+        isAnonymousCustomer: !isCustomerProvided,
+      }
+
+      const response = await fetch(`/api/stores/${storeId}/pos-sale`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saleData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur création vente")
+      }
+
+      const sale = await response.json()
+      toast.success(`Vente ${sale.number || 'POS'} enregistrée avec succès !`)
+      
+      // Générer le ticket d'impression
+      const ticket = generateTicketData(sale, saleData)
+      setTicketData(ticket)
+      
+      // Impression automatique
+      if (printerSettings.autoprint) {
+        try {
+          const { thermalPrinter } = await import('@/lib/thermal-printer')
+          await thermalPrinter.printTicket(ticket)
+          toast.success('Ticket imprimé automatiquement !')
+        } catch (error: any) {
+          console.error('Erreur impression automatique:', error)
+          toast.error('Erreur d\'impression automatique')
+          setShowPrintDialog(true)
+        }
+      } else {
+        setShowPrintDialog(true)
+      }
+      
+      // Réinitialiser
+      resetCheckoutForm()
+      clearCart()
+      setIsCheckoutOpen(false)
+      loadProducts()
+    } catch (error: any) {
+      console.error("Erreur création vente BambooPay:", error)
+      toast.error(error.message || "Erreur lors de la création de la vente")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Annuler le paiement BambooPay en cours
+  const cancelBambooPayPayment = () => {
+    if (bambooPayIntervalRef.current) {
+      clearInterval(bambooPayIntervalRef.current)
+      bambooPayIntervalRef.current = null
+    }
+    resetBambooPayState()
+    toast.info("Paiement BambooPay annulé")
+  }
+
+  // Nettoyer l'intervalle au démontage
+  useEffect(() => {
+    return () => {
+      if (bambooPayIntervalRef.current) {
+        clearInterval(bambooPayIntervalRef.current)
+      }
+    }
+  }, [])
 
   const canProceedToStep2 = () => {
     if (orderType === "CLIENT_DELIVERY") {
@@ -1229,76 +1572,106 @@ export default function PosPage() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar Marques */}
-          <div className="w-40 bg-white border-r p-3 overflow-y-auto flex flex-col">
-            {isLoadingBrands ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+          {/* Sidebar Commandes Sous-Caisse */}
+          <div className="w-56 bg-white border-r flex flex-col">
+            {/* Header */}
+            <div className="p-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                  <Receipt className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-900">Sous-Caisses</h3>
+                  <p className="text-[10px] text-gray-500">{subBoxOrders.length} en attente</p>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-2 flex-1">
-                {/* Bouton Toutes */}
-                <button
-                  onClick={() => setSelectedBrand("all")}
-                  className={cn(
-                    "w-full flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
-                    selectedBrand === "all"
-                      ? "bg-blue-100 text-blue-700 border border-blue-200"
-                      : "hover:bg-gray-50 text-gray-600"
-                  )}
-                >
-                  <Package className="h-6 w-6" />
-                  <span className="font-medium text-xs text-center">Toutes</span>
-                </button>
-                
-                {/* Liste des marques */}
-                {brands.map((brand) => (
+              
+              {/* Recherche par code client */}
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Code client..."
+                  value={subBoxOrderSearch}
+                  onChange={(e) => {
+                    setSubBoxOrderSearch(e.target.value)
+                    loadSubBoxOrders(e.target.value)
+                  }}
+                  className="h-8 pl-7 text-xs"
+                />
+              </div>
+            </div>
+            
+            {/* Liste des commandes */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {isLoadingSubBoxOrders ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                </div>
+              ) : subBoxOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Receipt className="h-8 w-8 text-gray-300 mb-2" />
+                  <p className="text-xs text-gray-500">Aucune commande en attente</p>
+                </div>
+              ) : (
+                subBoxOrders.map((order) => (
                   <button
-                    key={brand.id}
-                    onClick={() => setSelectedBrand(brand.id)}
+                    key={order.id}
+                    onClick={() => loadSubBoxOrderToCart(order)}
                     className={cn(
-                      "w-full flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
-                      selectedBrand === brand.id
-                        ? "bg-blue-100 text-blue-700 border border-blue-200"
-                        : "hover:bg-gray-50 text-gray-600"
+                      "w-full p-3 rounded-lg border text-left transition-all hover:shadow-md",
+                      selectedSubBoxOrder?.id === order.id
+                        ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500"
+                        : "border-gray-200 hover:border-orange-300 bg-white"
                     )}
                   >
-                    {brand.logo ? (
-                      <img src={brand.logo} alt={brand.name} className="h-8 w-8 object-contain" />
-                    ) : (
-                      <div className="h-8 w-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-bold">
-                        {brand.name.substring(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="font-medium text-xs text-center line-clamp-2">{brand.name}</span>
-                    <span className="text-[10px] text-gray-400">{brand._count.products}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-base text-gray-900">{order.clientCode}</span>
+                      <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-700 border-amber-200">
+                        <Clock className="h-2.5 w-2.5 mr-1" />
+                        En attente
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1">
+                      <span>{order.subBox?.name || "Sous-caisse"}</span>
+                      <span>•</span>
+                      <span>{order.totalItems} article{order.totalItems > 1 ? "s" : ""}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-gray-900">
+                        {order.subtotal?.toLocaleString()} F
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(order.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
                   </button>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
             
-            {/* Bouton Clôture de journée */}
-            <div className="pt-3 mt-auto border-t">
+            {/* Footer - Clôture de journée */}
+            <div className="p-2 border-t">
               <button
                 onClick={handleDayClose}
                 disabled={isLoadingDayClose}
                 className={cn(
-                  "w-full flex flex-col items-center gap-1 p-3 rounded-lg transition-colors",
+                  "w-full flex items-center justify-center gap-2 p-2 rounded-lg transition-colors text-xs font-medium",
                   dayCloseSummary?.isAlreadyClosed
                     ? "bg-green-100 text-green-700 border border-green-200 hover:bg-green-200"
                     : "bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-200"
                 )}
               >
                 {isLoadingDayClose ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : dayCloseSummary?.isAlreadyClosed ? (
-                  <CheckCircle2 className="h-6 w-6" />
+                  <CheckCircle2 className="h-4 w-4" />
                 ) : (
-                  <Calendar className="h-6 w-6" />
+                  <Calendar className="h-4 w-4" />
                 )}
-                <span className="font-medium text-xs text-center">
-                  {dayCloseSummary?.isAlreadyClosed ? "Mettre à jour" : "Clôturer"}
-                </span>
+                {dayCloseSummary?.isAlreadyClosed ? "Mettre à jour" : "Clôturer la journée"}
               </button>
             </div>
           </div>
@@ -1698,18 +2071,189 @@ export default function PosPage() {
             {/* ÉTAPE 2: Paiement direct */}
             {checkoutStep === 2 && (
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                      <Banknote className="h-6 w-6 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-green-900">Paiement en espèces</h3>
-                      <p className="text-sm text-green-700">Vente directe au magasin - Paiement en espèces uniquement</p>
-                    </div>
+                {/* Sélection du mode de paiement */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-900">Mode de paiement</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Option Espèces */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPosPaymentMethod("ESPECE")
+                        resetBambooPayState()
+                      }}
+                      disabled={bambooPayStatus === "waiting" || bambooPayStatus === "initiating"}
+                      className={cn(
+                        "flex items-center gap-3 p-4 rounded-lg border-2 transition-all",
+                        posPaymentMethod === "ESPECE"
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-200 hover:border-gray-300",
+                        (bambooPayStatus === "waiting" || bambooPayStatus === "initiating") && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center",
+                        posPaymentMethod === "ESPECE" ? "bg-green-100" : "bg-gray-100"
+                      )}>
+                        <Banknote className={cn(
+                          "h-5 w-5",
+                          posPaymentMethod === "ESPECE" ? "text-green-600" : "text-gray-500"
+                        )} />
+                      </div>
+                      <div className="text-left">
+                        <div className={cn(
+                          "font-medium",
+                          posPaymentMethod === "ESPECE" ? "text-green-900" : "text-gray-700"
+                        )}>
+                          Espèces
+                        </div>
+                        <div className="text-xs text-gray-500">Paiement en cash</div>
+                      </div>
+                    </button>
+
+                    {/* Option BambooPay */}
+                    <button
+                      type="button"
+                      onClick={() => setPosPaymentMethod("BAMBOO_PAY")}
+                      disabled={bambooPayStatus === "waiting" || bambooPayStatus === "initiating"}
+                      className={cn(
+                        "flex items-center gap-3 p-4 rounded-lg border-2 transition-all",
+                        posPaymentMethod === "BAMBOO_PAY"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-gray-300",
+                        (bambooPayStatus === "waiting" || bambooPayStatus === "initiating") && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center",
+                        posPaymentMethod === "BAMBOO_PAY" ? "bg-blue-100" : "bg-gray-100"
+                      )}>
+                        <Smartphone className={cn(
+                          "h-5 w-5",
+                          posPaymentMethod === "BAMBOO_PAY" ? "text-blue-600" : "text-gray-500"
+                        )} />
+                      </div>
+                      <div className="text-left">
+                        <div className={cn(
+                          "font-medium",
+                          posPaymentMethod === "BAMBOO_PAY" ? "text-blue-900" : "text-gray-700"
+                        )}>
+                          Bamboo Pay
+                        </div>
+                        <div className="text-xs text-gray-500">Mobile Money</div>
+                      </div>
+                    </button>
                   </div>
                 </div>
 
+                {/* Section BambooPay - Saisie du numéro */}
+                {posPaymentMethod === "BAMBOO_PAY" && bambooPayStatus === "idle" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-5 w-5 text-blue-600" />
+                      <h4 className="font-medium text-blue-900">Numéro de téléphone pour le paiement</h4>
+                    </div>
+                   
+                    <Input
+                      type="tel"
+                      placeholder="Ex: 077 00 00 00"
+                      value={bambooPayPhone}
+                      onChange={(e) => setBambooPayPhone(e.target.value)}
+                      className="bg-white"
+                    />
+                  </div>
+                )}
+
+                {/* Section BambooPay - En cours d'initiation */}
+                {posPaymentMethod === "BAMBOO_PAY" && bambooPayStatus === "initiating" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                      <div>
+                        <h4 className="font-medium text-blue-900">Envoi de la demande...</h4>
+                        <p className="text-sm text-blue-700">{bambooPayMessage}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Section BambooPay - En attente de validation */}
+                {posPaymentMethod === "BAMBOO_PAY" && bambooPayStatus === "waiting" && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <Clock className="h-6 w-6 text-yellow-600" />
+                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-yellow-900">En attente de validation</h4>
+                        <p className="text-sm text-yellow-700">{bambooPayMessage}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-yellow-700">Tentative {bambooPayAttempt}/6</span>
+                      <span className="text-yellow-600 font-medium">
+                        Temps restant: ~{Math.max(0, (6 - bambooPayAttempt) * 10)}s
+                      </span>
+                    </div>
+                    <div className="w-full bg-yellow-200 rounded-full h-2">
+                      <div 
+                        className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(bambooPayAttempt / 6) * 100}%` }}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelBambooPayPayment}
+                      className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Annuler le paiement
+                    </Button>
+                  </div>
+                )}
+
+                {/* Section BambooPay - Succès */}
+                {posPaymentMethod === "BAMBOO_PAY" && bambooPayStatus === "success" && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                      <div>
+                        <h4 className="font-medium text-green-900">Paiement confirmé !</h4>
+                        <p className="text-sm text-green-700">Référence: {bambooPayReference}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Section BambooPay - Échec ou Timeout */}
+                {posPaymentMethod === "BAMBOO_PAY" && (bambooPayStatus === "failed" || bambooPayStatus === "timeout") && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <XCircle className="h-6 w-6 text-red-600" />
+                      <div>
+                        <h4 className="font-medium text-red-900">
+                          {bambooPayStatus === "timeout" ? "Délai dépassé" : "Paiement échoué"}
+                        </h4>
+                        <p className="text-sm text-red-700">{bambooPayMessage}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={resetBambooPayState}
+                      className="w-full border-red-300 text-red-700 hover:bg-red-100"
+                    >
+                      Réessayer
+                    </Button>
+                  </div>
+                )}
+
+                
                 <Separator />
 
                 {/* Récapitulatif vente directe */}
@@ -1732,7 +2276,12 @@ export default function PosPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Paiement:</span>
-                      <span className="font-medium text-green-700">Espèces</span>
+                      <span className={cn(
+                        "font-medium",
+                        posPaymentMethod === "ESPECE" ? "text-green-700" : "text-blue-700"
+                      )}>
+                        {posPaymentMethod === "ESPECE" ? "Espèces" : "Bamboo Pay"}
+                      </span>
                     </div>
                   </div>
 
@@ -1775,6 +2324,9 @@ export default function PosPage() {
               <Button
                 variant="outline"
                 onClick={() => {
+                  if (bambooPayStatus === "waiting" || bambooPayStatus === "initiating") {
+                    cancelBambooPayPayment()
+                  }
                   setIsCheckoutOpen(false)
                   resetCheckoutForm()
                 }}
@@ -1783,24 +2335,68 @@ export default function PosPage() {
                 Annuler
               </Button>
 
-              {/* Bouton Lancer l'impression */}
-              <Button
-                onClick={handleCreateOrder}
-                disabled={isSubmitting}
-                className="bg-purple-600 hover:bg-purple-700"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Vente en cours...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Lancer l'impression
-                  </>
-                )}
-              </Button>
+              {/* Bouton d'action selon le mode de paiement */}
+              {posPaymentMethod === "ESPECE" ? (
+                // Paiement en espèces - Lancer directement l'impression
+                <Button
+                  onClick={handleCreateOrder}
+                  disabled={isSubmitting}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Vente en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Banknote className="h-4 w-4 mr-2" />
+                      Encaisser et imprimer
+                    </>
+                  )}
+                </Button>
+              ) : (
+                // Paiement BambooPay
+                <>
+                  {bambooPayStatus === "idle" && (
+                    <Button
+                      onClick={initiateBambooPayPayment}
+                      disabled={!bambooPayPhone.trim() || isSubmitting}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Smartphone className="h-4 w-4 mr-2" />
+                      Envoyer la demande de paiement
+                    </Button>
+                  )}
+                  {(bambooPayStatus === "initiating" || bambooPayStatus === "waiting") && (
+                    <Button
+                      disabled
+                      className="bg-yellow-600"
+                    >
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      En attente de paiement...
+                    </Button>
+                  )}
+                  {bambooPayStatus === "success" && (
+                    <Button
+                      disabled
+                      className="bg-green-600"
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Paiement confirmé - Impression en cours...
+                    </Button>
+                  )}
+                  {(bambooPayStatus === "failed" || bambooPayStatus === "timeout") && (
+                    <Button
+                      onClick={resetBambooPayState}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Réessayer
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -1958,8 +2554,8 @@ export default function PosPage() {
         />
       )}
 
-      {/* Dialog de configuration d'imprimante */}
-      <PrinterSettingsDialog
+      {/* Sheet de configuration POS (Paramètres + Sous-caisses) */}
+      <PosSettingsSheet
         open={showPrinterSettings}
         onOpenChange={setShowPrinterSettings}
         storeId={storeId}
