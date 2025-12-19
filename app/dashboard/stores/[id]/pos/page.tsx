@@ -1843,7 +1843,7 @@ export default function PosPage() {
                              className="flex items-center gap-2 text-green-600"
                            >
                              <Check className="h-4 w-4" />
-                             Marquer comme validé
+                             Déjà vendu
                            </DropdownMenuItem>
                            <DropdownMenuItem
                              onClick={(e) => {
