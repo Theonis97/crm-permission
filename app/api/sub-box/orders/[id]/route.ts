@@ -86,6 +86,23 @@ export async function GET(
       )
     }
 
+    // Déterminer l'URL de base pour les images (similaire à l'endpoint produits)
+    let baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL
+
+    // Si on est en production et que l'URL est localhost ou non définie, on force le domaine de prod
+    if (process.env.NODE_ENV === "production") {
+      if (!baseUrl || baseUrl.includes("localhost")) {
+        baseUrl = "https://inotech-gabon.com"
+      }
+    }
+
+    // Fallback si toujours pas défini
+    if (!baseUrl) {
+      baseUrl = request.nextUrl.origin || "http://localhost:3000"
+    }
+
+    baseUrl = baseUrl.replace(/\/$/, "")
+
     // Récupérer les images des produits pour chaque item
     const itemsWithImages = await Promise.all(
       order.items.map(async (item) => {
@@ -100,7 +117,7 @@ export async function GET(
           },
         })
 
-        // Construction d'URL complète pour les images (similaire à l'endpoint produits)
+        // Construction d'URL complète pour les images
         const getFullImageUrl = (imagePath: string | null | undefined): string | null => {
           if (!imagePath) return null
           
@@ -108,9 +125,6 @@ export async function GET(
           if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
             return imagePath
           }
-          
-          // Construire l'URL complète
-          const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000").replace(/\/$/, "")
           
           // Nettoyer le chemin
           let cleanPath = imagePath

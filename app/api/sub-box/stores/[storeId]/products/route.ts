@@ -85,12 +85,23 @@ export async function GET(
     // En production, on veut pointer vers le domaine principal où sont stockées les images
     // On utilise l'origine de la requête comme fallback fiable si les variables d'env ne sont pas définies
     const origin = request.nextUrl.origin
-    // FALLBACK FORCE : Si aucune variable n'est définie et que l'origine est localhost (cas de proxy ou autre), on force le domaine de prod
-    const defaultBaseUrl = (origin.includes("localhost") && process.env.NODE_ENV === "production")
-      ? "https://inotech-gabon.com"
-      : origin
+    
+    // Déterminer l'URL de base avec priorité : ENV -> Production Hardcoded -> Origin -> Localhost
+    let baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL
 
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || defaultBaseUrl).replace(/\/$/, "")
+    // Si on est en production et que l'URL est localhost ou non définie, on force le domaine de prod
+    if (process.env.NODE_ENV === "production") {
+      if (!baseUrl || baseUrl.includes("localhost")) {
+        baseUrl = "https://inotech-gabon.com"
+      }
+    }
+
+    // Fallback si toujours pas défini
+    if (!baseUrl) {
+      baseUrl = origin
+    }
+
+    baseUrl = baseUrl.replace(/\/$/, "")
 
     // Fonction pour construire l'URL complète de l'image
     const getFullImageUrl = (imagePath: string | null | undefined): string | null => {
