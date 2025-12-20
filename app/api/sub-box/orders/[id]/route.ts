@@ -39,11 +39,24 @@ export async function GET(
 
     const { id: orderId } = await params
 
-    // Récupérer les détails de la commande avec les informations des produits
+    // Récupérer la sous-caisse actuelle pour obtenir le storeId
+    const currentSubBox = await prisma.subBox.findUnique({
+      where: { id: decoded.subBoxId },
+      select: { storeId: true }
+    })
+
+    if (!currentSubBox) {
+      return NextResponse.json(
+        { success: false, error: "Sous-caisse introuvable" },
+        { status: 404 }
+      )
+    }
+
+    // Récupérer les détails de la commande (peut appartenir à n'importe quelle sous-caisse du même magasin)
     const order = await prisma.subBoxOrder.findFirst({
       where: {
         id: orderId,
-        subBoxId: decoded.subBoxId, // S'assurer que la commande appartient à la sous-caisse
+        storeId: currentSubBox.storeId, // Vérifier que la commande appartient au même magasin
       },
       include: {
         items: {
@@ -54,6 +67,13 @@ export async function GET(
             quantity: true,
             unitPrice: true,
             total: true,
+          },
+        },
+        subBox: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
           },
         },
       },
@@ -80,12 +100,39 @@ export async function GET(
           },
         })
 
-        // Prendre la première photo si disponible
-        const image = product?.photos && product.photos.length > 0 ? product.photos[0] : null
+        // Construction d'URL complète pour les images (similaire à l'endpoint produits)
+        const getFullImageUrl = (imagePath: string | null | undefined): string | null => {
+          if (!imagePath) return null
+          
+          // Si c'est déjà une URL complète, la retourner telle quelle
+          if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+            return imagePath
+          }
+          
+          // Construire l'URL complète
+          const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000").replace(/\/$/, "")
+          
+          // Nettoyer le chemin
+          let cleanPath = imagePath
+          if (cleanPath.startsWith("http://localhost:3000")) {
+            cleanPath = cleanPath.replace("http://localhost:3000", "")
+          } else if (cleanPath.startsWith("http://localhost:3001")) {
+            cleanPath = cleanPath.replace("http://localhost:3001", "")
+          }
+          
+          // S'assurer que le chemin commence par un slash
+          cleanPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`
+          
+          return `${baseUrl}${cleanPath}`
+        }
+
+        // Prendre la première photo si disponible et construire l'URL complète
+        const imagePath = product?.photos && product.photos.length > 0 ? product.photos[0] : null
+        const fullImageUrl = getFullImageUrl(imagePath)
 
         return {
           ...item,
-          image: image,
+          image: fullImageUrl,
           productName: product?.name || item.name,
           sku: product?.sku || null,
         }

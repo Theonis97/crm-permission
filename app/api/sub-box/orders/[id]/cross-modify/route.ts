@@ -48,64 +48,77 @@ export async function PATCH(
       )
     }
 
-    // Récupérer la commande et vérifier qu'elle appartient au même magasin
-    const existingOrder = await prisma.subBoxOrder.findFirst({
-      where: {
-        id: orderId,
-      },
-      include: {
-        subBox: {
-          select: {
-            storeId: true,
-            id: true,
-            name: true,
-            code: true,
+    // Vérifier et mettre à jour la commande en une seule requête avec vérifications
+    try {
+      // D'abord, vérifier que la commande existe et appartient au bon magasin
+      const existingOrder = await prisma.subBoxOrder.findFirst({
+        where: {
+          id: orderId,
+        },
+        select: {
+          status: true,
+          subBox: {
+            select: {
+              storeId: true,
+              id: true,
+              name: true,
+              code: true,
+            },
           },
         },
-      },
-    })
+      })
 
-    if (!existingOrder) {
-      return NextResponse.json(
-        { success: false, error: "Commande introuvable" },
-        { status: 404 }
-      )
+      if (!existingOrder) {
+        return NextResponse.json(
+          { success: false, error: "Commande introuvable" },
+          { status: 404 }
+        )
+      }
+
+      // Vérifier que la commande appartient au même magasin que la sous-caisse actuelle
+      if (existingOrder.subBox.storeId !== decoded.store.id) {
+        return NextResponse.json(
+          { success: false, error: "Commande non autorisée" },
+          { status: 403 }
+        )
+      }
+
+      // Vérifier que la commande est en attente
+      if (existingOrder.status !== "PENDING") {
+        return NextResponse.json(
+          { success: false, error: "Commande non modifiable" },
+          { status: 400 }
+        )
+      }
+
+      // Mettre à jour la commande
+      const updatedOrder = await prisma.subBoxOrder.update({
+        where: { id: orderId },
+        data: {
+          clientCode: clientCode.toUpperCase(),
+          totalDiscount: totalDiscount || 0,
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: updatedOrder,
+        message: "Commande modifiée avec succès",
+        info: {
+          originalSubBox: existingOrder.subBox,
+          modifiedBy: decoded.subBoxId,
+        },
+      })
+      
+    } catch (error: any) {
+      if (error.code === 'P2025') { // Prisma error code for "Record to update not found"
+        return NextResponse.json(
+          { success: false, error: "Commande introuvable ou non autorisée" },
+          { status: 404 }
+        )
+      }
+      throw error // Re-throw other errors
     }
-
-    // Vérifier que la commande appartient au même magasin que la sous-caisse actuelle
-    if (existingOrder.subBox.storeId !== decoded.storeId) {
-      return NextResponse.json(
-        { success: false, error: "Commande non autorisée" },
-        { status: 403 }
-      )
-    }
-
-    // Vérifier que la commande est en attente
-    if (existingOrder.status !== "PENDING") {
-      return NextResponse.json(
-        { success: false, error: "Commande non modifiable" },
-        { status: 400 }
-      )
-    }
-
-    // Mettre à jour la commande
-    const updatedOrder = await prisma.subBoxOrder.update({
-      where: { id: orderId },
-      data: {
-        clientCode: clientCode.toUpperCase(),
-        totalDiscount: totalDiscount || 0,
-      },
-    })
-
-    return NextResponse.json({
-      success: true,
-      data: updatedOrder,
-      message: "Commande modifiée avec succès",
-      info: {
-        originalSubBox: existingOrder.subBox,
-        modifiedBy: decoded.subBoxId,
-      },
-    })
   } catch (error) {
     console.error("[SUB_BOX_ORDER_CROSS_MODIFY]", error)
     return NextResponse.json(

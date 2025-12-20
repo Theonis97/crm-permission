@@ -75,6 +75,13 @@ export async function GET(request: NextRequest) {
             total: true,
           },
         },
+        subBox: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -97,6 +104,7 @@ export async function GET(request: NextRequest) {
         totalDiscount: order.totalDiscount,
         totalItems: order.totalItems,
         items: order.items,
+        subBox: order.subBox,
         notes: order.notes,
         validatedAt: order.validatedAt,
         cancelledAt: order.cancelledAt,
