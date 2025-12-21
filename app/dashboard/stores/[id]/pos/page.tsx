@@ -57,12 +57,14 @@ import {
   MoreVertical,
   Check,
   X,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { ThermalPrinterDialog } from "@/components/pos/thermal-printer-dialog"
 import { usePrinterSettings } from "@/components/pos/printer-settings-dialog"
 import { PosSettingsSheet } from "@/components/pos/pos-settings-sheet"
+import { SubBoxKpiSheet } from "@/components/pos/sub-box-kpi-sheet"
 import type { TicketData } from "@/lib/thermal-printer"
 
 interface Product {
@@ -216,6 +218,7 @@ export default function PosPage() {
 
   // Clôture de journée
   const [showDayCloseSheet, setShowDayCloseSheet] = useState(false)
+  const [showKpiSheet, setShowKpiSheet] = useState(false)
   const [dayCloseSummary, setDayCloseSummary] = useState<any>(null)
   const [isLoadingDayClose, setIsLoadingDayClose] = useState(false)
 
@@ -1719,14 +1722,25 @@ export default function PosPage() {
           <div className="w-56 bg-white border-r flex flex-col">
             {/* Header */}
             <div className="p-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                  <Receipt className="h-4 w-4 text-white" />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <Receipt className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-900">Sous-Caisses</h3>
+                    <p className="text-[10px] text-gray-500">{subBoxOrders.filter(order => order.status === "PENDING").length} en attente</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-sm text-gray-900">Sous-Caisses</h3>
-                  <p className="text-[10px] text-gray-500">{subBoxOrders.filter(order => order.status === "PENDING").length} en attente</p>
-                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 text-orange-700 border-orange-200 bg-white hover:bg-orange-50"
+                  onClick={() => setShowKpiSheet(true)}
+                  title="KPI & Bonus"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                </Button>
               </div>
 
               {/* Recherche par code client */}
@@ -1865,7 +1879,15 @@ export default function PosPage() {
             </div>
 
             {/* Footer - Clôture de journée */}
-            <div className="p-2 border-t">
+            <div className="p-2 border-t space-y-2">
+              <button
+                onClick={() => setShowKpiSheet(true)}
+                className="w-full flex items-center justify-center gap-2 p-2 rounded-lg transition-colors text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Performance & Bonus
+              </button>
+
               <button
                 onClick={handleDayClose}
                 disabled={isLoadingDayClose}
@@ -2742,6 +2764,13 @@ export default function PosPage() {
       <PosSettingsSheet
         open={showPrinterSettings}
         onOpenChange={setShowPrinterSettings}
+        storeId={storeId}
+      />
+
+      {/* Sheet KPI Sous-caisses */}
+      <SubBoxKpiSheet
+        open={showKpiSheet}
+        onOpenChange={setShowKpiSheet}
         storeId={storeId}
       />
     </div>

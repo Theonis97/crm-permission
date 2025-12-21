@@ -237,8 +237,8 @@ export function PosSettingsSheet({ open, onOpenChange, storeId }: PosSettingsShe
             </SheetTitle>
           </SheetHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <TabsList className="mx-6 mt-4 grid w-auto grid-cols-2 bg-gray-100">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+            <TabsList className="mx-6 mt-4 grid w-auto grid-cols-2 bg-gray-100 shrink-0">
               <TabsTrigger value="settings" className="flex items-center gap-2 data-[state=active]:bg-white">
                 <Settings className="h-4 w-4" />
                 Paramètres
@@ -340,7 +340,7 @@ export function PosSettingsSheet({ open, onOpenChange, storeId }: PosSettingsShe
             </TabsContent>
 
             {/* Onglet Sous-caisses */}
-            <TabsContent value="subboxes" className="flex-1 overflow-hidden m-0 flex flex-col">
+            <TabsContent value="subboxes" className="flex-1 overflow-hidden m-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
               {showSubBoxForm ? (
                 /* Formulaire de création/modification */
                 <div className="flex-1 flex flex-col">
