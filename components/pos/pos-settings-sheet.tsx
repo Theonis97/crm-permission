@@ -340,7 +340,7 @@ export function PosSettingsSheet({ open, onOpenChange, storeId }: PosSettingsShe
             </TabsContent>
 
             {/* Onglet Sous-caisses */}
-            <TabsContent value="subboxes" className="flex-1 overflow-auto m-0 flex flex-col">
+            <TabsContent value="subboxes" className="flex-1 overflow-hidden m-0 flex flex-col">
               {showSubBoxForm ? (
                 /* Formulaire de création/modification */
                 <div className="flex-1 flex flex-col">
@@ -363,7 +363,7 @@ export function PosSettingsSheet({ open, onOpenChange, storeId }: PosSettingsShe
                     </div>
                   </div>
 
-                  <div className="flex-1 px-6 py-6">
+                  <div className="flex-1 px-6 py-6 overflow-y-auto">
                     <div className="space-y-5">
                       <div>
                         <Label htmlFor="subBoxName" className="text-sm font-medium text-gray-700">
