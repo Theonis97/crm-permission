@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH - Modifier une commande de la sous-caisse connectée
+// PATCH - Modifier une commande de la sous-caisse
 export async function PATCH(request: NextRequest) {
   try {
     const authHeader = request.headers.get("Authorization")
