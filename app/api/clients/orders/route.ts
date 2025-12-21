@@ -48,7 +48,14 @@ export async function POST(request: NextRequest) {
     // 2. Calculer les totaux et préparer les items
     let subtotal = 0
     let totalItems = 0
-    const orderItemsData = []
+    const orderItemsData: {
+      productId: string
+      name: string
+      sku: string | null
+      unitPrice: number
+      quantity: number
+      total: number
+    }[] = []
 
     for (const item of items) {
       const product = await prisma.product.findUnique({

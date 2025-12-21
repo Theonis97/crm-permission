@@ -6,6 +6,7 @@ export function middleware(request: NextRequest) {
     'https://inotech-gabon.com',
     'https://livreur.inotech-gabon.com',
     'https://sous-caisse.inotech-gabon.com',
+    'https://client.inotech-gabon.com',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
