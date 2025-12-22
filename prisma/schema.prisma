@@ -70,6 +70,16 @@ enum ContactStatus {
   ARCHIVE
 }
 
+model MyPvitSecret {
+  id                    String   @id @default(cuid())
+  operation_account_code String
+  secret                String
+  created_at            DateTime @default(now())
+  expires_at            DateTime
+  
+  @@map("mypvit_secrets")
+}
+
 model Contact {
   id          String   @id @default(cuid())
   firstName   String?  @map("first_name")

@@ -296,8 +296,7 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
 
 // Destinataires des emails de ventes POS
 const POS_SALES_EMAIL_RECIPIENTS = [
-  "mapangoukarl.km@gmail.com",
-  "asselidas50@gmail.com"
+  "gabinmoundziegou@gmail.com",
 ];
 
 /**
