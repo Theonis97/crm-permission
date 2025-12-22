@@ -158,7 +158,10 @@ export default function BarcodePrintPage() {
           <div key={index} className="label">
             <div className="label-name">{product?.name}</div>
             {typeof product?.prixVente === "number" && (
-              <div className="label-price">{Number(product.prixVente).toLocaleString("fr-FR")} FCFA</div>
+              <div className="label-price">
+                {Number(product.prixVente).toLocaleString("fr-FR")}
+                <span className="currency-sup">FCFA</span>
+              </div>
             )}
             <canvas
               ref={(el) => {
@@ -197,7 +200,7 @@ export default function BarcodePrintPage() {
 
         .labels-grid {
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
+          grid-template-columns: repeat(4, 1fr);
           gap: 0;
           border: 1px solid #d1d5db;
         }
@@ -215,13 +218,13 @@ export default function BarcodePrintPage() {
           break-inside: avoid;
         }
 
-        .labels-grid .label:nth-child(5n) {
+        .labels-grid .label:nth-child(4n) {
           border-right: none;
         }
 
         .label-name {
-          font-size: 11px;
-          font-weight: 600;
+          font-size: 10px;
+          font-weight: 400;
           line-height: 1.2;
           margin-bottom: 2px;
           max-width: 100%;
@@ -231,9 +234,24 @@ export default function BarcodePrintPage() {
         }
 
         .label-price {
-          font-size: 12px;
-          font-weight: 700;
+          font-size: 24px;
+          font-weight: 900;
           margin-bottom: 4px;
+          background-color: #fe0c21;
+          color: white;
+          padding: 6px 8px 4px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 2px;
+          line-height: 1;
+        }
+
+        .currency-sup {
+          font-size: 10px;
+          font-weight: 700;
+          margin-top: 4px;
+          line-height: 1;
         }
 
         .label-barcode {
