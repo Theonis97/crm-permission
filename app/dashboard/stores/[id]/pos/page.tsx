@@ -8,6 +8,7 @@ import { TicketData } from "@/lib/thermal-printer"
 import { usePrinterSettings } from "@/components/pos/printer-settings-dialog"
 import { PosSettingsSheet } from "@/components/pos/pos-settings-sheet"
 import { SubBoxKpiSheet } from "@/components/pos/sub-box-kpi-sheet"
+import { DayCloseSheet } from "@/components/pos/day-close-sheet"
 import { ThermalPrinterDialog } from "@/components/pos/thermal-printer-dialog"
 
 // Components
@@ -748,22 +749,31 @@ export default function PosPage() {
   const handleDayClose = async () => {
     setIsLoadingDayClose(true)
     try {
+      // 1. D'abord on clôture
       const closeResponse = await fetch(`/api/stores/${storeId}/day-close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
-      if (!closeResponse.ok) throw new Error('Erreur clôture')
       
+      if (!closeResponse.ok) {
+        const error = await closeResponse.json()
+        throw new Error(error.message || 'Erreur clôture')
+      }
+      
+      // 2. Ensuite on récupère le résumé
       const summaryResponse = await fetch(`/api/stores/${storeId}/day-close-summary`)
       const summaryData = await summaryResponse.json()
       
-      // Imprimer ticket clôture...
-      // Afficher sheet...
       setDayCloseSummary(summaryData)
       setShowDayCloseSheet(true)
-      toast.success('Journée clôturée')
+      toast.success('Journée clôturée avec succès')
+      
+      // 3. Impression automatique du ticket de clôture si possible
+      // (Optionnel : ajouter logique d'impression ticket Z ici)
+      
     } catch (error: any) {
-      toast.error(error.message)
+      console.error("Day close error:", error)
+      toast.error(error.message || "Impossible de clôturer la journée")
     } finally {
       setIsLoadingDayClose(false)
     }
@@ -913,6 +923,12 @@ export default function PosPage() {
         open={showKpiSheet}
         onOpenChange={setShowKpiSheet}
         storeId={storeId}
+      />
+
+      <DayCloseSheet
+        open={showDayCloseSheet}
+        onOpenChange={setShowDayCloseSheet}
+        summary={dayCloseSummary}
       />
     </div>
   )

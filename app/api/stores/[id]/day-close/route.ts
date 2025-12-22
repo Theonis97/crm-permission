@@ -139,7 +139,7 @@ export async function POST(
         totalDiscounts,
         totalRevenue,
         closeDate: dayClose.closeDate,
-        closedBy: user.name || user.email,
+        closedBy: user.firstName || user.email,
       },
     })
   } catch (error: any) {

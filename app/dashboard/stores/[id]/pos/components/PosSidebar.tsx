@@ -242,7 +242,7 @@ export function PosSidebar({
           ) : (
             <Calendar className="h-4 w-4" />
           )}
-          {dayCloseSummary?.isAlreadyClosed ? "Mettre à jour" : "Clôturer la journée"}
+          {dayCloseSummary?.isAlreadyClosed ? "Clôture déjà effectuée" : "Clôturer la journée"}
         </button>
       </div>
     </div>
