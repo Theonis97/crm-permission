@@ -154,7 +154,7 @@ export async function POST(
           customerName,
           customerPhone,
           customerEmail: customerEmail || null,
-          status: "DELIVERED", // Vente directe = Livrée instantanément
+          status: paymentMethod === "MOBILE" && body.paymentStatus === "PENDING" ? "PENDING_PAYMENT" : "DELIVERED",
           priority: "NORMAL",
           subtotal,
           totalDiscount,
@@ -162,9 +162,9 @@ export async function POST(
           deliveryFee: 0,
           total,
           paymentMethod: paymentMethod || "CASH",
-          paymentStatus: "PAID", // Vente directe = Payée instantanément
-          paidAt: new Date(),
-          deliveredAt: new Date(),
+          paymentStatus: body.paymentStatus || "PAID",
+          paidAt: body.paymentStatus === "PENDING" ? null : new Date(),
+          deliveredAt: body.paymentStatus === "PENDING" ? null : new Date(),
           notes: notes || null,
           orderSource: "POS",
           createdById: user.id,

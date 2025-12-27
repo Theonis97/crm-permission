@@ -80,7 +80,8 @@ interface PosCheckoutDialogProps {
   
   // Actions
   handleCreateOrder: () => void
-  onMobilePaymentSuccess: (reference: string, phone: string) => void
+  createPendingOrder: () => Promise<any>
+  onMobilePaymentSuccess: (reference: string, phone: string, existingOrder?: any) => void
   isSubmitting: boolean
   storeId: string
   resetForm: () => void
@@ -127,6 +128,7 @@ export function PosCheckoutDialog({
   posPaymentMethod,
   setPosPaymentMethod,
   handleCreateOrder,
+  createPendingOrder,
   onMobilePaymentSuccess,
   isSubmitting,
   storeId,
@@ -140,6 +142,7 @@ export function PosCheckoutDialog({
   const [paymentMessage, setPaymentMessage] = useState("")
   const [paymentReference, setPaymentReference] = useState<string | null>(null)
   const [transactionId, setTransactionId] = useState<string | null>(null)
+  const [pendingOrder, setPendingOrder] = useState<any>(null)
   
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -160,6 +163,7 @@ export function PosCheckoutDialog({
     setPaymentMessage("")
     setPaymentReference(null)
     setTransactionId(null)
+    setPendingOrder(null)
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
       pollingIntervalRef.current = null
@@ -174,10 +178,17 @@ export function PosCheckoutDialog({
 
     try {
       setPaymentStatus("initiating")
-      setPaymentMessage("Envoi de la demande USSD...")
+      setPaymentMessage("Création de la commande...")
 
-      // Generate a reference for the transaction
-      const reference = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      // 1. Create Pending Order first
+      const order = await createPendingOrder()
+      if (!order) {
+        throw new Error("Impossible de créer la commande")
+      }
+      setPendingOrder(order)
+      const reference = order.number // Use Order Number as Reference
+
+      setPaymentMessage("Envoi de la demande USSD...")
 
       const response = await fetch("/api/payments/mypvit/initiate", {
         method: "POST",
@@ -198,13 +209,13 @@ export function PosCheckoutDialog({
       }
 
       setPaymentReference(reference)
-      setTransactionId(data.data.reference_id || reference) // MyPVit returns reference_id
+      setTransactionId(data.data.reference_id || reference)
       setPaymentStatus("waiting")
       setPaymentMessage("Veuillez valider le paiement sur votre téléphone...")
       toast.info("Veuillez valider le paiement sur votre mobile")
 
-      // Start polling
-      startPolling(reference) 
+      // Start polling Order Status
+      startPollingOrderStatus(order.orderId) 
       
     } catch (error: any) {
       console.error("Payment error:", error)
@@ -214,7 +225,7 @@ export function PosCheckoutDialog({
     }
   }
 
-  const startPolling = (ref: string) => {
+  const startPollingOrderStatus = (orderId: string) => {
     const MAX_ATTEMPTS = 60 // 3 minutes approx
     let attempts = 0
     
@@ -228,23 +239,25 @@ export function PosCheckoutDialog({
       }
 
       try {
-        const response = await fetch(`/api/payments/mypvit/status?transactionId=${ref}`)
+        // Poll our local Order Status
+        const response = await fetch(`/api/orders/${orderId}/status`)
         const data = await response.json()
 
         if (data.success && data.data) {
-          const status = data.data.status
-          if (status === 'SUCCESS') {
+          const status = data.data.paymentStatus
+          if (status === 'PAID') {
              if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
              setPaymentStatus("success")
              setPaymentMessage("Paiement confirmé !")
              toast.success("Paiement confirmé !")
              
-             // Trigger success action
-             onMobilePaymentSuccess(ref, mobilePhone)
+             // Trigger success action with existing order
+             // Pass the order object so PosPage knows it's already created
+             onMobilePaymentSuccess(data.data.number, mobilePhone, data.data)
           } else if (status === 'FAILED') {
              if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
              setPaymentStatus("failed")
-             setPaymentMessage("Paiement échoué ou annulé")
+             setPaymentMessage("Paiement échoué")
              toast.error("Paiement échoué")
           }
         }

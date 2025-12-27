@@ -225,7 +225,7 @@ export class MyPvit {
     params.append('accountOperationCode', accountOperationCode);
     params.append('transactionOperation', transactionOperation);
 
-    const url = `${this.baseUrl}/v2/${effectiveCodeUrl}/status?${params.toString()}`;
+    const url = `${this.baseUrl}/${effectiveCodeUrl}/status?${params.toString()}`;
 
     try {
       const response = await fetch(url, {

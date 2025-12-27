@@ -359,9 +359,9 @@ export default function SAVPage({ params }: SAVPageProps) {
 
     try {
       setSearchingOrders(true)
-      // Rechercher toutes les commandes livrées ou complétées
+      // Rechercher toutes les commandes livrées
       const response = await fetch(
-        `/api/stores/${storeId}/orders?search=${encodeURIComponent(customerSearch)}&status=DELIVERED,COMPLETED,PAID`
+        `/api/stores/${storeId}/orders?search=${encodeURIComponent(customerSearch)}&status=DELIVERED`
       )
       if (!response.ok) throw new Error("Erreur lors de la recherche")
       const data = await response.json()

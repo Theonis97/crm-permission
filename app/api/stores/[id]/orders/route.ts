@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { OrderStatus } from "@prisma/client"
 
 // GET - Rechercher les commandes d'un magasin
 export async function GET(
@@ -29,7 +30,12 @@ export async function GET(
     // Filtre par statut
     if (status) {
       const statuses = status.split(",").map(s => s.trim())
-      whereConditions.status = { in: statuses }
+      // Filtrer pour ne garder que les statuts valides de l'enum OrderStatus
+      const validStatuses = statuses.filter(s => Object.values(OrderStatus).includes(s as OrderStatus))
+      
+      if (validStatuses.length > 0) {
+        whereConditions.status = { in: validStatuses }
+      }
     }
 
     // Recherche par téléphone, nom ou numéro de commande

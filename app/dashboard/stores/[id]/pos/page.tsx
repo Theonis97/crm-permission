@@ -533,6 +533,92 @@ export default function PosPage() {
   }
 
   // --- Création de Commande ---
+  const createPendingOrder = async () => {
+    if (cart.length === 0) {
+      toast.error("Panier vide")
+      return null
+    }
+
+    try {
+      setIsSubmitting(true)
+      
+      let contactId = selectedContactId
+      const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
+      const defaultCustomerPhone = "+241xxxxxx"
+
+      if (!contactId && isCustomerProvided) {
+        const contactResponse = await fetch(`/api/stores/${storeId}/contacts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: customerFirstName || "Client",
+            lastName: customerLastName || "",
+            phone: customerPhone || defaultCustomerPhone,
+            email: customerEmail || null,
+            type: "PERSONNE",
+            status: "CLIENT",
+          }),
+        })
+        if (contactResponse.ok) {
+          const newContact = await contactResponse.json()
+          contactId = newContact.id
+          loadContacts()
+        }
+      }
+
+      // Création vente POS (PENDING)
+      const saleData = {
+        storeId,
+        contactId: contactId || null,
+        customerName: isCustomerProvided ? `${customerFirstName} ${customerLastName}`.trim() : "Client",
+        customerPhone: isCustomerProvided ? customerPhone || defaultCustomerPhone : defaultCustomerPhone,
+        customerEmail: customerEmail || null,
+        paymentMethod: "MOBILE",
+        paymentStatus: "PENDING",
+        notes: notes || "Vente POS - En attente Mobile Money",
+        items: cart.map(item => {
+          const originalTotal = item.product.prixVente * item.quantity
+          let itemDiscount = 0
+          if (item.discount && item.discount > 0) {
+            itemDiscount = originalTotal * (item.discount / 100)
+          } else if (item.discountAmount && item.discountAmount > 0) {
+            itemDiscount = Math.min(item.discountAmount, originalTotal)
+          }
+          return {
+            productId: item.product.id,
+            quantity: item.quantity,
+            unitPrice: item.product.prixVente,
+            discount: itemDiscount,
+          }
+        }),
+        globalDiscount: globalDiscountApplied,
+        isAnonymousCustomer: !isCustomerProvided,
+      }
+
+      const response = await fetch(`/api/stores/${storeId}/pos-sale`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saleData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur création commande")
+      }
+
+      const sale = await response.json()
+      // Ne pas reset le form ici, on attend le paiement
+      return sale
+
+    } catch (error: any) {
+      console.error(error)
+      toast.error(error.message || "Erreur lors de la création de la commande")
+      return null
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleCreateOrder = async () => {
     if (cart.length === 0) {
       toast.error("Panier vide")
@@ -632,8 +718,34 @@ export default function PosPage() {
     }
   }
 
-  const handleMobilePaymentSuccess = async (reference: string, phone: string) => {
-    // Créer la commande après succès MyPVit
+  const handleMobilePaymentSuccess = async (reference: string, phone: string, existingOrder?: any) => {
+    // Si une commande existe déjà (créée avant paiement), on finalise juste l'affichage
+    if (existingOrder) {
+       // Validation sous-caisse si nécessaire
+       if (selectedSubBoxOrder) {
+        try {
+          await validateSubBoxOrder(selectedSubBoxOrder.id)
+        } catch (e) {
+           console.error("Erreur validation auto sous-caisse", e)
+        }
+       }
+
+       // Reconstruction des données pour le ticket
+       // On utilise les données actuelles du panier car elles n'ont pas changé
+       const isCustomerProvided = customerFirstName.trim() || customerLastName.trim() || customerPhone.trim()
+       const saleData = {
+          customerName: isCustomerProvided ? `${customerFirstName} ${customerLastName}`.trim() : "Client",
+          paymentMethod: "MOBILE",
+          isAnonymousCustomer: !isCustomerProvided,
+       }
+       
+       handlePrintTicket(existingOrder, saleData)
+       resetForm()
+       loadProducts()
+       return
+    }
+
+    // Créer la commande après succès MyPVit (Fallback si pas de existingOrder)
     try {
       setIsSubmitting(true)
       
@@ -897,6 +1009,7 @@ export default function PosPage() {
         setPosPaymentMethod={setPosPaymentMethod}
         
         handleCreateOrder={handleCreateOrder}
+        createPendingOrder={createPendingOrder}
         onMobilePaymentSuccess={handleMobilePaymentSuccess}
         isSubmitting={isSubmitting}
         storeId={storeId}
