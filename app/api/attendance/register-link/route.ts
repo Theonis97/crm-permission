@@ -36,8 +36,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Vérifier si l'utilisateur a déjà un device actif
+    // Vérifier si l'utilisateur a déjà un device actif (PENDING ou APPROVED)
     if (user.attendanceDevices.length > 0) {
+      console.log("User already has active devices:", user.attendanceDevices)
       return NextResponse.json(
         { error: "L'utilisateur a déjà un appareil enregistré. Révoquez-le d'abord." },
         { status: 400 }

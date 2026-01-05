@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
+import useSWR from "swr"
 import { usePermissions } from "@/hooks/use-permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -130,9 +131,6 @@ interface AttendanceStats {
 
 export default function AttendancePage() {
     const { hasPermission } = usePermissions()
-    const [users, setUsers] = useState<AttendanceUser[]>([])
-    const [stats, setStats] = useState<AttendanceStats | null>(null)
-    const [loading, setLoading] = useState(true)
     const [selectedDate, setSelectedDate] = useState(new Date())
     const [searchTerm, setSearchTerm] = useState("")
     const [activeTab, setActiveTab] = useState("daily")
@@ -141,50 +139,37 @@ export default function AttendancePage() {
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
     const [registrationLink, setRegistrationLink] = useState<string | null>(null)
     const [showLinkDialog, setShowLinkDialog] = useState(false)
-    const [terminals, setTerminals] = useState<Terminal[]>([])
     const [showTerminalDialog, setShowTerminalDialog] = useState(false)
     const [newTerminalName, setNewTerminalName] = useState("")
     const [newTerminalLocation, setNewTerminalLocation] = useState("")
     const [selectedTerminalCode, setSelectedTerminalCode] = useState<string | null>(null)
+    const [currentPage, setCurrentPage] = useState(1)
+    const ITEMS_PER_PAGE = 10
 
-    useEffect(() => {
-        loadAttendanceData()
-        loadStats() // Charger les stats au démarrage pour la sidebar
-        loadTerminals()
-    }, [selectedDate])
+    // Fetcher pour SWR
+    const fetcher = (url: string) => fetch(url).then(res => res.json())
 
-    useEffect(() => {
-        loadStats()
-    }, [statsPeriod])
+    // SWR pour les données de pointage avec rafraîchissement automatique
+    const dateStr = selectedDate.toISOString().split("T")[0]
+    const { data: users = [], isLoading: loading, mutate: mutateUsers } = useSWR<AttendanceUser[]>(
+        `/api/attendance?date=${dateStr}`,
+        fetcher,
+        { refreshInterval: 30000, revalidateOnFocus: true }
+    )
 
-    const loadAttendanceData = async () => {
-        setLoading(true)
-        try {
-            const dateStr = selectedDate.toISOString().split("T")[0]
-            const response = await fetch(`/api/attendance?date=${dateStr}`)
-            if (response.ok) {
-                const data = await response.json()
-                setUsers(data)
-            }
-        } catch (error) {
-            console.error("Error loading attendance:", error)
-            toast.error("Erreur lors du chargement des données")
-        } finally {
-            setLoading(false)
-        }
-    }
+    // SWR pour les stats
+    const { data: stats, mutate: mutateStats } = useSWR<AttendanceStats>(
+        `/api/attendance/stats?period=${statsPeriod}`,
+        fetcher,
+        { refreshInterval: 60000 }
+    )
 
-    const loadStats = async () => {
-        try {
-            const response = await fetch(`/api/attendance/stats?period=${statsPeriod}`)
-            if (response.ok) {
-                const data = await response.json()
-                setStats(data)
-            }
-        } catch (error) {
-            console.error("Error loading stats:", error)
-        }
-    }
+    // SWR pour les terminaux
+    const { data: terminals = [], mutate: mutateTerminals } = useSWR<Terminal[]>(
+        "/api/attendance/terminals",
+        fetcher,
+        { refreshInterval: 60000 }
+    )
 
     const generateRegistrationLink = async (userId: string) => {
         setGeneratingLink(true)
@@ -222,7 +207,7 @@ export default function AttendancePage() {
 
             if (response.ok) {
                 toast.success("Appareil approuvé")
-                loadAttendanceData()
+                mutateUsers()
             } else {
                 toast.error("Erreur lors de l'approbation")
             }
@@ -241,7 +226,7 @@ export default function AttendancePage() {
 
             if (response.ok) {
                 toast.success("Appareil révoqué")
-                loadAttendanceData()
+                mutateUsers()
             } else {
                 toast.error("Erreur lors de la révocation")
             }
@@ -325,6 +310,19 @@ export default function AttendancePage() {
             user.matricule?.toLowerCase().includes(searchTerm.toLowerCase())
     )
 
+    // Pagination
+    const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE)
+    const paginatedUsers = filteredUsers.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    )
+
+    // Reset page when search changes
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value)
+        setCurrentPage(1)
+    }
+
     // Statistiques rapides
     const presentToday = users.filter((u) => u.checkIn).length
     const absentToday = users.filter((u) => !u.checkIn).length
@@ -335,18 +333,6 @@ export default function AttendancePage() {
     const avgHoursToday = users.length > 0
         ? Math.round((users.reduce((sum, u) => sum + u.hoursWorked, 0) / users.filter(u => u.hoursWorked > 0).length || 0) * 10) / 10
         : 0
-
-    const loadTerminals = async () => {
-        try {
-            const response = await fetch("/api/attendance/terminals")
-            if (response.ok) {
-                const data = await response.json()
-                setTerminals(data)
-            }
-        } catch (error) {
-            console.error("Error loading terminals:", error)
-        }
-    }
 
     const createTerminal = async () => {
         if (!newTerminalName.trim()) {
@@ -367,7 +353,7 @@ export default function AttendancePage() {
                 setShowTerminalDialog(false)
                 setNewTerminalName("")
                 setNewTerminalLocation("")
-                loadTerminals()
+                mutateTerminals()
             } else {
                 const error = await response.json()
                 toast.error(error.error || "Erreur lors de la création")
@@ -387,7 +373,7 @@ export default function AttendancePage() {
             })
             if (response.ok) {
                 toast.success(action === "activate" ? "Terminal activé" : "Terminal désactivé")
-                loadTerminals()
+                mutateTerminals()
             }
         } catch (error) {
             toast.error("Erreur lors de la mise à jour")
@@ -402,7 +388,7 @@ export default function AttendancePage() {
             })
             if (response.ok) {
                 toast.success("Terminal supprimé")
-                loadTerminals()
+                mutateTerminals()
             }
         } catch (error) {
             toast.error("Erreur lors de la suppression")
@@ -439,9 +425,9 @@ export default function AttendancePage() {
     return (
         <PermissionGuard permission="attendance.view" fallback={<div>Accès non autorisé</div>}>
 
-            <div className="flex h-100vh">
-                {/* Sidebar Stats - Sticky */}
-                <aside className="w-72 bg-white border-r border-gray-200 p-6 sticky top-0 h-100vh overflow-y-auto">
+            <div className="flex h-screen">
+                {/* Sidebar Stats - Fixed */}
+                <aside className="w-72 bg-white border-r border-gray-200 p-6 fixed top-0 left-0 h-screen overflow-y-auto z-10">
                     {/* Date du jour */}
                     <div className="mb-8">
                         <p className="text-gray-500 text-sm uppercase tracking-wider mb-1">Aujourd'hui</p>
@@ -578,15 +564,15 @@ export default function AttendancePage() {
                     </div>
                 </aside>
 
-                <main className="flex-1 bg-gray-50">
+                <main className="flex-1 bg-gray-50 ml-72">
                     {/* Main Content */}
                     <ModuleNavbar
                         title="Pointage"
                         description="Gestion des présences et horaires"
                         icon={Clock}
                     />
-                    {/* Tabs Material Design */}
-                    <div className="bg-white shadow-sm border-b">
+                    {/* Tabs Material Design - Sticky */}
+                    <div className="bg-white shadow-sm border-b sticky top-0 z-20">
                         <div className="flex">
                             {tabs.map((tab) => (
                                 <button
@@ -642,11 +628,11 @@ export default function AttendancePage() {
                                             <Input
                                                 placeholder="Rechercher..."
                                                 value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                onChange={(e) => handleSearchChange(e.target.value)}
                                                 className="pl-9 w-[200px] h-9 text-sm"
                                             />
                                         </div>
-                                        <Button variant="ghost" size="icon" onClick={loadAttendanceData} className="h-9 w-9">
+                                        <Button variant="ghost" size="icon" onClick={() => mutateUsers()} className="h-9 w-9">
                                             <RefreshCw className="h-4 w-4" />
                                         </Button>
                                     </div>
@@ -671,7 +657,7 @@ export default function AttendancePage() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredUsers.map((user) => (
+                                            {paginatedUsers.map((user) => (
                                                 <TableRow key={user.id} className="hover:bg-gray-50/50 transition-colors">
                                                     <TableCell>
                                                         <div className="flex items-center gap-3">
@@ -762,7 +748,7 @@ export default function AttendancePage() {
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
-                                            {filteredUsers.length === 0 && (
+                                            {paginatedUsers.length === 0 && (
                                                 <TableRow>
                                                     <TableCell colSpan={7} className="text-center py-12 text-gray-500">
                                                         <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
@@ -772,6 +758,63 @@ export default function AttendancePage() {
                                             )}
                                         </TableBody>
                                     </Table>
+                                )}
+
+                                {/* Pagination */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between pt-4 border-t">
+                                        <p className="text-sm text-gray-500">
+                                            Affichage de {((currentPage - 1) * ITEMS_PER_PAGE) + 1} à {Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)} sur {filteredUsers.length} employés
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                                Précédent
+                                            </Button>
+                                            <div className="flex items-center gap-1">
+                                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                    let pageNum: number
+                                                    if (totalPages <= 5) {
+                                                        pageNum = i + 1
+                                                    } else if (currentPage <= 3) {
+                                                        pageNum = i + 1
+                                                    } else if (currentPage >= totalPages - 2) {
+                                                        pageNum = totalPages - 4 + i
+                                                    } else {
+                                                        pageNum = currentPage - 2 + i
+                                                    }
+                                                    return (
+                                                        <Button
+                                                            key={pageNum}
+                                                            variant={currentPage === pageNum ? "default" : "outline"}
+                                                            size="sm"
+                                                            className={cn(
+                                                                "w-8 h-8 p-0",
+                                                                currentPage === pageNum && "bg-cyan-600 hover:bg-cyan-700"
+                                                            )}
+                                                            onClick={() => setCurrentPage(pageNum)}
+                                                        >
+                                                            {pageNum}
+                                                        </Button>
+                                                    )
+                                                })}
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                                disabled={currentPage === totalPages}
+                                            >
+                                                Suivant
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )}
