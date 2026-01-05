@@ -147,7 +147,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Token expired" }, { status: 410 })
     }
 
-    // Vérifier que l'utilisateur n'a pas déjà un device
+    // Vérifier que l'utilisateur n'a pas déjà un device actif (PENDING ou APPROVED)
     const existingDevice = await prisma.attendanceDevice.findFirst({
       where: {
         userId: linkData.userId,
@@ -162,7 +162,15 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Créer le device
+    // Supprimer les anciens appareils révoqués pour cet utilisateur
+    await prisma.attendanceDevice.deleteMany({
+      where: {
+        userId: linkData.userId,
+        status: "REVOKED",
+      },
+    })
+
+    // Créer le nouveau device
     const device = await prisma.attendanceDevice.create({
       data: {
         userId: linkData.userId,
