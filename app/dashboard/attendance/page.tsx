@@ -51,6 +51,12 @@ import {
     Timer,
     UserCheck,
     UserX,
+    Monitor,
+    Plus,
+    Power,
+    Trash2,
+    Settings,
+    QrCode,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -83,6 +89,21 @@ interface AttendanceUser {
     hoursWorked: number
     hasDevice: boolean
     deviceStatus: string | null
+}
+
+interface Terminal {
+    id: string
+    code: string
+    name: string
+    location: string | null
+    type: string
+    status: string
+    createdAt: string
+    updatedAt: string
+    _count: {
+        qrTokens: number
+        logs: number
+    }
 }
 
 interface AttendanceStats {
@@ -120,10 +141,16 @@ export default function AttendancePage() {
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
     const [registrationLink, setRegistrationLink] = useState<string | null>(null)
     const [showLinkDialog, setShowLinkDialog] = useState(false)
+    const [terminals, setTerminals] = useState<Terminal[]>([])
+    const [showTerminalDialog, setShowTerminalDialog] = useState(false)
+    const [newTerminalName, setNewTerminalName] = useState("")
+    const [newTerminalLocation, setNewTerminalLocation] = useState("")
+    const [selectedTerminalCode, setSelectedTerminalCode] = useState<string | null>(null)
 
     useEffect(() => {
         loadAttendanceData()
         loadStats() // Charger les stats au démarrage pour la sidebar
+        loadTerminals()
     }, [selectedDate])
 
     useEffect(() => {
@@ -309,10 +336,104 @@ export default function AttendancePage() {
         ? Math.round((users.reduce((sum, u) => sum + u.hoursWorked, 0) / users.filter(u => u.hoursWorked > 0).length || 0) * 10) / 10
         : 0
 
+    const loadTerminals = async () => {
+        try {
+            const response = await fetch("/api/attendance/terminals")
+            if (response.ok) {
+                const data = await response.json()
+                setTerminals(data)
+            }
+        } catch (error) {
+            console.error("Error loading terminals:", error)
+        }
+    }
+
+    const createTerminal = async () => {
+        if (!newTerminalName.trim()) {
+            toast.error("Le nom du terminal est requis")
+            return
+        }
+        try {
+            const response = await fetch("/api/attendance/terminals", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: newTerminalName,
+                    location: newTerminalLocation || null,
+                }),
+            })
+            if (response.ok) {
+                toast.success("Terminal créé avec succès")
+                setShowTerminalDialog(false)
+                setNewTerminalName("")
+                setNewTerminalLocation("")
+                loadTerminals()
+            } else {
+                const error = await response.json()
+                toast.error(error.error || "Erreur lors de la création")
+            }
+        } catch (error) {
+            toast.error("Erreur lors de la création du terminal")
+        }
+    }
+
+    const toggleTerminalStatus = async (terminalId: string, currentStatus: string) => {
+        const action = currentStatus === "ACTIVE" ? "deactivate" : "activate"
+        try {
+            const response = await fetch("/api/attendance/terminals", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ terminalId, action }),
+            })
+            if (response.ok) {
+                toast.success(action === "activate" ? "Terminal activé" : "Terminal désactivé")
+                loadTerminals()
+            }
+        } catch (error) {
+            toast.error("Erreur lors de la mise à jour")
+        }
+    }
+
+    const deleteTerminal = async (terminalId: string) => {
+        if (!confirm("Êtes-vous sûr de vouloir supprimer ce terminal ?")) return
+        try {
+            const response = await fetch(`/api/attendance/terminals?id=${terminalId}`, {
+                method: "DELETE",
+            })
+            if (response.ok) {
+                toast.success("Terminal supprimé")
+                loadTerminals()
+            }
+        } catch (error) {
+            toast.error("Erreur lors de la suppression")
+        }
+    }
+
+    const copyTerminalCode = (code: string) => {
+        navigator.clipboard.writeText(code)
+        setSelectedTerminalCode(code)
+        toast.success("Code copié dans le presse-papier")
+        setTimeout(() => setSelectedTerminalCode(null), 2000)
+    }
+
+    const getTerminalStatusBadge = (status: string) => {
+        switch (status) {
+            case "ACTIVE":
+                return <Badge className="bg-green-100 text-green-800">Actif</Badge>
+            case "INACTIVE":
+                return <Badge className="bg-gray-100 text-gray-800">Inactif</Badge>
+            case "MAINTENANCE":
+                return <Badge className="bg-yellow-100 text-yellow-800">Maintenance</Badge>
+            default:
+                return <Badge variant="outline">{status}</Badge>
+        }
+    }
+
     // Tabs Material Design
     const tabs = [
         { id: "daily", label: "Pointages", icon: Calendar },
         { id: "devices", label: "Appareils", icon: Smartphone },
+        { id: "terminals", label: "Terminaux", icon: Monitor },
     ]
 
     return (
@@ -794,9 +915,187 @@ export default function AttendancePage() {
                                 </div>
                             </div>
                         )}
+
+                        {/* Tab: Terminaux */}
+                        {activeTab === "terminals" && (
+                            <div className="space-y-6">
+                                {/* Header */}
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">Bornes de pointage</h3>
+                                        <p className="text-sm text-gray-500">Gérez les terminaux qui affichent les QR codes</p>
+                                    </div>
+                                    <Button onClick={() => setShowTerminalDialog(true)} className="bg-cyan-600 hover:bg-cyan-700">
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Nouveau terminal
+                                    </Button>
+                                </div>
+
+                                {/* Liste des terminaux */}
+                                {terminals.length === 0 ? (
+                                    <div className="text-center py-12 bg-gray-50 rounded-lg">
+                                        <Monitor className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                                        <p className="text-gray-500 mb-4">Aucun terminal configuré</p>
+                                        <Button onClick={() => setShowTerminalDialog(true)} variant="outline">
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Créer un terminal
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {terminals.map((terminal) => (
+                                            <div
+                                                key={terminal.id}
+                                                className={cn(
+                                                    "bg-white border rounded-xl p-5 transition-all hover:shadow-md",
+                                                    terminal.status === "ACTIVE" ? "border-green-200" : "border-gray-200"
+                                                )}
+                                            >
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "w-10 h-10 rounded-lg flex items-center justify-center",
+                                                            terminal.status === "ACTIVE" ? "bg-green-100" : "bg-gray-100"
+                                                        )}>
+                                                            <Monitor className={cn(
+                                                                "h-5 w-5",
+                                                                terminal.status === "ACTIVE" ? "text-green-600" : "text-gray-500"
+                                                            )} />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-gray-900">{terminal.name}</h4>
+                                                            {terminal.location && (
+                                                                <p className="text-sm text-gray-500">{terminal.location}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {getTerminalStatusBadge(terminal.status)}
+                                                </div>
+
+                                                {/* Code du terminal */}
+                                                <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                                                    <p className="text-xs text-gray-500 mb-1">Code du terminal</p>
+                                                    <div className="flex items-center justify-between">
+                                                        <code className="font-mono text-sm font-semibold text-gray-900">
+                                                            {terminal.code}
+                                                        </code>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => copyTerminalCode(terminal.code)}
+                                                            className="h-8 w-8 p-0"
+                                                        >
+                                                            {selectedTerminalCode === terminal.code ? (
+                                                                <Check className="h-4 w-4 text-green-600" />
+                                                            ) : (
+                                                                <Copy className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Stats */}
+                                                <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                                                    <div className="flex items-center gap-1">
+                                                        <QrCode className="h-4 w-4" />
+                                                        <span>{terminal._count.qrTokens} QR générés</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock className="h-4 w-4" />
+                                                        <span>{terminal._count.logs} pointages</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Actions */}
+                                                <div className="flex items-center gap-2 pt-3 border-t">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => toggleTerminalStatus(terminal.id, terminal.status)}
+                                                        className={cn(
+                                                            "flex-1",
+                                                            terminal.status === "ACTIVE"
+                                                                ? "text-yellow-600 hover:bg-yellow-50"
+                                                                : "text-green-600 hover:bg-green-50"
+                                                        )}
+                                                    >
+                                                        <Power className="h-4 w-4 mr-1" />
+                                                        {terminal.status === "ACTIVE" ? "Désactiver" : "Activer"}
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => deleteTerminal(terminal.id)}
+                                                        className="text-red-600 hover:bg-red-50"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Instructions */}
+                                <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 mt-6">
+                                    <h4 className="font-semibold text-cyan-900 mb-2 flex items-center gap-2">
+                                        <QrCode className="h-5 w-5" />
+                                        Comment configurer une borne ?
+                                    </h4>
+                                    <ol className="text-sm text-cyan-800 space-y-1 list-decimal list-inside">
+                                        <li>Créez un terminal et copiez son code</li>
+                                        <li>Installez l'application "Borne de Pointage" sur une tablette</li>
+                                        <li>Entrez le code du terminal dans l'application</li>
+                                        <li>La borne affichera automatiquement les QR codes</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
+
+            {/* Dialog pour créer un terminal */}
+            <Dialog open={showTerminalDialog} onOpenChange={setShowTerminalDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Nouveau terminal</DialogTitle>
+                        <DialogDescription>
+                            Créez un nouveau terminal pour afficher les QR codes de pointage.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 mb-1 block">
+                                Nom du terminal *
+                            </label>
+                            <Input
+                                placeholder="Ex: Borne Entrée Principale"
+                                value={newTerminalName}
+                                onChange={(e) => setNewTerminalName(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 mb-1 block">
+                                Emplacement (optionnel)
+                            </label>
+                            <Input
+                                placeholder="Ex: Hall d'entrée, Bâtiment A"
+                                value={newTerminalLocation}
+                                onChange={(e) => setNewTerminalLocation(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button variant="outline" onClick={() => setShowTerminalDialog(false)}>
+                                Annuler
+                            </Button>
+                            <Button onClick={createTerminal} className="bg-cyan-600 hover:bg-cyan-700">
+                                Créer le terminal
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Dialog pour le lien d'enregistrement */}
             <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>

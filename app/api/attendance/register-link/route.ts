@@ -55,8 +55,9 @@ export async function POST(request: NextRequest) {
       createdBy: session.user.id,
     })
 
-    // Construire l'URL d'enregistrement
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    // Construire l'URL d'enregistrement dynamiquement
+    const requestUrl = new URL(request.url)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${requestUrl.protocol}//${requestUrl.host}`
     const registerUrl = `${baseUrl}/register-device?token=${token}`
 
     return NextResponse.json({
