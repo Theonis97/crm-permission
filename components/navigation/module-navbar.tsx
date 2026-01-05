@@ -27,7 +27,7 @@ export function ModuleNavbar({ title, description, icon: Icon, primaryAction, ch
 
   return (
     <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto px-24 sm:px-6 lg:px-16">
+      <div className="mx-auto sm:px-6">
         <div className="flex items-center justify-between h-16">
           {/* Section gauche - Titre et description */}
           <div className="flex items-center space-x-4">

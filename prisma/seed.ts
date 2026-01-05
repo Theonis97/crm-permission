@@ -190,6 +190,14 @@ async function main() {
       { name: "orders.delete", description: "Supprimer les commandes clients", module: "orders", action: "delete" },
       { name: "orders.validate", description: "Valider les commandes clients", module: "orders", action: "validate" },
       { name: "orders.cancel", description: "Annuler les commandes clients", module: "orders", action: "cancel" },
+
+      // Attendance management (Pointage)
+      { name: "attendance.view", description: "Voir les pointages", module: "attendance", action: "view" },
+      { name: "attendance.create", description: "Créer des pointages", module: "attendance", action: "create" },
+      { name: "attendance.edit", description: "Modifier les pointages", module: "attendance", action: "edit" },
+      { name: "attendance.delete", description: "Supprimer les pointages", module: "attendance", action: "delete" },
+      { name: "attendance.export", description: "Exporter les pointages", module: "attendance", action: "export" },
+      { name: "attendance.manage", description: "Gérer les paramètres de pointage", module: "attendance", action: "manage" },
     ]
 
     const permissions = await Promise.all(
@@ -239,7 +247,7 @@ async function main() {
     // Manager : modules commerciaux sans delete
     const managerPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "warehouse", "stores", "orders"].includes(p.module) &&
+        ["contacts", "products", "quotes", "invoices", "tasks", "opportunities", "reports", "warehouses", "warehouse", "stores", "orders", "attendance"].includes(p.module) &&
         p.action !== "delete",
     )
     await Promise.all(
@@ -257,7 +265,7 @@ async function main() {
     // Commercial : permissions de base
     const commercialPermissions = permissions.filter(
       (p) =>
-        ["contacts", "products", "quotes", "tasks", "opportunities", "stores", "orders"].includes(p.module) &&
+        ["contacts", "products", "quotes", "tasks", "opportunities", "stores", "orders", "attendance"].includes(p.module) &&
         (["view", "create", "edit"].includes(p.action) || p.name === "stores.view_sales"),
     )
     await Promise.all(

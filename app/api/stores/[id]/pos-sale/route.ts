@@ -154,7 +154,7 @@ export async function POST(
           customerName,
           customerPhone,
           customerEmail: customerEmail || null,
-          status: paymentMethod === "MOBILE" && body.paymentStatus === "PENDING" ? "PENDING_PAYMENT" : "DELIVERED",
+          status: paymentMethod === "MOBILE" && body.paymentStatus === "PENDING" ? "PENDING" : "DELIVERED",
           priority: "NORMAL",
           subtotal,
           totalDiscount,

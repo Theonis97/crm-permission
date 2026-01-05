@@ -20,6 +20,7 @@ import {
   Trash2,
   Key,
   UserPlus,
+  Store,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -44,6 +45,16 @@ interface User {
   status: string
   createdAt: string
   userRoles: Array<{
+    role: {
+      id: string
+      name: string
+    }
+  }>
+  storeUserRoles: Array<{
+    store: {
+      id: string
+      name: string
+    }
     role: {
       id: string
       name: string
@@ -283,6 +294,7 @@ export default function UsersPage() {
                         <TableHead>Email</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead>Rôles</TableHead>
+                        <TableHead>Magasins</TableHead>
                         <TableHead>Créé le</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
@@ -311,6 +323,17 @@ export default function UsersPage() {
                                 </Badge>
                               ))}
                               {user.userRoles.length === 0 && <span className="text-sm text-gray-400">Aucun rôle</span>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {user.storeUserRoles.map((storeRole) => (
+                                <Badge key={`${storeRole.store.id}-${storeRole.role.id}`} className="text-xs bg-teal-100 text-teal-800 border-teal-200">
+                                  <Store className="h-3 w-3 mr-1" />
+                                  {storeRole.store.name}
+                                </Badge>
+                              ))}
+                              {user.storeUserRoles.length === 0 && <span className="text-sm text-gray-400">Aucun magasin</span>}
                             </div>
                           </TableCell>
                           <TableCell className="text-gray-600">

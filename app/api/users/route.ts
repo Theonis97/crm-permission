@@ -23,6 +23,22 @@ export async function GET() {
             },
           },
         },
+        storeUserRoles: {
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            role: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
