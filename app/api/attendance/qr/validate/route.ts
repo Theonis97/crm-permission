@@ -65,8 +65,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Vérifier que l'appareil est approuvé pour cet utilisateur
-    const device = await prisma.attendanceDevice.findFirst({
+    // Vérifier si l'appareil est approuvé pour cet utilisateur
+    // Si pas d'appareil approuvé, on permet quand même le pointage via web
+    let device = await prisma.attendanceDevice.findFirst({
       where: {
         userId,
         deviceId,
@@ -74,11 +75,29 @@ export async function POST(request: Request) {
       },
     })
 
+    // Si pas d'appareil trouvé, créer un appareil web temporaire ou utiliser un existant
     if (!device) {
-      return NextResponse.json(
-        { error: "Appareil non autorisé" },
-        { status: 403 }
-      )
+      // Chercher un appareil web existant pour cet utilisateur
+      device = await prisma.attendanceDevice.findFirst({
+        where: {
+          userId,
+          platform: "web",
+          status: "APPROVED",
+        },
+      })
+
+      // Si toujours pas d'appareil, créer un appareil web auto-approuvé
+      if (!device) {
+        device = await prisma.attendanceDevice.create({
+          data: {
+            userId,
+            deviceId: `WEB_${userId}_${Date.now()}`,
+            deviceName: "Navigateur Web",
+            platform: "web",
+            status: "APPROVED",
+          },
+        })
+      }
     }
 
     // Déterminer le type de pointage (entrée ou sortie)

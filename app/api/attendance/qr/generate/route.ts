@@ -58,8 +58,14 @@ export async function GET(request: Request) {
       data: { updatedAt: new Date() },
     })
 
+    // Construire l'URL de scan dynamiquement
+    const host = request.headers.get("host") || "localhost:3000"
+    const protocol = request.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https")
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
+    const scanUrl = `${baseUrl}/scan?token=${qrToken}`
+
     return NextResponse.json({
-      qrCode: qrToken,
+      qrCode: scanUrl,
       expiresAt: expiresAt.toISOString(),
       terminalId: terminal.id,
     })
