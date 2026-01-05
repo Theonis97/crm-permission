@@ -3,8 +3,6 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { 
   Clock, 
@@ -14,7 +12,6 @@ import {
   AlertTriangle,
   LogIn,
   LogOut,
-  User,
   Smartphone
 } from "lucide-react"
 
@@ -22,16 +19,10 @@ function ScanContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
 
-  const [status, setStatus] = useState<"loading" | "auth" | "validating" | "success" | "error">("loading")
+  const [status, setStatus] = useState<"loading" | "validating" | "success" | "error" | "not_registered">("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [attendanceType, setAttendanceType] = useState<"CHECK_IN" | "CHECK_OUT" | null>(null)
   const [timestamp, setTimestamp] = useState<Date | null>(null)
-  
-  // Auth state
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
 
   useEffect(() => {
@@ -41,65 +32,34 @@ function ScanContent() {
       return
     }
     
-    // Vérifier si l'utilisateur est déjà connecté (session)
-    checkSession()
+    // Vérifier si l'appareil est enregistré (localStorage)
+    checkRegisteredDevice()
   }, [token])
 
-  const checkSession = async () => {
-    try {
-      const response = await fetch("/api/auth/session")
-      const session = await response.json()
-      
-      if (session?.user?.id) {
-        setUserId(session.user.id)
-        setUserName(session.user.name || session.user.email)
-        // Valider automatiquement le pointage
-        validateAttendance(session.user.id)
-      } else {
-        setStatus("auth")
-      }
-    } catch (error) {
-      setStatus("auth")
+  const checkRegisteredDevice = async () => {
+    // Vérifier si cet appareil est enregistré
+    const storedDeviceId = localStorage.getItem("attendance_device_id")
+    const storedUserId = localStorage.getItem("attendance_user_id")
+    const storedUserName = localStorage.getItem("attendance_user_name")
+
+    if (storedDeviceId && storedUserId) {
+      // Appareil enregistré, pointer automatiquement
+      setUserName(storedUserName)
+      validateAttendance(storedUserId, storedDeviceId)
+    } else {
+      // Appareil non enregistré
+      setStatus("not_registered")
     }
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsAuthenticating(true)
-    setErrorMessage(null)
-
-    try {
-      // Authentifier l'utilisateur via l'API de scan
-      const response = await fetch("/api/attendance/scan/user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Identifiants incorrects")
-      }
-
-      setUserId(data.id)
-      setUserName(data.name || data.email)
-      validateAttendance(data.id)
-    } catch (error: any) {
-      setErrorMessage(error.message || "Erreur de connexion")
-    } finally {
-      setIsAuthenticating(false)
-    }
-  }
-
-  const validateAttendance = async (userIdToUse: string) => {
+  const validateAttendance = async (userIdToUse: string, deviceIdToUse?: string) => {
     if (!token) return
     
     setStatus("validating")
     
     try {
-      // Générer un deviceId basé sur le navigateur
-      const deviceId = `WEB_${navigator.userAgent.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_')}`
+      // Utiliser le deviceId fourni ou générer un temporaire
+      const deviceId = deviceIdToUse || localStorage.getItem("attendance_device_id") || `WEB_${navigator.userAgent.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_')}`
       
       const response = await fetch("/api/attendance/qr/validate", {
         method: "POST",
@@ -157,58 +117,6 @@ function ScanContent() {
             </div>
           )}
 
-          {/* Authentification requise */}
-          {status === "auth" && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="text-center mb-6">
-                <User className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Identifiez-vous pour pointer</p>
-              </div>
-
-              {errorMessage && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  {errorMessage}
-                </div>
-              )}
-
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Email</label>
-                <Input
-                  type="email"
-                  placeholder="votre@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Mot de passe</label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full bg-cyan-600 hover:bg-cyan-700"
-                disabled={isAuthenticating}
-              >
-                {isAuthenticating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Connexion...
-                  </>
-                ) : (
-                  "Valider mon pointage"
-                )}
-              </Button>
-            </form>
-          )}
 
           {/* Validation en cours */}
           {status === "validating" && (
@@ -265,6 +173,26 @@ function ScanContent() {
               <p className="text-sm text-gray-500 mt-6">
                 Vous pouvez fermer cette page.
               </p>
+            </div>
+          )}
+
+          {/* Appareil non enregistré */}
+          {status === "not_registered" && (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Smartphone className="h-10 w-10 text-orange-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-orange-800 mb-2">
+                Appareil non enregistré
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Cet appareil n'est pas enregistré pour le pointage.
+              </p>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <p className="text-sm text-orange-800">
+                  Demandez à votre responsable RH de vous envoyer un lien d'enregistrement pour associer cet appareil à votre compte.
+                </p>
+              </div>
             </div>
           )}
 

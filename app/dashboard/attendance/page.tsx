@@ -733,7 +733,7 @@ export default function AttendancePage() {
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
-                                                                {!user.hasDevice && (
+                                                                {(!user.hasDevice || user.deviceStatus === "REVOKED") && (
                                                                     <DropdownMenuItem
                                                                         onClick={() => generateRegistrationLink(user.id)}
                                                                         disabled={generatingLink}

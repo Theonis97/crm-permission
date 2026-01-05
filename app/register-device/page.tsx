@@ -86,6 +86,11 @@ function RegisterDeviceContent() {
       })
 
       if (response.ok) {
+        const data = await response.json()
+        // Stocker les infos de l'appareil dans localStorage pour le pointage automatique
+        localStorage.setItem("attendance_device_id", deviceId)
+        localStorage.setItem("attendance_user_id", data.userId)
+        localStorage.setItem("attendance_user_name", data.userName || "")
         setStatus("registered")
       } else {
         const error = await response.json()

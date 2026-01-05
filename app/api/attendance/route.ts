@@ -30,6 +30,24 @@ export async function GET(request: NextRequest) {
       endDate.setHours(23, 59, 59, 999)
     }
 
+    console.log("=== ATTENDANCE API DEBUG ===")
+    console.log("Date param:", date)
+    console.log("Start date:", startDate.toISOString())
+    console.log("End date:", endDate.toISOString())
+
+    // Vérifier d'abord combien de logs existent dans la base
+    const allLogs = await prisma.attendanceLog.findMany({
+      take: 10,
+      orderBy: { timestamp: "desc" },
+      include: { user: { select: { email: true } } }
+    })
+    console.log("Total recent logs in DB:", allLogs.length)
+    console.log("Recent logs:", allLogs.map(l => ({ 
+      email: l.user.email, 
+      type: l.type, 
+      timestamp: l.timestamp 
+    })))
+
     // Récupérer tous les utilisateurs avec leurs devices et pointages
     const users = await prisma.user.findMany({
       where: {
@@ -78,6 +96,14 @@ export async function GET(request: NextRequest) {
       orderBy: {
         firstName: "asc",
       },
+    })
+
+    // Debug: afficher les logs trouvés pour chaque utilisateur
+    console.log("Users with logs:")
+    users.forEach(u => {
+      if (u.attendanceLogs.length > 0) {
+        console.log(`  - ${u.email}: ${u.attendanceLogs.length} logs`, u.attendanceLogs)
+      }
     })
 
     // Calculer les statistiques pour chaque utilisateur

@@ -186,9 +186,16 @@ export async function PUT(request: NextRequest) {
     // Supprimer le token utilisé
     registrationLinks.delete(token)
 
+    // Retourner les infos nécessaires pour le pointage automatique
+    const userName = device.user.firstName && device.user.lastName 
+      ? `${device.user.firstName} ${device.user.lastName}`
+      : device.user.email
+
     return NextResponse.json({
       success: true,
       device,
+      userId: device.user.id,
+      userName,
       message: "Appareil enregistré avec succès. En attente de validation RH.",
     })
   } catch (error) {
