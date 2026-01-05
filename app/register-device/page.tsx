@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ interface TokenValidation {
   expiresAt: string
 }
 
-export default function RegisterDevicePage() {
+function RegisterDeviceContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
 
@@ -250,5 +250,30 @@ export default function RegisterDevicePage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function RegisterDevicePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-cyan-50 to-blue-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center mb-4">
+              <Smartphone className="h-8 w-8 text-cyan-600" />
+            </div>
+            <CardTitle className="text-2xl">Enregistrement d'appareil</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8">
+              <Loader2 className="h-12 w-12 animate-spin text-cyan-600 mx-auto mb-4" />
+              <p className="text-gray-600">Chargement...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <RegisterDeviceContent />
+    </Suspense>
   )
 }
