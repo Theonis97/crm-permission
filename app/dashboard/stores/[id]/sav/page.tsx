@@ -8,1270 +8,288 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
-import { StorePageHeader } from "@/components/stores/store-page-header"
 import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  RotateCcw,
-  Search,
-  Plus,
-  Package,
-  Loader2,
-  Eye,
-  CheckCircle,
-  XCircle,
-  MoreHorizontal,
-  Clock,
-  ArrowLeftRight,
-  Banknote,
-  User,
-  Phone,
-  ShoppingBag,
-  ChevronRight,
-  ArrowLeft,
-  Minus,
-  AlertCircle,
-  RefreshCw,
-} from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { RotateCcw, Search, Plus, Package, Loader2, Eye, CheckCircle, XCircle, MoreHorizontal, Clock, ArrowLeftRight, Banknote, Minus, Trash2, User, X, Image as ImageIcon } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { toast } from "sonner"
+import { StorePageHeader } from "@/components/stores/store-page-header"
 
-interface SAVPageProps {
-  params: Promise<{
-    id: string
-  }>
-}
+interface SAVPageProps { params: Promise<{ id: string }> }
 
-interface ProductReturn {
-  id: string
-  number: string
-  customerName: string
-  customerPhone: string
-  status: "PENDING" | "APPROVED" | "REFUNDED" | "EXCHANGED" | "REJECTED"
-  totalRefundAmount: number
-  notes: string | null
-  createdAt: string
-  processedAt: string | null
-  storeOrder: {
-    id: string
-    number: string
-  }
-  items: ProductReturnItem[]
-  createdBy: {
-    id: string
-    name: string | null
-    email: string
-  }
-  processedBy: {
-    id: string
-    name: string | null
-    email: string
-  } | null
-}
+type ReturnReason = "DEFECTIVE" | "BROKEN" | "NOT_SATISFIED" | "NON_FUNCTIONAL" | "WRONG_PRODUCT" | "EXPIRED" | "QUALITY_ISSUE" | "OTHER"
+type ProductCondition = "NEW" | "GOOD" | "USED" | "DAMAGED" | "DEFECTIVE"
 
-interface ProductReturnItem {
-  id: string
-  productName: string
-  productSku: string | null
-  quantity: number
-  unitPrice: number
-  refundAmount: number
-  reason: "DEFECTIVE" | "BROKEN" | "NOT_SATISFIED" | "NON_FUNCTIONAL" | "WRONG_PRODUCT" | "OTHER"
-  reasonDetails: string | null
-  isRefunded: boolean
-  product: {
-    id: string
-    name: string
-  }
-}
+const RETURN_REASONS = [
+  { value: "DEFECTIVE", label: "Défectueux" }, { value: "BROKEN", label: "Cassé" },
+  { value: "NOT_SATISFIED", label: "Pas satisfait" }, { value: "NON_FUNCTIONAL", label: "Non fonctionnel" },
+  { value: "WRONG_PRODUCT", label: "Mauvais produit" }, { value: "EXPIRED", label: "Produit périmé" },
+  { value: "QUALITY_ISSUE", label: "Problème de qualité" }, { value: "OTHER", label: "Autre" },
+]
 
-// Interfaces pour la création de retour
-interface CustomerOrder {
-  id: string
-  number: string
-  customerName: string
-  customerPhone: string
-  total: number
-  status: string
-  createdAt: string
-  items: CustomerOrderItem[]
-}
-
-interface CustomerOrderItem {
-  id: string
-  productId: string
-  name: string
-  sku: string | null
-  quantity: number
-  unitPrice: number
-  total: number
-}
-
-interface ReturnItemSelection {
-  storeOrderItemId: string
-  productId: string
-  productName: string
-  productSku: string | null
-  maxQuantity: number
-  unitPrice: number
-  quantity: number
-  reason: "DEFECTIVE" | "BROKEN" | "NOT_SATISFIED" | "NON_FUNCTIONAL" | "WRONG_PRODUCT" | "OTHER"
-  reasonDetails: string
-  isRefunded: boolean
-  selected: boolean
-}
-
-type ReturnReason = "DEFECTIVE" | "BROKEN" | "NOT_SATISFIED" | "NON_FUNCTIONAL" | "WRONG_PRODUCT" | "OTHER"
-
-const RETURN_REASONS: { value: ReturnReason; label: string }[] = [
-  { value: "DEFECTIVE", label: "Défectueux" },
-  { value: "BROKEN", label: "Cassé" },
-  { value: "NOT_SATISFIED", label: "Pas satisfait" },
-  { value: "NON_FUNCTIONAL", label: "Non fonctionnel" },
-  { value: "WRONG_PRODUCT", label: "Mauvais produit" },
-  { value: "OTHER", label: "Autre" },
+const PRODUCT_CONDITIONS = [
+  { value: "NEW", label: "Neuf" }, { value: "GOOD", label: "Bon état" },
+  { value: "USED", label: "Utilisé" }, { value: "DAMAGED", label: "Endommagé" }, { value: "DEFECTIVE", label: "Défectueux" },
 ]
 
 const getStatusBadge = (status: string) => {
-  switch (status) {
-    case "PENDING":
-      return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="h-3 w-3 mr-1" />En attente</Badge>
-    case "APPROVED":
-      return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="h-3 w-3 mr-1" />Approuvé</Badge>
-    case "REFUNDED":
-      return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><Banknote className="h-3 w-3 mr-1" />Remboursé</Badge>
-    case "EXCHANGED":
-      return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200"><ArrowLeftRight className="h-3 w-3 mr-1" />Échangé</Badge>
-    case "REJECTED":
-      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="h-3 w-3 mr-1" />Rejeté</Badge>
-    default:
-      return <Badge variant="outline">{status}</Badge>
+  const badges: Record<string, React.ReactNode> = {
+    PENDING: <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="h-3 w-3 mr-1" />En attente</Badge>,
+    APPROVED: <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="h-3 w-3 mr-1" />Approuvé</Badge>,
+    REFUNDED: <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><Banknote className="h-3 w-3 mr-1" />Remboursé</Badge>,
+    EXCHANGED: <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200"><ArrowLeftRight className="h-3 w-3 mr-1" />Échangé</Badge>,
+    REJECTED: <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="h-3 w-3 mr-1" />Rejeté</Badge>,
   }
+  return badges[status] || <Badge variant="outline">{status}</Badge>
 }
 
-const getReasonLabel = (reason: string) => {
-  switch (reason) {
-    case "DEFECTIVE":
-      return "Défectueux"
-    case "BROKEN":
-      return "Cassé"
-    case "NOT_SATISFIED":
-      return "Pas satisfait"
-    case "NON_FUNCTIONAL":
-      return "Non fonctionnel"
-    case "WRONG_PRODUCT":
-      return "Mauvais produit"
-    case "OTHER":
-      return "Autre"
-    default:
-      return reason
+const getConditionBadge = (condition: string) => {
+  const badges: Record<string, React.ReactNode> = {
+    NEW: <Badge variant="outline" className="bg-green-50 text-green-700">Neuf</Badge>,
+    GOOD: <Badge variant="outline" className="bg-blue-50 text-blue-700">Bon état</Badge>,
+    USED: <Badge variant="outline" className="bg-gray-50 text-gray-700">Utilisé</Badge>,
+    DAMAGED: <Badge variant="outline" className="bg-orange-50 text-orange-700">Endommagé</Badge>,
+    DEFECTIVE: <Badge variant="outline" className="bg-red-50 text-red-700">Défectueux</Badge>,
   }
-}
-
-const getReasonBadge = (reason: string) => {
-  switch (reason) {
-    case "DEFECTIVE":
-      return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">Défectueux</Badge>
-    case "BROKEN":
-      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Cassé</Badge>
-    case "NOT_SATISFIED":
-      return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pas satisfait</Badge>
-    case "NON_FUNCTIONAL":
-      return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Non fonctionnel</Badge>
-    case "WRONG_PRODUCT":
-      return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Mauvais produit</Badge>
-    case "OTHER":
-      return <Badge variant="outline">Autre</Badge>
-    default:
-      return <Badge variant="outline">{reason}</Badge>
-  }
+  return badges[condition] || <Badge variant="outline">{condition}</Badge>
 }
 
 export default function SAVPage({ params }: SAVPageProps) {
-  const resolvedParams = use(params)
-  const storeId = resolvedParams.id
+  const { id: storeId } = use(params)
   const { data: session } = useSession()
 
-  const [returns, setReturns] = useState<ProductReturn[]>([])
+  const [returns, setReturns] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [selectedReturn, setSelectedReturn] = useState<ProductReturn | null>(null)
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [conditionFilter, setConditionFilter] = useState("all")
+  const [productFilter, setProductFilter] = useState("")
+  const [selectedReturn, setSelectedReturn] = useState<any>(null)
   const [showDetailsDialog, setShowDetailsDialog] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
 
-  // États pour le Sheet de création de retour
   const [showCreateSheet, setShowCreateSheet] = useState(false)
-  const [createStep, setCreateStep] = useState<1 | 2 | 3>(1) // 1: Recherche client, 2: Sélection commande, 3: Sélection produits
-  const [customerSearch, setCustomerSearch] = useState("")
-  const [searchingOrders, setSearchingOrders] = useState(false)
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([])
-  const [selectedOrder, setSelectedOrder] = useState<CustomerOrder | null>(null)
-  const [returnItems, setReturnItems] = useState<ReturnItemSelection[]>([])
+  const [storeProducts, setStoreProducts] = useState<any[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [productSearch, setProductSearch] = useState("")
+  
+  const [returnedProduct, setReturnedProduct] = useState<any>(null)
+  const [exchangeProduct, setExchangeProduct] = useState<any>(null)
   const [returnNotes, setReturnNotes] = useState("")
+  const [customerName, setCustomerName] = useState("")
+  const [customerPhone, setCustomerPhone] = useState("")
   const [creatingReturn, setCreatingReturn] = useState(false)
+  const [selectionMode, setSelectionMode] = useState<"return" | "exchange">("return")
 
-  // Statistiques
-  const stats = {
-    total: returns.length,
-    pending: returns.filter(r => r.status === "PENDING").length,
-    refunded: returns.filter(r => r.status === "REFUNDED").length,
-    exchanged: returns.filter(r => r.status === "EXCHANGED").length,
+  // Stats basées sur l'état des produits (condition)
+  const getConditionStats = () => {
+    const allItems = returns.flatMap(r => r.items || [])
+    return {
+      total: returns.length,
+      new: allItems.filter(i => i.condition === "NEW").length,
+      good: allItems.filter(i => i.condition === "GOOD").length,
+      damaged: allItems.filter(i => i.condition === "DAMAGED").length,
+      defective: allItems.filter(i => i.condition === "DEFECTIVE").length,
+    }
   }
+  const stats = getConditionStats()
 
-  // Charger les retours
   const loadReturns = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/stores/${storeId}/sav`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const data = await response.json()
-      setReturns(data)
-    } catch (error) {
-      console.error("Erreur:", error)
-      toast.error("Erreur lors du chargement des retours")
-    } finally {
-      setLoading(false)
-    }
+      const res = await fetch(`/api/stores/${storeId}/sav`)
+      if (res.ok) setReturns(await res.json())
+    } catch (e) { toast.error("Erreur chargement") } finally { setLoading(false) }
   }
 
-  useEffect(() => {
-    loadReturns()
-  }, [storeId])
+  const loadStoreProducts = async () => {
+    try {
+      setLoadingProducts(true)
+      const res = await fetch(`/api/stores/${storeId}/products`)
+      if (res.ok) {
+        const data = await res.json()
+        setStoreProducts((data.products || data || []).map((p: any) => ({
+          id: p.id, productId: p.productId || p.id, name: p.product?.name || p.name,
+          sku: p.product?.sku || p.sku, prixVente: p.product?.prixVente || p.prixVente,
+          stock: p.stock, photos: p.product?.photos || p.photos || [],
+        })))
+      }
+    } catch (e) { toast.error("Erreur produits") } finally { setLoadingProducts(false) }
+  }
 
-  // Filtrer les retours
-  const filteredReturns = returns.filter(ret => {
-    const matchesSearch = 
-      ret.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ret.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ret.customerPhone.includes(searchQuery) ||
-      ret.storeOrder.number.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesStatus = statusFilter === "all" || ret.status === statusFilter
+  useEffect(() => { loadReturns() }, [storeId])
 
-    return matchesSearch && matchesStatus
+  const filteredReturns = returns.filter(r => {
+    const searchMatch = r.number?.toLowerCase().includes(searchQuery.toLowerCase()) || r.customerName?.toLowerCase().includes(searchQuery.toLowerCase())
+    const statusMatch = statusFilter === "all" || r.status === statusFilter
+    const conditionMatch = conditionFilter === "all" || r.items?.some((i: any) => i.condition === conditionFilter)
+    const productMatch = !productFilter || r.items?.some((i: any) => i.productName?.toLowerCase().includes(productFilter.toLowerCase()))
+    return searchMatch && statusMatch && conditionMatch && productMatch
   })
 
-  // Traiter un retour (approuver, rembourser, échanger, rejeter)
-  const processReturn = async (returnId: string, action: "APPROVED" | "REFUNDED" | "EXCHANGED" | "REJECTED") => {
+  const filteredProducts = storeProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku?.toLowerCase().includes(productSearch.toLowerCase()))
+
+  const handleProcess = async (id: string, action: string) => {
     try {
-      setProcessingId(returnId)
-      const response = await fetch(`/api/stores/${storeId}/sav/${returnId}/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors du traitement")
-      }
-
-      toast.success(
-        action === "REFUNDED" ? "Retour remboursé avec succès" :
-        action === "EXCHANGED" ? "Échange effectué avec succès" :
-        action === "APPROVED" ? "Retour approuvé" :
-        "Retour rejeté"
-      )
-      loadReturns()
-    } catch (error: any) {
-      console.error("Erreur:", error)
-      toast.error(error.message || "Erreur lors du traitement")
-    } finally {
-      setProcessingId(null)
-    }
+      setProcessingId(id)
+      const res = await fetch(`/api/stores/${storeId}/sav/${id}/process`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) })
+      if (res.ok) { toast.success(action === "APPROVED" ? "Approuvé" : "Rejeté"); loadReturns() }
+    } catch (e) { toast.error("Erreur") } finally { setProcessingId(null) }
   }
 
-  // Voir les détails
-  const viewDetails = (ret: ProductReturn) => {
-    setSelectedReturn(ret)
-    setShowDetailsDialog(true)
-  }
-
-  // === Fonctions pour la création de retour ===
-
-  // Réinitialiser le formulaire de création
-  const resetCreateForm = () => {
-    setCreateStep(1)
-    setCustomerSearch("")
-    setCustomerOrders([])
-    setSelectedOrder(null)
-    setReturnItems([])
-    setReturnNotes("")
-  }
-
-  // Ouvrir le Sheet de création
   const openCreateSheet = () => {
-    resetCreateForm()
-    setShowCreateSheet(true)
+    setReturnedProduct(null); setExchangeProduct(null); setReturnNotes(""); setCustomerName(""); setCustomerPhone("")
+    setProductSearch(""); setSelectionMode("return"); loadStoreProducts(); setShowCreateSheet(true)
   }
 
-  // Fermer le Sheet de création
-  const closeCreateSheet = () => {
-    setShowCreateSheet(false)
-    resetCreateForm()
+  const selectProduct = (product: any) => {
+    const item = { productId: product.productId, productName: product.name, productSku: product.sku, unitPrice: product.prixVente, quantity: 1, reason: "DEFECTIVE" as ReturnReason, reasonDetails: "", condition: "GOOD" as ProductCondition, photos: product.photos }
+    if (selectionMode === "return") { setReturnedProduct(item); toast.success("Produit retourné sélectionné") }
+    else { setExchangeProduct(item); toast.success("Produit d'échange sélectionné") }
   }
 
-  // Rechercher les commandes d'un client
-  const searchCustomerOrders = async () => {
-    if (!customerSearch.trim()) {
-      toast.error("Veuillez entrer un numéro de téléphone ou un nom")
-      return
-    }
-
-    try {
-      setSearchingOrders(true)
-      // Rechercher toutes les commandes livrées
-      const response = await fetch(
-        `/api/stores/${storeId}/orders?search=${encodeURIComponent(customerSearch)}&status=DELIVERED`
-      )
-      if (!response.ok) throw new Error("Erreur lors de la recherche")
-      const data = await response.json()
-      
-      // Mapper les commandes au format attendu
-      const ordersWithItems = (data.orders || [])
-        .filter((o: any) => o.items && o.items.length > 0)
-        .map((o: any) => ({
-          id: o.id,
-          number: o.number,
-          customerName: o.customerName,
-          customerPhone: o.customerPhone,
-          total: o.total,
-          status: o.status,
-          createdAt: o.createdAt,
-          items: o.items.map((item: any) => ({
-            id: item.id,
-            productId: item.productId,
-            name: item.name,
-            sku: item.sku,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-          })),
-        }))
-      
-      setCustomerOrders(ordersWithItems)
-      
-      if (ordersWithItems.length === 0) {
-        toast.info("Aucune commande trouvée pour ce client")
-      } else {
-        setCreateStep(2)
-      }
-    } catch (error) {
-      console.error("Erreur:", error)
-      toast.error("Erreur lors de la recherche des commandes")
-    } finally {
-      setSearchingOrders(false)
-    }
-  }
-
-  // Sélectionner une commande
-  const selectOrder = (order: CustomerOrder) => {
-    setSelectedOrder(order)
-    // Initialiser les items de retour
-    const items: ReturnItemSelection[] = order.items.map(item => ({
-      storeOrderItemId: item.id,
-      productId: item.productId,
-      productName: item.name,
-      productSku: item.sku,
-      maxQuantity: item.quantity,
-      unitPrice: item.unitPrice,
-      quantity: 1,
-      reason: "DEFECTIVE" as ReturnReason,
-      reasonDetails: "",
-      isRefunded: true,
-      selected: false,
-    }))
-    setReturnItems(items)
-    setCreateStep(3)
-  }
-
-  // Retour à l'étape précédente
-  const goBackStep = () => {
-    if (createStep === 2) {
-      setCreateStep(1)
-      setCustomerOrders([])
-    } else if (createStep === 3) {
-      setCreateStep(2)
-      setSelectedOrder(null)
-      setReturnItems([])
-    }
-  }
-
-  // Toggle sélection d'un item
-  const toggleItemSelection = (index: number) => {
-    setReturnItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, selected: !item.selected } : item
-    ))
-  }
-
-  // Mettre à jour la quantité d'un item
-  const updateItemQuantity = (index: number, quantity: number) => {
-    setReturnItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, quantity: Math.min(Math.max(1, quantity), item.maxQuantity) } : item
-    ))
-  }
-
-  // Mettre à jour le motif d'un item
-  const updateItemReason = (index: number, reason: ReturnReason) => {
-    setReturnItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, reason } : item
-    ))
-  }
-
-  // Mettre à jour les détails du motif
-  const updateItemReasonDetails = (index: number, reasonDetails: string) => {
-    setReturnItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, reasonDetails } : item
-    ))
-  }
-
-  // Mettre à jour le type de résolution (remboursement ou échange)
-  const updateItemIsRefunded = (index: number, isRefunded: boolean) => {
-    setReturnItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, isRefunded } : item
-    ))
-  }
-
-  // Calculer le montant total du retour
-  const calculateTotalRefund = () => {
-    return returnItems
-      .filter(item => item.selected)
-      .reduce((total, item) => total + (item.quantity * item.unitPrice), 0)
-  }
-
-  // Créer le retour
   const createReturn = async () => {
-    const selectedItems = returnItems.filter(item => item.selected)
-    
-    if (selectedItems.length === 0) {
-      toast.error("Veuillez sélectionner au moins un produit à retourner")
-      return
-    }
-
-    if (!selectedOrder) {
-      toast.error("Aucune commande sélectionnée")
-      return
-    }
-
+    if (!returnedProduct) { toast.error("Sélectionnez un produit"); return }
     try {
       setCreatingReturn(true)
-      const response = await fetch(`/api/stores/${storeId}/sav`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          storeOrderId: selectedOrder.id,
-          items: selectedItems.map(item => ({
-            storeOrderItemId: item.storeOrderItemId,
-            quantity: item.quantity,
-            reason: item.reason,
-            reasonDetails: item.reasonDetails || null,
-            isRefunded: item.isRefunded,
-          })),
-          notes: returnNotes || null,
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la création")
+      // Préparer l'item avec les données d'échange si présent
+      const itemData: any = {
+        productId: returnedProduct.productId,
+        quantity: returnedProduct.quantity,
+        unitPrice: returnedProduct.unitPrice,
+        reason: returnedProduct.reason,
+        reasonDetails: returnedProduct.reasonDetails,
+        condition: returnedProduct.condition,
       }
-
-      toast.success("Retour créé avec succès")
-      closeCreateSheet()
-      loadReturns()
-    } catch (error: any) {
-      console.error("Erreur:", error)
-      toast.error(error.message || "Erreur lors de la création du retour")
-    } finally {
-      setCreatingReturn(false)
-    }
+      // Ajouter le produit d'échange si sélectionné
+      if (exchangeProduct) {
+        itemData.exchangeProductId = exchangeProduct.productId
+        itemData.exchangeDiscount = 0 // Remise par défaut
+      }
+      const res = await fetch(`/api/stores/${storeId}/sav`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [itemData], notes: returnNotes, customerName, customerPhone })
+      })
+      if (res.ok) { toast.success("Retour créé"); setShowCreateSheet(false); loadReturns() }
+      else { const err = await res.json(); throw new Error(err.error) }
+    } catch (e: any) { toast.error(e.message || "Erreur") } finally { setCreatingReturn(false) }
   }
 
-  // Nombre d'items sélectionnés
-  const selectedItemsCount = returnItems.filter(item => item.selected).length
+  const calcTotal = () => returnedProduct ? returnedProduct.quantity * returnedProduct.unitPrice : 0
+  const calcDiff = () => { if (!returnedProduct || !exchangeProduct) return 0; return (exchangeProduct.quantity * exchangeProduct.unitPrice) - (returnedProduct.quantity * returnedProduct.unitPrice) }
 
   return (
     <div className="flex flex-col">
-      <StorePageHeader
-        title="Service Après-Vente"
-        description="Gérez les retours de produits et les remboursements"
-        icon={RotateCcw}
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-[250px] bg-white"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px] bg-white">
-                <SelectValue placeholder="Statut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="PENDING">En attente</SelectItem>
-                <SelectItem value="APPROVED">Approuvé</SelectItem>
-                <SelectItem value="REFUNDED">Remboursé</SelectItem>
-                <SelectItem value="EXCHANGED">Échangé</SelectItem>
-                <SelectItem value="REJECTED">Rejeté</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={openCreateSheet}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouveau retour
-            </Button>
-          </div>
-        }
-      />
+      <StorePageHeader title="Service Après-Vente" description="Gérez les retours de produits" icon={RotateCcw}
+        actions={<div className="flex items-center gap-3">
+          <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Produit..." value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className="pl-9 w-[180px] bg-white" /></div>
+          <Select value={conditionFilter} onValueChange={setConditionFilter}><SelectTrigger className="w-[130px] bg-white"><SelectValue placeholder="État" /></SelectTrigger><SelectContent><SelectItem value="all">Tous états</SelectItem><SelectItem value="NEW">Neuf</SelectItem><SelectItem value="GOOD">Bon état</SelectItem><SelectItem value="USED">Utilisé</SelectItem><SelectItem value="DAMAGED">Endommagé</SelectItem><SelectItem value="DEFECTIVE">Défectueux</SelectItem></SelectContent></Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[130px] bg-white"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous statuts</SelectItem><SelectItem value="PENDING">En attente</SelectItem><SelectItem value="APPROVED">Approuvé</SelectItem><SelectItem value="REFUNDED">Remboursé</SelectItem><SelectItem value="EXCHANGED">Échangé</SelectItem><SelectItem value="REJECTED">Rejeté</SelectItem></SelectContent></Select>
+          <Button onClick={openCreateSheet}><Plus className="h-4 w-4 mr-2" />Nouveau retour</Button>
+        </div>} />
 
-      {/* Contenu principal */}
       <div className="px-10 py-6 flex flex-col gap-6">
-        {/* Statistiques */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total retours</CardTitle>
-              <RotateCcw className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">En attente</CardTitle>
-              <Clock className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Remboursés</CardTitle>
-              <Banknote className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.refunded}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Échangés</CardTitle>
-              <ArrowLeftRight className="h-4 w-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{stats.exchanged}</div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-5 gap-4">
+          <Card className="cursor-pointer hover:shadow-md" onClick={() => setConditionFilter("all")}><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total retours</CardTitle><RotateCcw className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.total}</div></CardContent></Card>
+          <Card className="cursor-pointer hover:shadow-md" onClick={() => setConditionFilter("NEW")}><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Neuf</CardTitle><Package className="h-4 w-4 text-green-600" /></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{stats.new}</div></CardContent></Card>
+          <Card className="cursor-pointer hover:shadow-md" onClick={() => setConditionFilter("GOOD")}><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Bon état</CardTitle><Package className="h-4 w-4 text-blue-600" /></CardHeader><CardContent><div className="text-2xl font-bold text-blue-600">{stats.good}</div></CardContent></Card>
+          <Card className="cursor-pointer hover:shadow-md" onClick={() => setConditionFilter("DAMAGED")}><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Endommagé</CardTitle><Package className="h-4 w-4 text-orange-600" /></CardHeader><CardContent><div className="text-2xl font-bold text-orange-600">{stats.damaged}</div></CardContent></Card>
+          <Card className="cursor-pointer hover:shadow-md" onClick={() => setConditionFilter("DEFECTIVE")}><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Défectueux</CardTitle><Package className="h-4 w-4 text-red-600" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">{stats.defective}</div></CardContent></Card>
         </div>
 
-        {/* Liste des retours */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Retours de produits ({filteredReturns.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredReturns.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                <p>Aucun retour trouvé</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>N° Retour</TableHead>
-                    <TableHead>Commande</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Articles</TableHead>
-                    <TableHead>Montant</TableHead>
-                    <TableHead>Statut</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredReturns.map((ret) => (
-                    <TableRow key={ret.id}>
-                      <TableCell className="font-medium">{ret.number}</TableCell>
-                      <TableCell>
-                        <span className="text-blue-600 hover:underline cursor-pointer">
-                          {ret.storeOrder.number}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{ret.customerName}</div>
-                          <div className="text-sm text-muted-foreground">{ret.customerPhone}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Package className="h-4 w-4 text-muted-foreground" />
-                          <span>{ret.items.length} article(s)</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {ret.totalRefundAmount.toLocaleString()} FCFA
-                      </TableCell>
-                      <TableCell>{getStatusBadge(ret.status)}</TableCell>
-                      <TableCell>
-                        {format(new Date(ret.createdAt), "dd/MM/yyyy HH:mm", { locale: fr })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => viewDetails(ret)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              Voir détails
-                            </DropdownMenuItem>
-                            {ret.status === "PENDING" && (
-                              <>
-                                <DropdownMenuItem 
-                                  onClick={() => processReturn(ret.id, "APPROVED")}
-                                  disabled={processingId === ret.id}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Approuver
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => processReturn(ret.id, "REJECTED")}
-                                  disabled={processingId === ret.id}
-                                  className="text-red-600"
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Rejeter
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                            {ret.status === "APPROVED" && (
-                              <>
-                                <DropdownMenuItem 
-                                  onClick={() => processReturn(ret.id, "REFUNDED")}
-                                  disabled={processingId === ret.id}
-                                >
-                                  <Banknote className="h-4 w-4 mr-2" />
-                                  Rembourser
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => processReturn(ret.id, "EXCHANGED")}
-                                  disabled={processingId === ret.id}
-                                >
-                                  <ArrowLeftRight className="h-4 w-4 mr-2" />
-                                  Échanger
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        <Card><CardHeader><CardTitle>Retours ({filteredReturns.length})</CardTitle></CardHeader><CardContent>
+          {loading ? <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin" /></div> : filteredReturns.length === 0 ? <div className="text-center py-8 text-muted-foreground"><RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-20" /><p>Aucun retour</p></div> : (
+            <Table><TableHeader><TableRow><TableHead>N°</TableHead><TableHead>Client</TableHead><TableHead>Produit retourné</TableHead><TableHead>Produit échangé</TableHead><TableHead>État</TableHead><TableHead>Statut</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+              <TableBody>{filteredReturns.map((r) => {
+                const returnedItem = r.items?.[0]
+                const exchangedItem = r.items?.find((i: any) => i.exchangeProductId || i.exchangeProductName)
+                return (
+                <TableRow key={r.id}><TableCell className="font-medium text-xs">{r.number}</TableCell><TableCell><div className="font-medium text-sm">{r.customerName || "-"}</div><div className="text-xs text-muted-foreground">{r.customerPhone || "-"}</div></TableCell><TableCell><div className="font-medium text-sm">{returnedItem?.productName || "-"}</div><div className="text-xs text-muted-foreground">{returnedItem?.quantity || 0} x {returnedItem?.unitPrice?.toLocaleString() || 0} F</div></TableCell><TableCell>{exchangedItem?.exchangeProductName ? <><div className="font-medium text-sm text-purple-600">{exchangedItem.exchangeProductName}</div>{exchangedItem.exchangeDiscount > 0 && <div className="text-xs text-muted-foreground">Remise: {exchangedItem.exchangeDiscount?.toLocaleString()} F</div>}</> : <span className="text-muted-foreground text-xs">-</span>}</TableCell><TableCell>{returnedItem?.condition ? getConditionBadge(returnedItem.condition) : "-"}</TableCell><TableCell>{getStatusBadge(r.status)}</TableCell><TableCell className="text-xs">{format(new Date(r.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
+                  <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => { setSelectedReturn(r); setShowDetailsDialog(true) }}><Eye className="h-4 w-4 mr-2" />Détails</DropdownMenuItem>
+                    {r.status === "PENDING" && <><DropdownMenuItem onClick={() => handleProcess(r.id, "APPROVED")}><CheckCircle className="h-4 w-4 mr-2" />Approuver</DropdownMenuItem><DropdownMenuItem onClick={() => handleProcess(r.id, "REJECTED")} className="text-red-600"><XCircle className="h-4 w-4 mr-2" />Rejeter</DropdownMenuItem></>}
+                  </DropdownMenuContent></DropdownMenu></TableCell></TableRow>
+              )})}</TableBody></Table>
+          )}
+        </CardContent></Card>
       </div>
 
-      {/* Dialog de détails */}
-      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5" />
-              Détails du retour {selectedReturn?.number}
-            </DialogTitle>
-            <DialogDescription>
-              Commande: {selectedReturn?.storeOrder.number}
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Retour {selectedReturn?.number}</DialogTitle></DialogHeader>
+        {selectedReturn && <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4"><div><p className="text-sm text-muted-foreground">Client</p><p className="font-medium">{selectedReturn.customerName || "-"}</p></div><div><p className="text-sm text-muted-foreground">Statut</p>{getStatusBadge(selectedReturn.status)}</div></div>
+          <div><h4 className="font-semibold mb-2">Articles</h4><div className="border rounded-lg"><Table><TableHeader><TableRow><TableHead>Produit</TableHead><TableHead>Qté</TableHead><TableHead>Motif</TableHead></TableRow></TableHeader><TableBody>{selectedReturn.items?.map((item: any) => <TableRow key={item.id}><TableCell>{item.productName}</TableCell><TableCell>{item.quantity}</TableCell><TableCell>{RETURN_REASONS.find(r => r.value === item.reason)?.label}</TableCell></TableRow>)}</TableBody></Table></div></div>
+        </div>}
+        <DialogFooter><Button variant="outline" onClick={() => setShowDetailsDialog(false)}>Fermer</Button></DialogFooter>
+      </DialogContent></Dialog>
 
-          {selectedReturn && (
-            <div className="space-y-6">
-              {/* Informations générales */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Client</p>
-                  <p className="font-medium">{selectedReturn.customerName}</p>
-                  <p className="text-sm">{selectedReturn.customerPhone}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Statut</p>
-                  <div className="mt-1">{getStatusBadge(selectedReturn.status)}</div>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Date de création</p>
-                  <p className="font-medium">
-                    {format(new Date(selectedReturn.createdAt), "dd MMMM yyyy à HH:mm", { locale: fr })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Montant total</p>
-                  <p className="font-medium text-lg">{selectedReturn.totalRefundAmount.toLocaleString()} FCFA</p>
-                </div>
+      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}><SheetContent side="right" className="w-full sm:max-w-[100vw] p-0">
+        <div className="flex h-screen bg-gray-50">
+          <div className="flex-1 flex flex-col">
+            <div className="bg-white border-b p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3"><Button variant="ghost" size="icon" onClick={() => setShowCreateSheet(false)}><X className="h-5 w-5" /></Button><div><h2 className="text-lg font-semibold">Nouveau Retour SAV</h2><p className="text-sm text-muted-foreground">{selectionMode === "return" ? "Sélectionnez le produit retourné" : "Sélectionnez le produit d'échange"}</p></div></div>
+                {returnedProduct && <div className="flex gap-2"><Button variant={selectionMode === "return" ? "default" : "outline"} size="sm" onClick={() => setSelectionMode("return")}><RotateCcw className="h-4 w-4 mr-1" />Retourné</Button><Button variant={selectionMode === "exchange" ? "default" : "outline"} size="sm" onClick={() => setSelectionMode("exchange")}><ArrowLeftRight className="h-4 w-4 mr-1" />Échange</Button></div>}
               </div>
-
-              {/* Articles retournés */}
-              <div>
-                <h4 className="font-semibold mb-3">Articles retournés</h4>
-                <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Produit</TableHead>
-                        <TableHead>Qté</TableHead>
-                        <TableHead>Motif</TableHead>
-                        <TableHead>Résolution</TableHead>
-                        <TableHead className="text-right">Montant</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedReturn.items.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{item.productName}</div>
-                              {item.productSku && (
-                                <div className="text-xs text-muted-foreground">{item.productSku}</div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>
-                            {getReasonBadge(item.reason)}
-                            {item.reasonDetails && (
-                              <p className="text-xs text-muted-foreground mt-1">{item.reasonDetails}</p>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.isRefunded ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700">Remboursé</Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-purple-50 text-purple-700">Échangé</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {item.refundAmount.toLocaleString()} FCFA
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              {/* Notes */}
-              {selectedReturn.notes && (
-                <div>
-                  <h4 className="font-semibold mb-2">Notes</h4>
-                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-                    {selectedReturn.notes}
-                  </p>
-                </div>
-              )}
-
-              {/* Informations de traitement */}
-              {selectedReturn.processedBy && selectedReturn.processedAt && (
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    Traité par <span className="font-medium">{selectedReturn.processedBy.name || selectedReturn.processedBy.email}</span> le{" "}
-                    {format(new Date(selectedReturn.processedAt), "dd MMMM yyyy à HH:mm", { locale: fr })}
-                  </p>
-                </div>
-              )}
+              <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Rechercher un produit..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} className="pl-9" /></div>
             </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
-              Fermer
-            </Button>
-            {selectedReturn?.status === "PENDING" && (
-              <>
-                <Button 
-                  variant="destructive" 
-                  onClick={() => {
-                    processReturn(selectedReturn.id, "REJECTED")
-                    setShowDetailsDialog(false)
-                  }}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Rejeter
-                </Button>
-                <Button 
-                  onClick={() => {
-                    processReturn(selectedReturn.id, "APPROVED")
-                    setShowDetailsDialog(false)
-                  }}
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Approuver
-                </Button>
-              </>
-            )}
-            {selectedReturn?.status === "APPROVED" && (
-              <>
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    processReturn(selectedReturn.id, "EXCHANGED")
-                    setShowDetailsDialog(false)
-                  }}
-                >
-                  <ArrowLeftRight className="h-4 w-4 mr-2" />
-                  Échanger
-                </Button>
-                <Button 
-                  onClick={() => {
-                    processReturn(selectedReturn.id, "REFUNDED")
-                    setShowDetailsDialog(false)
-                  }}
-                >
-                  <Banknote className="h-4 w-4 mr-2" />
-                  Rembourser
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Sheet de création de retour */}
-      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-4xl overflow-y-auto">
-          <SheetHeader>
-            <div className="flex items-center gap-3">
-              {createStep > 1 && (
-                <Button variant="ghost" size="icon" onClick={goBackStep}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <SheetTitle className="flex items-center gap-2">
-                  <RotateCcw className="h-5 w-5" />
-                  Nouveau retour produit
-                </SheetTitle>
-                <SheetDescription>
-                  {createStep === 1 && "Étape 1/3 : Rechercher le client"}
-                  {createStep === 2 && "Étape 2/3 : Sélectionner la commande"}
-                  {createStep === 3 && "Étape 3/3 : Sélectionner les produits à retourner"}
-                </SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-6">
-            {/* Étape 1: Recherche client */}
-            {createStep === 1 && (
-              <div className="space-y-6">
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                    <User className="h-4 w-4" />
-                    Rechercher un client
-                  </div>
-                  <p className="text-sm">
-                    Entrez le numéro de téléphone ou le nom du client pour trouver ses commandes.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-search">Téléphone ou nom du client</Label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="customer-search"
-                          placeholder="Ex: 0612345678 ou Jean Dupont"
-                          value={customerSearch}
-                          onChange={(e) => setCustomerSearch(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && searchCustomerOrders()}
-                          className="pl-9"
-                        />
-                      </div>
-                      <Button onClick={searchCustomerOrders} disabled={searchingOrders}>
-                        {searchingOrders ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Search className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {searchingOrders && (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Étape 2: Sélection de la commande */}
-            {createStep === 2 && (
-              <div className="space-y-4">
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                    <ShoppingBag className="h-4 w-4" />
-                    {customerOrders.length} commande(s) trouvée(s)
-                  </div>
-                  <p className="text-sm">
-                    Sélectionnez la commande concernée par le retour.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {customerOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      onClick={() => selectOrder(order)}
-                      className="border rounded-lg p-4 cursor-pointer hover:border-primary hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <span className="font-semibold text-primary">{order.number}</span>
-                            <Badge variant="outline">{order.status}</Badge>
-                          </div>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {order.customerName}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {order.customerPhone}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 mt-2 text-sm">
-                            <span className="flex items-center gap-1">
-                              <Package className="h-3 w-3 text-muted-foreground" />
-                              {order.items.length} article(s)
-                            </span>
-                            <span className="font-medium">{order.total.toLocaleString()} FCFA</span>
-                            <span className="text-muted-foreground">
-                              {format(new Date(order.createdAt), "dd/MM/yyyy", { locale: fr })}
-                            </span>
-                          </div>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                      </div>
+            <div className="flex-1 p-4 overflow-y-auto">
+              {loadingProducts ? <div className="flex justify-center py-16"><Loader2 className="h-12 w-12 animate-spin text-blue-600" /></div> : (
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  {filteredProducts.map((p) => (
+                    <div key={p.id} className="bg-white rounded-lg border p-3 hover:shadow-md hover:border-blue-300 cursor-pointer group" onClick={() => selectProduct(p)}>
+                      {p.photos?.[0] ? <img src={p.photos[0]} alt={p.name} className="w-full h-16 object-contain mb-2" /> : <div className="w-full h-16 bg-gray-100 rounded flex items-center justify-center mb-2"><Package className="h-8 w-8 text-gray-300" /></div>}
+                      <h3 className="font-medium text-xs line-clamp-2">{p.name}</h3>
+                      <div className="flex justify-between mt-1"><span className="text-blue-600 font-bold text-sm">{p.prixVente?.toLocaleString()} F</span><span className="text-[10px] text-gray-500">Stock: {p.stock}</span></div>
+                      <div className="absolute top-1 right-1 w-6 h-6 bg-blue-500 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 hidden group-hover:flex"><Plus className="h-3 w-3" /></div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          </div>
 
-            {/* Étape 3: Sélection des produits */}
-            {createStep === 3 && selectedOrder && (
-              <div className="space-y-6">
-                {/* Résumé de la commande */}
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold">{selectedOrder.number}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {selectedOrder.customerName} • {selectedOrder.customerPhone}
-                      </div>
+          <div className="w-96 bg-white border-l flex flex-col shadow-xl">
+            <div className="p-4 border-b bg-gray-50"><h3 className="font-semibold">Détails du retour</h3></div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><User className="h-4 w-4" />Client</h4><Input placeholder="Nom" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /><Input placeholder="Téléphone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} /></div>
+              <Separator />
+              <div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><RotateCcw className="h-4 w-4 text-red-500" />Produit retourné</h4>
+                {!returnedProduct ? <div className="border-2 border-dashed rounded-lg p-6 text-center"><Package className="h-8 w-8 mx-auto mb-2 text-gray-300" /><p className="text-sm text-gray-500">Sélectionnez un produit</p></div> : (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-3">
+                    <div className="flex items-start gap-3">{returnedProduct.photos?.[0] ? <img src={returnedProduct.photos[0]} className="w-12 h-12 object-contain bg-white rounded" /> : <div className="w-12 h-12 bg-white rounded flex items-center justify-center"><Package className="h-6 w-6 text-gray-300" /></div>}<div className="flex-1"><h4 className="font-medium text-sm truncate">{returnedProduct.productName}</h4><p className="text-sm font-semibold text-red-600">{returnedProduct.unitPrice?.toLocaleString()} F</p></div><Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => { setReturnedProduct(null); setExchangeProduct(null) }}><Trash2 className="h-4 w-4" /></Button></div>
+                    <div className="flex items-center gap-2"><Label className="text-xs w-16">Qté</Label><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setReturnedProduct((p: any) => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}><Minus className="h-3 w-3" /></Button><span className="w-8 text-center">{returnedProduct.quantity}</span><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setReturnedProduct((p: any) => ({ ...p, quantity: p.quantity + 1 }))}><Plus className="h-3 w-3" /></Button></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><Label className="text-xs">État</Label><Select value={returnedProduct.condition} onValueChange={(v) => setReturnedProduct((p: any) => ({ ...p, condition: v }))}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent className="z-[9999]">{PRODUCT_CONDITIONS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></div>
+                      <div><Label className="text-xs">Motif *</Label><Select value={returnedProduct.reason} onValueChange={(v) => setReturnedProduct((p: any) => ({ ...p, reason: v }))}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent className="z-[9999]">{RETURN_REASONS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent></Select></div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-semibold">{selectedOrder.total.toLocaleString()} FCFA</div>
-                      <div className="text-sm text-muted-foreground">
-                        {format(new Date(selectedOrder.createdAt), "dd/MM/yyyy", { locale: fr })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Liste des produits */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Produits à retourner</Label>
-                    <span className="text-sm text-muted-foreground">
-                      {selectedItemsCount} sélectionné(s)
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {returnItems.map((item, index) => (
-                      <div
-                        key={item.storeOrderItemId}
-                        className={`border rounded-lg p-4 transition-colors ${
-                          item.selected ? "border-primary bg-primary/5" : "hover:border-muted-foreground/30"
-                        }`}
-                      >
-                        {/* Header avec checkbox */}
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={item.selected}
-                            onCheckedChange={() => toggleItemSelection(index)}
-                            className="mt-1"
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="font-medium">{item.productName}</div>
-                                {item.productSku && (
-                                  <div className="text-xs text-muted-foreground">{item.productSku}</div>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <div className="font-medium">{item.unitPrice.toLocaleString()} FCFA</div>
-                                <div className="text-xs text-muted-foreground">
-                                  Qté max: {item.maxQuantity}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Options si sélectionné */}
-                            {item.selected && (
-                              <div className="mt-4 space-y-4 pt-4 border-t">
-                                {/* Quantité */}
-                                <div className="flex items-center gap-4">
-                                  <Label className="w-24">Quantité</Label>
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                      onClick={() => updateItemQuantity(index, item.quantity - 1)}
-                                      disabled={item.quantity <= 1}
-                                    >
-                                      <Minus className="h-3 w-3" />
-                                    </Button>
-                                    <Input
-                                      type="number"
-                                      value={item.quantity}
-                                      onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
-                                      className="w-16 text-center"
-                                      min={1}
-                                      max={item.maxQuantity}
-                                    />
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                      onClick={() => updateItemQuantity(index, item.quantity + 1)}
-                                      disabled={item.quantity >= item.maxQuantity}
-                                    >
-                                      <Plus className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                  <span className="text-sm text-muted-foreground">
-                                    / {item.maxQuantity}
-                                  </span>
-                                </div>
-
-                                {/* Motif */}
-                                <div className="flex items-center gap-4">
-                                  <Label className="w-24">Motif</Label>
-                                  <Select
-                                    value={item.reason}
-                                    onValueChange={(value) => updateItemReason(index, value as ReturnReason)}
-                                  >
-                                    <SelectTrigger className="flex-1">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {RETURN_REASONS.map((reason) => (
-                                        <SelectItem key={reason.value} value={reason.value}>
-                                          {reason.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-
-                                {/* Détails du motif */}
-                                {item.reason === "OTHER" && (
-                                  <div className="flex items-start gap-4">
-                                    <Label className="w-24 pt-2">Détails</Label>
-                                    <Textarea
-                                      value={item.reasonDetails}
-                                      onChange={(e) => updateItemReasonDetails(index, e.target.value)}
-                                      placeholder="Précisez le motif..."
-                                      className="flex-1"
-                                      rows={2}
-                                    />
-                                  </div>
-                                )}
-
-                                {/* Type de résolution */}
-                                <div className="flex items-center gap-4">
-                                  <Label className="w-24">Résolution</Label>
-                                  <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                      <input
-                                        type="radio"
-                                        checked={item.isRefunded}
-                                        onChange={() => updateItemIsRefunded(index, true)}
-                                        className="w-4 h-4"
-                                      />
-                                      <span className="flex items-center gap-1 text-sm">
-                                        <Banknote className="h-4 w-4 text-green-600" />
-                                        Remboursement
-                                      </span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                      <input
-                                        type="radio"
-                                        checked={!item.isRefunded}
-                                        onChange={() => updateItemIsRefunded(index, false)}
-                                        className="w-4 h-4"
-                                      />
-                                      <span className="flex items-center gap-1 text-sm">
-                                        <ArrowLeftRight className="h-4 w-4 text-purple-600" />
-                                        Échange
-                                      </span>
-                                    </label>
-                                  </div>
-                                </div>
-
-                                {/* Sous-total */}
-                                <div className="flex items-center justify-end pt-2 border-t">
-                                  <span className="text-sm text-muted-foreground mr-2">Sous-total:</span>
-                                  <span className="font-semibold">
-                                    {(item.quantity * item.unitPrice).toLocaleString()} FCFA
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div className="space-y-2">
-                  <Label htmlFor="return-notes">Notes (optionnel)</Label>
-                  <Textarea
-                    id="return-notes"
-                    value={returnNotes}
-                    onChange={(e) => setReturnNotes(e.target.value)}
-                    placeholder="Informations complémentaires sur le retour..."
-                    rows={3}
-                  />
-                </div>
-
-                {/* Résumé et validation */}
-                {selectedItemsCount > 0 && (
-                  <div className="bg-muted p-4 rounded-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Récapitulatif</span>
-                      <Badge variant="outline">{selectedItemsCount} article(s)</Badge>
-                    </div>
-                    <Separator />
-                    <div className="space-y-2">
-                      {returnItems.filter(i => i.selected).map((item) => (
-                        <div key={item.storeOrderItemId} className="flex items-center justify-between text-sm">
-                          <span>
-                            {item.productName} x{item.quantity}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              ({item.isRefunded ? "Remboursement" : "Échange"})
-                            </span>
-                          </span>
-                          <span>{(item.quantity * item.unitPrice).toLocaleString()} FCFA</span>
-                        </div>
-                      ))}
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between font-semibold text-lg">
-                      <span>Montant total</span>
-                      <span className="text-primary">{calculateTotalRefund().toLocaleString()} FCFA</span>
-                    </div>
+                    <div><Label className="text-xs">Détails</Label><Textarea value={returnedProduct.reasonDetails} onChange={(e) => setReturnedProduct((p: any) => ({ ...p, reasonDetails: e.target.value }))} placeholder="Précisions..." rows={2} className="text-xs" /></div>
                   </div>
                 )}
               </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <SheetFooter className="mt-6 pt-6 border-t">
-            <div className="flex items-center justify-between w-full">
-              <Button variant="outline" onClick={closeCreateSheet}>
-                Annuler
-              </Button>
-              
-              {createStep === 3 && (
-                <Button 
-                  onClick={createReturn} 
-                  disabled={creatingReturn || selectedItemsCount === 0}
-                  className="min-w-[150px]"
-                >
-                  {creatingReturn ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Création...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Créer le retour
-                    </>
-                  )}
-                </Button>
-              )}
+              {returnedProduct && <><Separator /><div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><ArrowLeftRight className="h-4 w-4 text-purple-500" />Échange (optionnel)</h4>
+                {!exchangeProduct ? <div className="border-2 border-dashed border-purple-200 rounded-lg p-4 text-center cursor-pointer hover:bg-purple-50" onClick={() => setSelectionMode("exchange")}><ArrowLeftRight className="h-6 w-6 mx-auto mb-2 text-purple-300" /><p className="text-xs text-purple-500">Sélectionner produit d'échange</p></div> : (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <div className="flex items-start gap-3">{exchangeProduct.photos?.[0] ? <img src={exchangeProduct.photos[0]} className="w-12 h-12 object-contain bg-white rounded" /> : <div className="w-12 h-12 bg-white rounded flex items-center justify-center"><Package className="h-6 w-6 text-gray-300" /></div>}<div className="flex-1"><h4 className="font-medium text-sm truncate">{exchangeProduct.productName}</h4><p className="text-sm font-semibold text-purple-600">{exchangeProduct.unitPrice?.toLocaleString()} F</p></div><Button variant="ghost" size="icon" className="h-6 w-6 text-purple-500" onClick={() => setExchangeProduct(null)}><Trash2 className="h-4 w-4" /></Button></div>
+                    <div className="flex items-center gap-2 mt-2"><Label className="text-xs w-16">Qté</Label><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setExchangeProduct((p: any) => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}><Minus className="h-3 w-3" /></Button><span className="w-8 text-center">{exchangeProduct.quantity}</span><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setExchangeProduct((p: any) => ({ ...p, quantity: p.quantity + 1 }))}><Plus className="h-3 w-3" /></Button></div>
+                  </div>
+                )}
+              </div></>}
+              {returnedProduct && <><Separator /><div><Label className="text-xs">Notes</Label><Textarea value={returnNotes} onChange={(e) => setReturnNotes(e.target.value)} placeholder="Notes..." rows={2} className="text-xs" /></div></>}
             </div>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+            {returnedProduct && <div className="border-t p-4 space-y-3 bg-gray-50">
+              <div className="space-y-2 text-sm"><div className="flex justify-between"><span className="text-gray-600">Valeur retour</span><span className="font-medium text-red-600">-{calcTotal().toLocaleString()} F</span></div>
+                {exchangeProduct && <><div className="flex justify-between"><span className="text-gray-600">Valeur échange</span><span className="font-medium text-purple-600">+{(exchangeProduct.quantity * exchangeProduct.unitPrice).toLocaleString()} F</span></div><Separator /><div className="flex justify-between font-semibold"><span>Différence</span><span className={calcDiff() >= 0 ? "text-green-600" : "text-red-600"}>{calcDiff() >= 0 ? "+" : ""}{calcDiff().toLocaleString()} F</span></div></>}
+              </div>
+              <Button className="w-full" onClick={createReturn} disabled={creatingReturn}>{creatingReturn ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}Valider le retour</Button>
+            </div>}
+          </div>
+        </div>
+      </SheetContent></Sheet>
     </div>
   )
 }

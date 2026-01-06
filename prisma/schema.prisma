@@ -219,6 +219,7 @@ model Product {
   deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs
   restockingRequestItems  RestockingRequestItem[] // Items des demandes d'approvisionnement
   productReturnItems      ProductReturnItem[] // SAV - Items retournés
+  exchangeReturnItems     ProductReturnItem[] @relation("ExchangeProduct") // SAV - Produits donnés en échange
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -262,6 +263,8 @@ model ProductVariant {
   deliveryPersonStocks   DeliveryPersonStock[] // Stock des livreurs pour cette variante
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs pour cette variante
   restockingRequestItems RestockingRequestItem[] // Items des demandes d'approvisionnement pour cette variante
+  returnedItems          ProductReturnItem[] @relation("ReturnedVariant") // SAV - Variantes retournées
+  exchangeReturnItems    ProductReturnItem[] @relation("ExchangeVariant") // SAV - Variantes données en échange
 
   @@index([productId])
   @@index([sku])
@@ -1505,7 +1508,18 @@ enum ProductReturnReason {
   NOT_SATISFIED   // Pas satisfait
   NON_FUNCTIONAL  // Non fonctionnel
   WRONG_PRODUCT   // Mauvais produit livré
+  EXPIRED         // Produit périmé
+  QUALITY_ISSUE   // Problème de qualité
   OTHER           // Autre
+}
+
+// État/Condition du produit retourné
+enum ProductCondition {
+  NEW             // Neuf (emballage intact)
+  GOOD            // Bon état
+  USED            // Utilisé
+  DAMAGED         // Endommagé
+  DEFECTIVE       // Défectueux
 }
 
 // Statut du retour
@@ -1517,16 +1531,16 @@ enum ProductReturnStatus {
   REJECTED    // Rejeté
 }
 
-// Retour de produit (lié à une commande)
+// Retour de produit (peut être lié ou non à une commande)
 model ProductReturn {
   id              String              @id @default(cuid())
   number          String              @unique // Numéro de retour (ex: RET-20231215-001)
   storeId         String              @map("store_id")
-  storeOrderId    String              @map("store_order_id")
+  storeOrderId    String?             @map("store_order_id") // Optionnel - peut ne pas être lié à une commande
   
-  // Informations client (snapshot de la commande)
-  customerName    String              @map("customer_name")
-  customerPhone   String              @map("customer_phone")
+  // Informations client (optionnelles si pas de commande liée)
+  customerName    String?             @map("customer_name")
+  customerPhone   String?             @map("customer_phone")
   
   // Statut et résolution
   status          ProductReturnStatus @default(PENDING)
@@ -1548,7 +1562,7 @@ model ProductReturn {
 
   // Relations
   store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  storeOrder      StoreOrder          @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
+  storeOrder      StoreOrder?         @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
   processedBy     User?               @relation("ProductReturnProcessor", fields: [processedById], references: [id], onDelete: SetNull)
   createdBy       User                @relation("ProductReturnCreator", fields: [createdById], references: [id])
   
@@ -1567,7 +1581,8 @@ model ProductReturnItem {
   id                String              @id @default(cuid())
   productReturnId   String              @map("product_return_id")
   productId         String              @map("product_id")
-  storeOrderItemId  String              @map("store_order_item_id") // Lien vers l'item de la commande originale
+  variantId         String?             @map("variant_id") // Variante du produit retourné
+  storeOrderItemId  String?             @map("store_order_item_id") // Optionnel - lien vers l'item de la commande originale
   
   // Informations produit (snapshot)
   productName       String              @map("product_name")
@@ -1575,25 +1590,38 @@ model ProductReturnItem {
   
   // Quantité et prix
   quantity          Int                 // Quantité retournée
-  unitPrice         Float               @map("unit_price") // Prix unitaire au moment de l'achat
-  refundAmount      Float               @map("refund_amount") // Montant remboursé pour cet item
+  unitPrice         Float               @map("unit_price") // Prix unitaire du produit
+  refundAmount      Float               @default(0) @map("refund_amount") // Montant remboursé pour cet item
+  
+  // État du produit retourné
+  condition         ProductCondition    @default(GOOD) // État/condition du produit
   
   // Motif du retour
   reason            ProductReturnReason
-  reasonDetails     String?             @map("reason_details") // Détails supplémentaires
+  reasonDetails     String?             @map("reason_details") // Détails supplémentaires du motif
   
   // Résolution spécifique à cet item
-  isRefunded        Boolean             @default(false) @map("is_refunded") // true = remboursé (stock +), false = échangé
+  isRefunded        Boolean             @default(false) @map("is_refunded") // true = remboursé, false = échangé
+  
+  // Informations d'échange (si isRefunded = false)
+  exchangeProductId       String?       @map("exchange_product_id") // Produit donné en échange
+  exchangeProductVariantId String?      @map("exchange_product_variant_id") // Variante du produit d'échange
+  exchangeProductName     String?       @map("exchange_product_name") // Nom du produit d'échange (snapshot)
+  exchangeDiscount        Float         @default(0) @map("exchange_discount") // Remise appliquée sur le produit d'échange
   
   createdAt         DateTime            @default(now()) @map("created_at")
 
   // Relations
   productReturn     ProductReturn       @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
   product           Product             @relation(fields: [productId], references: [id])
-  storeOrderItem    StoreOrderItem      @relation(fields: [storeOrderItemId], references: [id])
+  variant           ProductVariant?     @relation("ReturnedVariant", fields: [variantId], references: [id])
+  storeOrderItem    StoreOrderItem?     @relation(fields: [storeOrderItemId], references: [id])
+  exchangeProduct   Product?            @relation("ExchangeProduct", fields: [exchangeProductId], references: [id])
+  exchangeVariant   ProductVariant?     @relation("ExchangeVariant", fields: [exchangeProductVariantId], references: [id])
 
   @@index([productReturnId])
   @@index([productId])
+  @@index([exchangeProductId])
   @@map("product_return_items")
 }
 
