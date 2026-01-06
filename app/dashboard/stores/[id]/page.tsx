@@ -36,6 +36,7 @@ import { toast } from "sonner"
 import { usePermissions } from "@/hooks/use-permissions"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
 import { StoreDayCloses } from "@/components/stores/store-day-closes"
+import { TopProductsModal } from "@/components/stores/top-products-modal"
 
 interface StorePageProps {
   params: Promise<{
@@ -130,6 +131,7 @@ export default function StorePage({ params }: StorePageProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("Ce Mois")
   const [storeData, setStoreData] = useState<StoreStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showTopProductsModal, setShowTopProductsModal] = useState(false)
 
   useEffect(() => {
     loadStoreStats()
@@ -526,17 +528,23 @@ export default function StorePage({ params }: StorePageProps) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm">Voir Plus</Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowTopProductsModal(true)}
+                >
+                  Voir Plus
+                </Button>
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {topProducts.byRevenue.length > 0 ? (
-                topProducts.byRevenue.map((product, idx) => {
-                  const maxRevenue = topProducts.byRevenue[0].revenue
-                  const progressValue = (product.revenue / maxRevenue) * 100
+              {topProducts.byQuantity.length > 0 ? (
+                topProducts.byQuantity.slice(0, 4).map((product, idx) => {
+                  const maxQuantity = topProducts.byQuantity[0].quantity
+                  const progressValue = (product.quantity / maxQuantity) * 100
                   
                   return (
                     <div key={product.id} className="space-y-3">
@@ -760,6 +768,13 @@ export default function StorePage({ params }: StorePageProps) {
             </CardContent>
           </Card>
         </div>
+
+        {/* Modal Top Produits */}
+        <TopProductsModal
+          isOpen={showTopProductsModal}
+          onClose={() => setShowTopProductsModal(false)}
+          storeId={id}
+        />
       </div>
     </>
   )
