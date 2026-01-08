@@ -181,14 +181,15 @@ export default function AttendancePage() {
                 body: JSON.stringify({ userId }),
             })
 
+            const data = await response.json()
+            console.log("Register link response:", response.status, data)
+            
             if (response.ok) {
-                const data = await response.json()
                 setRegistrationLink(data.registerUrl)
                 setShowLinkDialog(true)
                 toast.success("Lien généré avec succès")
             } else {
-                const error = await response.json()
-                toast.error(error.error || "Erreur lors de la génération du lien")
+                toast.error(data.error || "Erreur lors de la génération du lien")
             }
         } catch (error) {
             toast.error("Erreur lors de la génération du lien")
@@ -895,6 +896,18 @@ export default function AttendancePage() {
                                                                         className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                                                                     >
                                                                         <X className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
+                                                                {user.deviceStatus === "REVOKED" && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => generateRegistrationLink(user.id)}
+                                                                        disabled={generatingLink && selectedUserId === user.id}
+                                                                        className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                        title="Générer lien d'enregistrement"
+                                                                    >
+                                                                        <Link2 className="h-4 w-4" />
                                                                     </Button>
                                                                 )}
                                                             </div>

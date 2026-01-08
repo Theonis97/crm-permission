@@ -118,13 +118,18 @@ export async function GET(request: NextRequest) {
         hoursWorked = diff / (1000 * 60 * 60) // Convertir en heures
       }
 
+      // Priorité: APPROVED > PENDING > REVOKED
+      const activeDevice = user.attendanceDevices.find(d => d.status === "APPROVED") 
+        || user.attendanceDevices.find(d => d.status === "PENDING")
+        || user.attendanceDevices[0]
+
       return {
         ...user,
         checkIn: checkIn?.timestamp || null,
         checkOut: checkOut?.timestamp || null,
         hoursWorked: Math.round(hoursWorked * 100) / 100,
         hasDevice: user.attendanceDevices.length > 0,
-        deviceStatus: user.attendanceDevices[0]?.status || null,
+        deviceStatus: activeDevice?.status || null,
       }
     })
 

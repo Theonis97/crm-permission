@@ -15,8 +15,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { userId } = body
+    console.log("[REGISTER-LINK] Request received for userId:", userId)
 
     if (!userId) {
+      console.log("[REGISTER-LINK] Error: userId is required")
       return NextResponse.json({ error: "userId is required" }, { status: 400 })
     }
 
@@ -24,11 +26,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
-        attendanceDevices: {
-          where: {
-            status: { in: ["PENDING", "APPROVED"] },
-          },
-        },
+        attendanceDevices: true,
       },
     })
 
@@ -36,13 +34,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Vérifier si l'utilisateur a déjà un device actif (PENDING ou APPROVED)
-    if (user.attendanceDevices.length > 0) {
-      console.log("User already has active devices:", user.attendanceDevices)
+    // Vérifier si l'utilisateur a un device actif (PENDING ou APPROVED)
+    const activeDevices = user.attendanceDevices.filter(
+      (d) => d.status === "PENDING" || d.status === "APPROVED"
+    )
+
+    if (activeDevices.length > 0) {
+      console.log("User already has active devices:", activeDevices)
       return NextResponse.json(
         { error: "L'utilisateur a déjà un appareil enregistré. Révoquez-le d'abord." },
         { status: 400 }
       )
+    }
+
+    // Supprimer les appareils révoqués pour permettre un nouvel enregistrement
+    const revokedDevices = user.attendanceDevices.filter((d) => d.status === "REVOKED")
+    if (revokedDevices.length > 0) {
+      await prisma.attendanceDevice.deleteMany({
+        where: {
+          userId,
+          status: "REVOKED",
+        },
+      })
+      console.log(`Deleted ${revokedDevices.length} revoked device(s) for user ${userId}`)
     }
 
     // Générer un token unique
