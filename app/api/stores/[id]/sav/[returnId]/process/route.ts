@@ -94,56 +94,11 @@ export async function POST(
 
         totalRefundAmount += refundAmount
 
-        // Créer un mouvement de stock entrant (RETURN)
-        await prisma.stockMovement.create({
-          data: {
-            productId: item.productId,
-            quantity: item.quantity, // Positif = entrée
-            type: "RETURN",
-            note: `Retour SAV #${productReturn.number} - ${item.productName}`,
-            userId: session.user.id,
-          }
-        })
-
-        // Mettre à jour le stock du produit principal
-        await prisma.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: { increment: item.quantity }
-          }
-        })
-
-        // Mettre à jour le stock de la variante si applicable
-        if (item.variantId) {
-          await prisma.productVariant.update({
-            where: { id: item.variantId },
-            data: {
-              stock: { increment: item.quantity }
-            }
-          })
-        }
-
-        // Mettre à jour le stock du magasin si StoreProduct existe
-        const storeProduct = await prisma.storeProduct.findUnique({
-          where: {
-            storeId_productId: {
-              storeId,
-              productId: item.productId,
-            }
-          }
-        })
-
-        if (storeProduct) {
-          await prisma.storeProduct.update({
-            where: { id: storeProduct.id },
-            data: {
-              stock: { increment: item.quantity }
-            }
-          })
-        }
+        // NOTE: Le produit retourné n'est PAS remis en stock automatiquement
+        // Il doit être examiné avant d'être remis en vente
       }
 
-      resolutionNote = resolutionNote || `Remboursement de ${totalRefundAmount.toLocaleString()} FCFA - Produits remis en stock`
+      resolutionNote = resolutionNote || `Remboursement de ${totalRefundAmount.toLocaleString()} FCFA - Produits en attente d'examen`
     }
 
     if (action === "EXCHANGED") {
@@ -185,32 +140,9 @@ export async function POST(
           }
         })
 
-        // Remettre le produit retourné en stock
-        await prisma.stockMovement.create({
-          data: {
-            productId: returnItem.productId,
-            quantity: returnItem.quantity,
-            type: "RETURN",
-            note: `Retour SAV #${productReturn.number} (échange) - ${returnItem.productName}`,
-            userId: session.user.id,
-          }
-        })
-
-        await prisma.product.update({
-          where: { id: returnItem.productId },
-          data: {
-            stock: { increment: returnItem.quantity }
-          }
-        })
-
-        if (returnItem.variantId) {
-          await prisma.productVariant.update({
-            where: { id: returnItem.variantId },
-            data: {
-              stock: { increment: returnItem.quantity }
-            }
-          })
-        }
+        // NOTE: Le produit retourné n'est PAS remis en stock lors d'un échange
+        // Il doit être examiné avant d'être remis en vente
+        // Seul le mouvement de sortie du produit d'échange est enregistré
 
         // Décrémenter le stock du produit d'échange
         if (processItem.exchangeProductId) {
@@ -260,27 +192,11 @@ export async function POST(
           }
         }
 
-        // Mettre à jour le stock du magasin pour le produit retourné
-        const storeProduct = await prisma.storeProduct.findUnique({
-          where: {
-            storeId_productId: {
-              storeId,
-              productId: returnItem.productId,
-            }
-          }
-        })
-
-        if (storeProduct) {
-          await prisma.storeProduct.update({
-            where: { id: storeProduct.id },
-            data: {
-              stock: { increment: returnItem.quantity }
-            }
-          })
-        }
+        // NOTE: Le produit retourné n'est PAS remis en stock du magasin
+        // Il doit être examiné avant d'être remis en vente
       }
 
-      resolutionNote = resolutionNote || "Produits échangés"
+      resolutionNote = resolutionNote || "Produits échangés - Produits retournés en attente d'examen"
     }
 
     if (action === "APPROVED") {

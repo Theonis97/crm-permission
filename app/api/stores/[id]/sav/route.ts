@@ -295,40 +295,10 @@ export async function POST(
       }
     })
 
-    // Enregistrer les mouvements de stock pour les produits retournés (entrée en stock)
+    // Enregistrer les mouvements de stock
     for (const item of itemsData) {
-      // Mouvement de stock - Entrée (produit retourné)
-      await prisma.stockMovement.create({
-        data: {
-          productId: item.productId,
-          quantity: item.quantity,
-          type: "RETURN",
-          note: `Retour SAV - ${returnNumber} - ${item.reason}${item.variantId ? ` (Variante: ${item.variantId})` : ''}`,
-          userId: session.user.id,
-        }
-      })
-
-      // Mettre à jour le stock du produit principal
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } }
-      })
-
-      // Mettre à jour le stock du magasin
-      await prisma.storeProduct.updateMany({
-        where: { storeId, productId: item.productId },
-        data: { stock: { increment: item.quantity } }
-      })
-
-      // Si variante, mettre à jour aussi le stock de la variante
-      if (item.variantId) {
-        await prisma.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.quantity } }
-        })
-      }
-
-      // Si échange, enregistrer la sortie de stock du produit d'échange
+      // Si c'est un échange, on enregistre UNIQUEMENT la sortie du produit d'échange
+      // Le produit retourné n'est PAS remis en stock (il doit être examiné avant)
       if (item.exchangeProductId) {
         // Mouvement de stock - Sortie (produit d'échange donné au client)
         await prisma.stockMovement.create({
@@ -353,11 +323,15 @@ export async function POST(
           data: { stock: { decrement: item.quantity } }
         })
 
-        console.log(`[SAV] Échange: Sortie de stock pour produit ${item.exchangeProductId} (-${item.quantity})`)
+        console.log(`[SAV] Échange: Sortie de stock pour produit ${item.exchangeProductId} (-${item.quantity}) - Produit retourné NON remis en stock (examen requis)`)
+      } else {
+        // Retour simple (sans échange) - Le produit n'est PAS remis en stock
+        // Il doit être examiné avant d'être remis en vente
+        console.log(`[SAV] Retour simple: Produit ${item.productId} NON remis en stock (examen requis)`)
       }
     }
 
-    console.log(`[SAV] Retour ${returnNumber} créé avec ${itemsData.length} articles - Stock mis à jour`)
+    console.log(`[SAV] Retour ${returnNumber} créé avec ${itemsData.length} articles - Produits en attente d'examen`)
 
     return NextResponse.json(productReturn, { status: 201 })
   } catch (error: any) {
