@@ -162,7 +162,7 @@ export async function POST(
       }
     }
 
-    // Générer le numéro de retour
+    // Générer le numéro de retour et le numéro de suivi
     const today = new Date()
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
     const count = await prisma.productReturn.count({
@@ -175,6 +175,7 @@ export async function POST(
       }
     })
     const returnNumber = `RET-${dateStr}-${String(count + 1).padStart(3, '0')}`
+    const trackingNumber = `SAV-${dateStr}-${String(count + 1).padStart(3, '0')}`
 
     // Préparer les données des items
     const itemsData = await Promise.all(
@@ -243,16 +244,19 @@ export async function POST(
       })
     )
 
-    // Créer le retour avec ses items - Statut APPROVED par défaut
+    // Créer le retour avec ses items - Statut PENDING par défaut
     const productReturn = await prisma.productReturn.create({
       data: {
         number: returnNumber,
+        trackingNumber,
         storeId,
         storeOrderId: storeOrderId || null,
         customerName: customerName || storeOrder?.customerName || null,
         customerPhone: customerPhone || storeOrder?.customerPhone || null,
-        totalRefundAmount: 0, // Sera calculé lors du traitement
-        status: "APPROVED", // Statut approuvé par défaut
+        totalRefundAmount: 0,
+        totalCustomerAddition: 0,
+        totalDiscount: 0,
+        status: "PENDING", // En attente de traitement SAV
         notes,
         createdById: session.user.id,
         items: {
@@ -295,43 +299,11 @@ export async function POST(
       }
     })
 
-    // Enregistrer les mouvements de stock
-    for (const item of itemsData) {
-      // Si c'est un échange, on enregistre UNIQUEMENT la sortie du produit d'échange
-      // Le produit retourné n'est PAS remis en stock (il doit être examiné avant)
-      if (item.exchangeProductId) {
-        // Mouvement de stock - Sortie (produit d'échange donné au client)
-        await prisma.stockMovement.create({
-          data: {
-            productId: item.exchangeProductId,
-            quantity: -item.quantity, // Négatif = sortie
-            type: "EXIT",
-            note: `Échange SAV - ${returnNumber} - Produit donné en échange de ${item.productName}`,
-            userId: session.user.id,
-          }
-        })
-
-        // Mettre à jour le stock du produit d'échange (décrémentation)
-        await prisma.product.update({
-          where: { id: item.exchangeProductId },
-          data: { stock: { decrement: item.quantity } }
-        })
-
-        // Mettre à jour le stock du magasin pour le produit d'échange
-        await prisma.storeProduct.updateMany({
-          where: { storeId, productId: item.exchangeProductId },
-          data: { stock: { decrement: item.quantity } }
-        })
-
-        console.log(`[SAV] Échange: Sortie de stock pour produit ${item.exchangeProductId} (-${item.quantity}) - Produit retourné NON remis en stock (examen requis)`)
-      } else {
-        // Retour simple (sans échange) - Le produit n'est PAS remis en stock
-        // Il doit être examiné avant d'être remis en vente
-        console.log(`[SAV] Retour simple: Produit ${item.productId} NON remis en stock (examen requis)`)
-      }
-    }
-
-    console.log(`[SAV] Retour ${returnNumber} créé avec ${itemsData.length} articles - Produits en attente d'examen`)
+    // NOTE: Le stock n'est PAS modifié à la création du retour
+    // Le stock du produit d'échange sera décrémenté uniquement lors de la validation par la caisse
+    // Cela permet au SAV de préparer la demande sans impacter le stock immédiatement
+    
+    console.log(`[SAV] Retour ${returnNumber} créé avec ${itemsData.length} articles - En attente de traitement`)
 
     return NextResponse.json(productReturn, { status: 201 })
   } catch (error: any) {

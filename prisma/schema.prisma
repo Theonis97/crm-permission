@@ -890,6 +890,8 @@ model User {
   // SAV - Retours de produits
   processedProductReturns ProductReturn[] @relation("ProductReturnProcessor")
   createdProductReturns   ProductReturn[] @relation("ProductReturnCreator")
+  sentToCashierReturns    ProductReturn[] @relation("ProductReturnSentToCashier")
+  cashierValidatedReturns ProductReturn[] @relation("ProductReturnCashierValidator")
   
   // Pointage - Relations
   attendanceDevices         AttendanceDevice[] // Appareils autorisés pour le pointage
@@ -1554,17 +1556,25 @@ enum ProductCondition {
 
 // Statut du retour
 enum ProductReturnStatus {
-  PENDING     // En attente de traitement
-  APPROVED    // Approuvé
-  REFUNDED    // Remboursé (produit retourné en stock)
-  EXCHANGED   // Échangé (pas de mouvement de stock)
-  REJECTED    // Rejeté
+  PENDING           // En attente de traitement SAV
+  APPROVED          // Approuvé par SAV (en attente de décision échange/remboursement)
+  AWAITING_CASHIER  // Envoyé à la caisse, en attente de validation
+  REFUNDED          // Remboursé (validé par caisse)
+  EXCHANGED         // Échangé (validé par caisse si ajout requis)
+  REJECTED          // Rejeté
+}
+
+// Type de résolution SAV
+enum SAVResolutionType {
+  EXCHANGE    // Échange de produit
+  REFUND      // Remboursement
 }
 
 // Retour de produit (peut être lié ou non à une commande)
 model ProductReturn {
   id              String              @id @default(cuid())
   number          String              @unique // Numéro de retour (ex: RET-20231215-001)
+  trackingNumber  String?             @unique @map("tracking_number") // Numéro de suivi SAV (ex: SAV-20231215-001)
   storeId         String              @map("store_id")
   storeOrderId    String?             @map("store_order_id") // Optionnel - peut ne pas être lié à une commande
   
@@ -1574,14 +1584,30 @@ model ProductReturn {
   
   // Statut et résolution
   status          ProductReturnStatus @default(PENDING)
+  resolutionType  SAVResolutionType?  @map("resolution_type") // Type de résolution choisi
   resolution      String?             // Notes sur la résolution
   
   // Montants
-  totalRefundAmount Float             @default(0) @map("total_refund_amount") // Montant total remboursé
+  totalRefundAmount   Float           @default(0) @map("total_refund_amount") // Montant total remboursé
+  totalCustomerAddition Float         @default(0) @map("total_customer_addition") // Montant total à payer par le client (échange)
+  totalDiscount       Float           @default(0) @map("total_discount") // Rabais total accordé par SAV
   
-  // Traitement
+  // Commande SubBox SAV créée pour l'échange
+  savSubBoxOrderId    String?         @unique @map("sav_sub_box_order_id")
+  
+  // Traitement SAV
   processedById   String?             @map("processed_by_id")
   processedAt     DateTime?           @map("processed_at")
+  
+  // Envoi à la caisse
+  sentToCashier       Boolean         @default(false) @map("sent_to_cashier")
+  sentToCashierAt     DateTime?       @map("sent_to_cashier_at")
+  sentToCashierById   String?         @map("sent_to_cashier_by_id")
+  
+  // Validation par la caisse
+  cashierValidated    Boolean         @default(false) @map("cashier_validated")
+  cashierValidatedAt  DateTime?       @map("cashier_validated_at")
+  cashierValidatedById String?        @map("cashier_validated_by_id")
   
   // Notes
   notes           String?
@@ -1593,7 +1619,10 @@ model ProductReturn {
   // Relations
   store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   storeOrder      StoreOrder?         @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
+  savSubBoxOrder  SubBoxOrder?        @relation("SAVSubBoxOrder", fields: [savSubBoxOrderId], references: [id], onDelete: SetNull)
   processedBy     User?               @relation("ProductReturnProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  sentToCashierBy User?               @relation("ProductReturnSentToCashier", fields: [sentToCashierById], references: [id], onDelete: SetNull)
+  cashierValidatedBy User?            @relation("ProductReturnCashierValidator", fields: [cashierValidatedById], references: [id], onDelete: SetNull)
   createdBy       User                @relation("ProductReturnCreator", fields: [createdById], references: [id])
   
   // Items retournés
@@ -1602,6 +1631,8 @@ model ProductReturn {
   @@index([storeId])
   @@index([storeOrderId])
   @@index([status])
+  @@index([trackingNumber])
+  @@index([sentToCashier])
   @@index([createdAt])
   @@map("product_returns")
 }
@@ -1637,7 +1668,9 @@ model ProductReturnItem {
   exchangeProductId       String?       @map("exchange_product_id") // Produit donné en échange
   exchangeProductVariantId String?      @map("exchange_product_variant_id") // Variante du produit d'échange
   exchangeProductName     String?       @map("exchange_product_name") // Nom du produit d'échange (snapshot)
-  exchangeDiscount        Float         @default(0) @map("exchange_discount") // Remise appliquée sur le produit d'échange
+  exchangeProductPrice    Float?        @map("exchange_product_price") // Prix du produit d'échange
+  exchangeDiscount        Float         @default(0) @map("exchange_discount") // Rabais accordé par SAV
+  customerAddition        Float         @default(0) @map("customer_addition") // Montant à payer par le client (prix échange - prix retour - rabais)
   
   createdAt         DateTime            @default(now()) @map("created_at")
 
@@ -1711,6 +1744,9 @@ model SubBoxOrder {
 
   subBox       SubBox            @relation(fields: [subBoxId], references: [id], onDelete: Cascade)
   items        SubBoxOrderItem[] // Produits de la commande
+  
+  // Retour SAV lié (si commande créée pour échange SAV)
+  productReturn ProductReturn?   @relation("SAVSubBoxOrder")
 
   @@index([subBoxId])
   @@index([storeId])

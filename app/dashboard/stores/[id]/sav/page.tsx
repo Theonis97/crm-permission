@@ -41,6 +41,7 @@ const getStatusBadge = (status: string) => {
   const badges: Record<string, React.ReactNode> = {
     PENDING: <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="h-3 w-3 mr-1" />En attente</Badge>,
     APPROVED: <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="h-3 w-3 mr-1" />Approuvé</Badge>,
+    AWAITING_CASHIER: <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200"><Clock className="h-3 w-3 mr-1" />En caisse</Badge>,
     REFUNDED: <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><Banknote className="h-3 w-3 mr-1" />Remboursé</Badge>,
     EXCHANGED: <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200"><ArrowLeftRight className="h-3 w-3 mr-1" />Échangé</Badge>,
     REJECTED: <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="h-3 w-3 mr-1" />Rejeté</Badge>,
@@ -85,6 +86,12 @@ export default function SAVPage({ params }: SAVPageProps) {
   const [customerPhone, setCustomerPhone] = useState("")
   const [creatingReturn, setCreatingReturn] = useState(false)
   const [selectionMode, setSelectionMode] = useState<"return" | "exchange">("return")
+  
+  // États pour l'envoi à la caisse
+  const [showSendToCashierDialog, setShowSendToCashierDialog] = useState(false)
+  const [sendingToCashier, setSendingToCashier] = useState(false)
+  const [resolutionType, setResolutionType] = useState<"EXCHANGE" | "REFUND">("EXCHANGE")
+  const [discountAmount, setDiscountAmount] = useState(0)
 
   // Stats basées sur l'état des produits (condition)
   const getConditionStats = () => {
@@ -183,13 +190,82 @@ export default function SAVPage({ params }: SAVPageProps) {
   const calcTotal = () => returnedProduct ? returnedProduct.quantity * returnedProduct.unitPrice : 0
   const calcDiff = () => { if (!returnedProduct || !exchangeProduct) return 0; return (exchangeProduct.quantity * exchangeProduct.unitPrice) - (returnedProduct.quantity * returnedProduct.unitPrice) }
 
+  // Fonction pour envoyer à la caisse
+  const handleSendToCashier = async () => {
+    if (!selectedReturn) return
+    try {
+      setSendingToCashier(true)
+      const returnItem = selectedReturn.items?.[0]
+      const items = selectedReturn.items?.map((item: any) => ({
+        itemId: item.id,
+        refundAmount: resolutionType === "REFUND" ? item.quantity * item.unitPrice : 0,
+        exchangeProductId: item.exchangeProductId,
+        exchangeProductPrice: item.exchangeProduct?.prixVente,
+        exchangeDiscount: discountAmount,
+      }))
+
+      const res = await fetch(`/api/stores/${storeId}/sav/${selectedReturn.id}/send-to-cashier`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resolutionType,
+          items,
+          totalDiscount: discountAmount,
+          notes: `${resolutionType === "REFUND" ? "Remboursement" : "Échange"} envoyé à la caisse`
+        })
+      })
+
+      if (res.ok) {
+        toast.success("Envoyé à la caisse avec succès")
+        setShowSendToCashierDialog(false)
+        setShowDetailsDialog(false)
+        loadReturns()
+      } else {
+        const err = await res.json()
+        throw new Error(err.error)
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Erreur lors de l'envoi à la caisse")
+    } finally {
+      setSendingToCashier(false)
+    }
+  }
+
+  // Calcul du montant à payer/rendre pour un échange
+  // Retourne un objet avec le montant et le type (payer ou rendre)
+  const calcExchangeAmount = () => {
+    if (!selectedReturn) return { amount: 0, type: "none" as const }
+    const returnItem = selectedReturn.items?.[0]
+    if (!returnItem) return { amount: 0, type: "none" as const }
+    
+    // Valeur de reprise = prix du produit retourné
+    const returnValue = returnItem.quantity * returnItem.unitPrice
+    // Valeur du produit d'échange
+    const exchangeValue = (returnItem.exchangeProduct?.prixVente || returnItem.exchangeProductPrice || returnItem.unitPrice) * returnItem.quantity
+    // Différence = prix échange - valeur reprise - remise additionnelle
+    const difference = exchangeValue - returnValue - discountAmount
+    
+    if (difference > 0) {
+      return { amount: difference, type: "pay" as const } // Client paie
+    } else if (difference < 0) {
+      return { amount: Math.abs(difference), type: "refund" as const } // Caisse rend
+    }
+    return { amount: 0, type: "none" as const } // Même valeur
+  }
+  
+  // Calcul du montant à rembourser (pour REFUND)
+  const calcRefundAmount = () => {
+    if (!selectedReturn) return 0
+    return selectedReturn.items?.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0) || 0
+  }
+
   return (
     <div className="flex flex-col">
       <StorePageHeader title="Service Après-Vente" description="Gérez les retours de produits" icon={RotateCcw}
         actions={<div className="flex items-center gap-3">
           <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Produit..." value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className="pl-9 w-[180px] bg-white" /></div>
           <Select value={conditionFilter} onValueChange={setConditionFilter}><SelectTrigger className="w-[130px] bg-white"><SelectValue placeholder="État" /></SelectTrigger><SelectContent><SelectItem value="all">Tous états</SelectItem><SelectItem value="NEW">Neuf</SelectItem><SelectItem value="GOOD">Bon état</SelectItem><SelectItem value="USED">Utilisé</SelectItem><SelectItem value="DAMAGED">Endommagé</SelectItem><SelectItem value="DEFECTIVE">Défectueux</SelectItem></SelectContent></Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[130px] bg-white"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous statuts</SelectItem><SelectItem value="PENDING">En attente</SelectItem><SelectItem value="APPROVED">Approuvé</SelectItem><SelectItem value="REFUNDED">Remboursé</SelectItem><SelectItem value="EXCHANGED">Échangé</SelectItem><SelectItem value="REJECTED">Rejeté</SelectItem></SelectContent></Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[130px] bg-white"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous statuts</SelectItem><SelectItem value="PENDING">En attente</SelectItem><SelectItem value="APPROVED">Approuvé</SelectItem><SelectItem value="AWAITING_CASHIER">En caisse</SelectItem><SelectItem value="REFUNDED">Remboursé</SelectItem><SelectItem value="EXCHANGED">Échangé</SelectItem><SelectItem value="REJECTED">Rejeté</SelectItem></SelectContent></Select>
           <Button onClick={openCreateSheet}><Plus className="h-4 w-4 mr-2" />Nouveau retour</Button>
         </div>} />
 
@@ -211,21 +287,120 @@ export default function SAVPage({ params }: SAVPageProps) {
                 return (
                 <TableRow key={r.id}><TableCell className="font-medium text-xs">{r.number}</TableCell><TableCell><div className="font-medium text-sm">{r.customerName || "-"}</div><div className="text-xs text-muted-foreground">{r.customerPhone || "-"}</div></TableCell><TableCell><div className="font-medium text-sm">{returnedItem?.productName || "-"}</div><div className="text-xs text-muted-foreground">{returnedItem?.quantity || 0} x {returnedItem?.unitPrice?.toLocaleString() || 0} F</div></TableCell><TableCell>{exchangedItem?.exchangeProductName ? <><div className="font-medium text-sm text-purple-600">{exchangedItem.exchangeProductName}</div>{exchangedItem.exchangeDiscount > 0 && <div className="text-xs text-muted-foreground">Remise: {exchangedItem.exchangeDiscount?.toLocaleString()} F</div>}</> : <span className="text-muted-foreground text-xs">-</span>}</TableCell><TableCell>{returnedItem?.condition ? getConditionBadge(returnedItem.condition) : "-"}</TableCell><TableCell>{getStatusBadge(r.status)}</TableCell><TableCell className="text-xs">{format(new Date(r.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
                   <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { setSelectedReturn(r); setShowDetailsDialog(true) }}><Eye className="h-4 w-4 mr-2" />Détails</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setSelectedReturn(r); setDiscountAmount(0); setShowDetailsDialog(true) }}><Eye className="h-4 w-4 mr-2" />Détails</DropdownMenuItem>
                     {r.status === "PENDING" && <><DropdownMenuItem onClick={() => handleProcess(r.id, "APPROVED")}><CheckCircle className="h-4 w-4 mr-2" />Approuver</DropdownMenuItem><DropdownMenuItem onClick={() => handleProcess(r.id, "REJECTED")} className="text-red-600"><XCircle className="h-4 w-4 mr-2" />Rejeter</DropdownMenuItem></>}
+                    {(r.status === "PENDING" || r.status === "APPROVED") && <><DropdownMenuItem onClick={() => { setSelectedReturn(r); setResolutionType("EXCHANGE"); setDiscountAmount(0); setShowSendToCashierDialog(true) }} className="text-purple-600"><ArrowLeftRight className="h-4 w-4 mr-2" />Échange → Caisse</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedReturn(r); setResolutionType("REFUND"); setDiscountAmount(0); setShowSendToCashierDialog(true) }} className="text-green-600"><Banknote className="h-4 w-4 mr-2" />Remboursement → Caisse</DropdownMenuItem></>}
                   </DropdownMenuContent></DropdownMenu></TableCell></TableRow>
               )})}</TableBody></Table>
           )}
         </CardContent></Card>
       </div>
 
-      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Retour {selectedReturn?.number}</DialogTitle></DialogHeader>
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Retour {selectedReturn?.number}</DialogTitle><DialogDescription>N° de suivi: {selectedReturn?.trackingNumber || selectedReturn?.number}</DialogDescription></DialogHeader>
         {selectedReturn && <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4"><div><p className="text-sm text-muted-foreground">Client</p><p className="font-medium">{selectedReturn.customerName || "-"}</p></div><div><p className="text-sm text-muted-foreground">Statut</p>{getStatusBadge(selectedReturn.status)}</div></div>
           <div><h4 className="font-semibold mb-2">Articles</h4><div className="border rounded-lg"><Table><TableHeader><TableRow><TableHead>Produit</TableHead><TableHead>Qté</TableHead><TableHead>Motif</TableHead></TableRow></TableHeader><TableBody>{selectedReturn.items?.map((item: any) => <TableRow key={item.id}><TableCell>{item.productName}</TableCell><TableCell>{item.quantity}</TableCell><TableCell>{RETURN_REASONS.find(r => r.value === item.reason)?.label}</TableCell></TableRow>)}</TableBody></Table></div></div>
         </div>}
         <DialogFooter><Button variant="outline" onClick={() => setShowDetailsDialog(false)}>Fermer</Button></DialogFooter>
       </DialogContent></Dialog>
+
+      {/* Dialog pour envoyer à la caisse */}
+      <Dialog open={showSendToCashierDialog} onOpenChange={setShowSendToCashierDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{resolutionType === "REFUND" ? "Remboursement" : "Échange"} → Caisse</DialogTitle>
+            <DialogDescription>
+              N° de suivi: {selectedReturn?.trackingNumber || selectedReturn?.number}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedReturn && (
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Client</p>
+                <p className="font-medium">{selectedReturn.customerName || "Non renseigné"}</p>
+              </div>
+              
+              {selectedReturn.items?.map((item: any) => (
+                <div key={item.id} className="p-3 border rounded-lg space-y-2">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{item.productName}</span>
+                    <span className="text-sm">{item.quantity} x {item.unitPrice?.toLocaleString()} F</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Valeur: <span className="font-medium text-red-600">{(item.quantity * item.unitPrice)?.toLocaleString()} F</span>
+                  </div>
+                  {item.exchangeProductName && resolutionType === "EXCHANGE" && (
+                    <div className="text-sm">
+                      Échange avec: <span className="font-medium text-purple-600">{item.exchangeProductName}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {resolutionType === "EXCHANGE" && (
+                <div className="space-y-3">
+                  <Label>Rabais additionnel SAV (FCFA)</Label>
+                  <Input 
+                    type="number" 
+                    value={discountAmount} 
+                    onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                    placeholder="0"
+                  />
+                  {(() => {
+                    const result = calcExchangeAmount()
+                    if (result.type === "pay") {
+                      return (
+                        <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <div className="flex justify-between text-sm">
+                            <span>💰 Client doit payer:</span>
+                            <span className="font-bold text-purple-700">{result.amount.toLocaleString()} F</span>
+                          </div>
+                        </div>
+                      )
+                    } else if (result.type === "refund") {
+                      return (
+                        <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                          <div className="flex justify-between text-sm">
+                            <span>💸 Caisse rend au client:</span>
+                            <span className="font-bold text-green-700">{result.amount.toLocaleString()} F</span>
+                          </div>
+                        </div>
+                      )
+                    } else {
+                      return (
+                        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex justify-between text-sm">
+                            <span>✅ Même valeur:</span>
+                            <span className="font-bold text-gray-700">0 F</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                  })()}
+                </div>
+              )}
+
+              {resolutionType === "REFUND" && (
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex justify-between text-sm">
+                    <span>💸 Montant à rembourser:</span>
+                    <span className="font-bold text-green-700">
+                      {calcRefundAmount().toLocaleString()} F
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSendToCashierDialog(false)}>Annuler</Button>
+            <Button onClick={handleSendToCashier} disabled={sendingToCashier}>
+              {sendingToCashier ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : resolutionType === "REFUND" ? <Banknote className="h-4 w-4 mr-2" /> : <ArrowLeftRight className="h-4 w-4 mr-2" />}
+              Envoyer à la caisse
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}><SheetContent side="right" className="w-full sm:max-w-[100vw] p-0">
         <div className="flex h-screen bg-gray-50">

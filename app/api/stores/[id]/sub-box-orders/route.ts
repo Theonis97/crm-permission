@@ -132,33 +132,116 @@ export async function PATCH(
     }
 
     if (action === "validate") {
-      const updatedOrder = await prisma.subBoxOrder.update({
+      // Récupérer la commande avec ses items et le retour SAV lié
+      const orderWithDetails = await prisma.subBoxOrder.findUnique({
         where: { id: orderId },
-        data: {
-          status: "VALIDATED",
-          validatedAt: new Date(),
-        },
+        include: {
+          items: true,
+          productReturn: true,
+        }
+      })
+
+      // Transaction pour valider la commande et gérer le stock
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Mettre à jour le statut de la commande SubBox
+        const updatedOrder = await tx.subBoxOrder.update({
+          where: { id: orderId },
+          data: {
+            status: "VALIDATED",
+            validatedAt: new Date(),
+          },
+        })
+
+        // 2. Décrémenter le stock pour chaque item
+        for (const item of orderWithDetails?.items || []) {
+          // Décrémenter le stock global du produit
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: { decrement: item.quantity }
+            }
+          })
+
+          // Décrémenter le stock du magasin
+          await tx.storeProduct.updateMany({
+            where: {
+              storeId,
+              productId: item.productId,
+            },
+            data: {
+              stock: { decrement: item.quantity }
+            }
+          })
+
+          console.log(`[SAV] Stock décrémenté: ${item.name} x${item.quantity}`)
+        }
+
+        // 3. Si c'est une commande SAV, mettre à jour le ProductReturn
+        if (orderWithDetails?.productReturn) {
+          await tx.productReturn.update({
+            where: { id: orderWithDetails.productReturn.id },
+            data: {
+              status: "EXCHANGED",
+              cashierValidated: true,
+              cashierValidatedAt: new Date(),
+              cashierValidatedById: session.user?.id,
+            }
+          })
+          console.log(`[SAV] Retour ${orderWithDetails.productReturn.number} marqué comme EXCHANGED`)
+        }
+
+        return updatedOrder
       })
 
       return NextResponse.json({
         success: true,
-        data: updatedOrder,
-        message: "Commande validée",
+        data: result,
+        message: orderWithDetails?.productReturn 
+          ? "Commande SAV validée - Stock décrémenté" 
+          : "Commande validée",
       })
     } else if (action === "cancel") {
-      const updatedOrder = await prisma.subBoxOrder.update({
+      // Récupérer la commande avec le retour SAV lié
+      const orderWithReturn = await prisma.subBoxOrder.findUnique({
         where: { id: orderId },
-        data: {
-          status: "CANCELLED",
-          cancelledAt: new Date(),
-          cancelReason: cancelReason || null,
-        },
+        include: {
+          productReturn: true,
+        }
+      })
+
+      // Transaction pour annuler la commande et le retour SAV lié
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await tx.subBoxOrder.update({
+          where: { id: orderId },
+          data: {
+            status: "CANCELLED",
+            cancelledAt: new Date(),
+            cancelReason: cancelReason || null,
+          },
+        })
+
+        // Si c'est une commande SAV, remettre le retour en attente
+        if (orderWithReturn?.productReturn) {
+          await tx.productReturn.update({
+            where: { id: orderWithReturn.productReturn.id },
+            data: {
+              status: "PENDING",
+              sentToCashier: false,
+              savSubBoxOrderId: null,
+            }
+          })
+          console.log(`[SAV] Retour ${orderWithReturn.productReturn.number} remis en attente`)
+        }
+
+        return updatedOrder
       })
 
       return NextResponse.json({
         success: true,
-        data: updatedOrder,
-        message: "Commande annulée",
+        data: result,
+        message: orderWithReturn?.productReturn 
+          ? "Commande SAV annulée - Retour remis en attente" 
+          : "Commande annulée",
       })
     } else {
       return NextResponse.json(
