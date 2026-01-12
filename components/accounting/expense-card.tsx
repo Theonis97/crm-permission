@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { ExpenseStatusBadge } from "./expense-status-badge"
 import { ExpenseStoreBadge } from "./expense-store-badge"
-import { Calendar, User, MoreHorizontal } from "lucide-react"
+import { Calendar, User, MoreHorizontal, Paperclip } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ interface ExpenseCardProps {
     store: { id: string; name: string } | null
     category: { id: string; name: string; icon: string | null; color: string | null }
     createdBy: { id: string; name: string | null; firstName: string | null; lastName: string | null }
+    documentUrl?: string | null
   }
   onView?: (id: string) => void
   onEdit?: (id: string) => void
@@ -58,7 +59,12 @@ export function ExpenseCard({ expense, onView, onEdit, onPay, onDelete }: Expens
               <ExpenseStatusBadge status={expense.status} size="sm" />
             </div>
             
-            <h3 className="font-semibold text-gray-900 mb-1">{expense.title}</h3>
+            <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              {expense.title}
+              {expense.documentUrl && (
+                <Paperclip className="h-4 w-4 text-blue-500" />
+              )}
+            </h3>
             
             <div className="flex items-center gap-4 text-sm text-gray-500">
               <span className="flex items-center gap-1">

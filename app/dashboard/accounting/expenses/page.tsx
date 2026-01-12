@@ -18,6 +18,11 @@ import {
   AlertCircle,
   CalendarIcon,
   RefreshCw,
+  FileText,
+  ExternalLink,
+  User,
+  Building,
+  Phone,
 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -42,6 +47,10 @@ interface Expense {
   store: { id: string; name: string } | null
   category: { id: string; name: string; icon: string | null; color: string | null }
   createdBy: { id: string; name: string | null; firstName: string | null; lastName: string | null }
+  documentUrl?: string | null
+  description?: string | null
+  supplierName?: string | null
+  supplierPhone?: string | null
 }
 
 interface Category {
@@ -77,6 +86,7 @@ export default function ExpensesPage() {
   const [showCreateSheet, setShowCreateSheet] = useState(false)
   const [showEditSheet, setShowEditSheet] = useState(false)
   const [showPaymentSheet, setShowPaymentSheet] = useState(false)
+  const [showDetailSheet, setShowDetailSheet] = useState(false)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -145,6 +155,14 @@ export default function ExpensesPage() {
       fetchExpenses()
     }
   }, [fetchExpenses, permissionsLoading])
+
+  // Handle URL params for category filter
+  useEffect(() => {
+    const categoryIdParam = searchParams.get("categoryId")
+    if (categoryIdParam) {
+      setSelectedCategoryId(categoryIdParam)
+    }
+  }, [searchParams])
 
   // Handle URL params for actions
   useEffect(() => {
@@ -454,7 +472,7 @@ export default function ExpensesPage() {
                   const exp = expenses.find(e => e.id === id)
                   if (exp) {
                     setSelectedExpense(exp)
-                    setShowEditSheet(true)
+                    setShowDetailSheet(true)
                   }
                 }}
                 onEdit={(id) => {
@@ -574,6 +592,167 @@ export default function ExpensesPage() {
                 </>
               )}
             </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Detail Sheet */}
+        <Sheet 
+          open={showDetailSheet} 
+          onOpenChange={(open) => {
+            setShowDetailSheet(open)
+            if (!open) {
+              setSelectedExpense(null)
+            }
+          }}
+        >
+          <SheetContent className="sm:max-w-lg overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Détails de la dépense</SheetTitle>
+            </SheetHeader>
+            {selectedExpense && (
+              <div className="mt-6 space-y-6">
+                {/* Titre et montant */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-900">{selectedExpense.title}</h3>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">
+                    {selectedExpense.amount.toLocaleString("fr-FR")} FCFA
+                  </p>
+                  {selectedExpense.status !== "PAID" && selectedExpense.paidAmount > 0 && (
+                    <div className="mt-2 text-sm">
+                      <span className="text-green-600">Payé: {selectedExpense.paidAmount.toLocaleString("fr-FR")} FCFA</span>
+                      <span className="mx-2">•</span>
+                      <span className="text-orange-600">Reste: {selectedExpense.remainingAmount.toLocaleString("fr-FR")} FCFA</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Informations */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-sm">
+                    <CalendarIcon className="h-4 w-4 text-gray-400" />
+                    <span className="text-gray-600">Échéance:</span>
+                    <span className="font-medium">{format(new Date(selectedExpense.dueDate), "dd MMMM yyyy", { locale: fr })}</span>
+                  </div>
+                  
+                  {selectedExpense.store && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Building className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">Magasin:</span>
+                      <span className="font-medium">{selectedExpense.store.name}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-3 text-sm">
+                    <Receipt className="h-4 w-4 text-gray-400" />
+                    <span className="text-gray-600">Catégorie:</span>
+                    <span 
+                      className="px-2 py-1 rounded text-xs font-medium"
+                      style={{ 
+                        backgroundColor: selectedExpense.category.color ? `${selectedExpense.category.color}20` : "#f3f4f6",
+                        color: selectedExpense.category.color || "#6b7280"
+                      }}
+                    >
+                      {selectedExpense.category.name}
+                    </span>
+                  </div>
+
+                  {selectedExpense.supplierName && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <User className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">Fournisseur:</span>
+                      <span className="font-medium">{selectedExpense.supplierName}</span>
+                    </div>
+                  )}
+
+                  {selectedExpense.supplierPhone && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Phone className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">Téléphone:</span>
+                      <span className="font-medium">{selectedExpense.supplierPhone}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Description */}
+                {selectedExpense.description && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Description</h4>
+                    <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                      {selectedExpense.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Pièce jointe */}
+                {selectedExpense.documentUrl && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Pièce jointe</h4>
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      {selectedExpense.documentUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) || 
+                       selectedExpense.documentUrl.includes("/api/files/") ? (
+                        <div className="space-y-3">
+                          <img 
+                            src={selectedExpense.documentUrl} 
+                            alt="Pièce jointe" 
+                            className="max-w-full h-auto rounded-lg border"
+                          />
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => window.open(selectedExpense.documentUrl!, "_blank")}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Ouvrir dans un nouvel onglet
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-blue-100 rounded-lg">
+                            <FileText className="h-6 w-6 text-blue-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">Document joint</p>
+                            <p className="text-sm text-gray-500">Cliquez pour ouvrir</p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            onClick={() => window.open(selectedExpense.documentUrl!, "_blank")}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Ouvrir
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowDetailSheet(false)
+                      setShowEditSheet(true)
+                    }}
+                  >
+                    Modifier
+                  </Button>
+                  {selectedExpense.status !== "PAID" && (
+                    <Button
+                      className="flex-1"
+                      onClick={() => {
+                        setShowDetailSheet(false)
+                        setShowPaymentSheet(true)
+                      }}
+                    >
+                      Enregistrer un paiement
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </SheetContent>
         </Sheet>
     </div>

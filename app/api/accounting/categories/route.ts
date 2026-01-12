@@ -25,7 +25,21 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ categories })
+    // Calculer le total des dépenses par catégorie
+    const categoriesWithSum = await Promise.all(
+      categories.map(async (cat) => {
+        const sum = await prisma.expense.aggregate({
+          where: { categoryId: cat.id },
+          _sum: { amount: true }
+        })
+        return {
+          ...cat,
+          _sum: { amount: sum._sum.amount || 0 }
+        }
+      })
+    )
+
+    return NextResponse.json({ categories: categoriesWithSum })
   } catch (error) {
     console.error("[ACCOUNTING_CATEGORIES_GET]", error)
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 })

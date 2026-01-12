@@ -175,6 +175,9 @@ model Store {
   
   // Comptabilité - Dépenses liées à ce magasin
   expenses Expense[]
+  
+  // Recettes journalières
+  dailyRevenues DailyRevenue[]
 
   @@map("stores")
 }
@@ -902,6 +905,7 @@ model User {
   // Comptabilité - Relations
   createdExpenses           Expense[]          @relation("ExpenseCreator")
   expensePayments           ExpensePayment[]   @relation("ExpensePaymentPayer")
+  createdDailyRevenues      DailyRevenue[]     @relation("DailyRevenueCreatedBy")
 
   @@map("users")
 }
@@ -1527,6 +1531,33 @@ model DayClose {
   @@index([userId])
   @@index([closeDate])
   @@map("day_closes")
+}
+
+// Recette journalière d'un magasin (agrégation des clôtures + dépenses + recette comptée)
+model DailyRevenue {
+  id              String   @id @default(cuid())
+  storeId         String   @map("store_id")
+  date            DateTime // Date du jour (sans heure)
+  
+  // Données calculées/agrégées
+  totalDayCloses  Float    @default(0) @map("total_day_closes")  // Somme des clôtures de caisse du jour
+  totalExpenses   Float    @default(0) @map("total_expenses")    // Somme des dépenses du magasin ce jour
+  
+  // Données saisies manuellement
+  countedRevenue  Float?   @map("counted_revenue")  // Recette comptée (saisie manuelle)
+  
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     String?  @map("created_by_id")
+
+  store     Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("DailyRevenueCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([storeId, date]) // Un seul enregistrement par magasin par jour
+  @@index([storeId])
+  @@index([date])
+  @@map("daily_revenues")
 }
 
 // ============================================================================

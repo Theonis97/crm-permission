@@ -43,7 +43,7 @@ export async function uploadFileToS3(file: File, folder = "stores"): Promise<Upl
       ContentType: contentType,
       ContentLength: buffer.length,
       Metadata: {
-        originalName: file.name,
+        originalName: encodeURIComponent(file.name),
         uploadedAt: new Date().toISOString(),
       },
     })

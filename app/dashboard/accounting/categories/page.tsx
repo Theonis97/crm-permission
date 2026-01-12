@@ -36,8 +36,10 @@ import {
   Briefcase,
   FileText,
   Shield,
+  ExternalLink,
 } from "lucide-react"
 import { toast } from "sonner"
+import Link from "next/link"
 
 interface Category {
   id: string
@@ -48,6 +50,7 @@ interface Category {
   isSystem: boolean
   isActive: boolean
   _count?: { expenses: number }
+  _sum?: { amount: number | null }
 }
 
 const iconOptions = [
@@ -278,7 +281,7 @@ export default function CategoriesPage() {
           {categories.map((category) => {
             const IconComponent = getIconComponent(category.icon)
             return (
-              <Card key={category.id} className="hover:shadow-sm transition-shadow">
+              <Card key={category.id} className="hover:shadow-sm transition-shadow py-0">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div 
@@ -309,6 +312,13 @@ export default function CategoriesPage() {
                     <span className="text-sm text-gray-500">
                       {category._count?.expenses || 0} dépense(s)
                     </span>
+                    
+                    <Link href={`/dashboard/accounting/expenses?categoryId=${category.id}`}>
+                      <Button variant="outline" size="sm" className="gap-1">
+                        <ExternalLink className="h-3 w-3" />
+                        Voir
+                      </Button>
+                    </Link>
                     
                     {hasPermission("accounting.categories.manage") && (
                       <DropdownMenu>
@@ -444,6 +454,26 @@ export default function CategoriesPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      {/* Footer fixe avec total */}
+      {!isLoading && categories.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40">
+          <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FolderTree className="h-5 w-5 text-gray-500" />
+              <span className="font-medium text-gray-700">
+                {categories.length} catégorie(s) • {categories.reduce((sum, c) => sum + (c._count?.expenses || 0), 0)} dépense(s)
+              </span>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Total des dépenses</p>
+              <p className="text-xl font-bold text-red-600">
+                {categories.reduce((sum, c) => sum + (c._sum?.amount || 0), 0).toLocaleString("fr-FR")} FCFA
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

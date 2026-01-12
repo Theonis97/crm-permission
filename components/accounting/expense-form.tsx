@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2 } from "lucide-react"
+import { CalendarIcon, Loader2, Upload, X, FileText } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -30,6 +30,7 @@ interface ExpenseFormProps {
     periodicity?: string
     paymentDay?: number
     isRecurring?: boolean
+    documentUrl?: string
   }
   onSubmit: (data: any) => Promise<void>
   onCancel: () => void
@@ -57,14 +58,75 @@ export function ExpenseForm({
     paymentDay: initialData?.paymentDay || 1,
     isRecurring: initialData?.isRecurring || false,
   })
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(initialData?.documentUrl || null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setAttachmentFile(file)
+      // Créer une preview pour les images
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setAttachmentPreview(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      } else {
+        setAttachmentPreview(file.name)
+      }
+    }
+  }
+
+  const removeAttachment = () => {
+    setAttachmentFile(null)
+    setAttachmentPreview(null)
+  }
+
+  const uploadFile = async (): Promise<string | null> => {
+    if (!attachmentFile) return attachmentPreview // Retourner l'URL existante si pas de nouveau fichier
+    
+    setIsUploading(true)
+    try {
+      const formDataUpload = new FormData()
+      formDataUpload.append("file", attachmentFile)
+      formDataUpload.append("folder", "expenses")
+      
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formDataUpload,
+      })
+      
+      if (!response.ok) {
+        throw new Error("Erreur lors de l'upload")
+      }
+      
+      const data = await response.json()
+      return data.fileUrl
+    } catch (error) {
+      console.error("Upload error:", error)
+      return null
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Upload du fichier si présent
+    let attachmentUrl = null
+    if (attachmentFile || attachmentPreview) {
+      attachmentUrl = await uploadFile()
+    }
+    
     await onSubmit({
       ...formData,
       storeId: formData.storeId === "" ? null : formData.storeId,
       amount: Number(formData.amount),
       paymentDay: formData.periodicity !== "ONCE" ? formData.paymentDay : null,
+      documentUrl: attachmentUrl,
     })
   }
 
@@ -254,6 +316,59 @@ export function ExpenseForm({
           placeholder="Notes ou détails supplémentaires..."
           rows={3}
         />
+      </div>
+
+      {/* Upload de fichier */}
+      <div className="space-y-2">
+        <Label>Pièce jointe (facture, reçu...)</Label>
+        {attachmentPreview ? (
+          <div className="relative border rounded-lg p-3 bg-gray-50">
+            <div className="flex items-center gap-3">
+              {attachmentPreview.startsWith("data:image") || attachmentPreview.startsWith("http") ? (
+                <img 
+                  src={attachmentPreview} 
+                  alt="Aperçu" 
+                  className="w-16 h-16 object-cover rounded"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
+                  <FileText className="h-8 w-8 text-gray-500" />
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700">
+                  {attachmentFile?.name || "Fichier joint"}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {attachmentFile ? `${(attachmentFile.size / 1024).toFixed(1)} Ko` : "Fichier existant"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={removeAttachment}
+                className="text-red-500 hover:text-red-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+            <div className="flex flex-col items-center justify-center pt-2 pb-3">
+              <Upload className="h-6 w-6 text-gray-400 mb-1" />
+              <p className="text-sm text-gray-500">Cliquez pour ajouter un fichier</p>
+              <p className="text-xs text-gray-400">PDF, Image (max 5Mo)</p>
+            </div>
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf"
+              onChange={handleFileChange}
+            />
+          </label>
+        )}
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
