@@ -383,7 +383,7 @@ export default function EditStorePage({ params }: EditStorePageProps) {
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="+237 6XX XXX XXX"
+                    placeholder="+241 6XX XXX XXX"
                     {...register("phone")}
                     className="rounded-full"
                   />
@@ -416,7 +416,7 @@ export default function EditStorePage({ params }: EditStorePageProps) {
                   <Input
                     id="whatsapp"
                     type="tel"
-                    placeholder="+237 6XX XXX XXX"
+                    placeholder="+241 6XX XXX XXX"
                     {...register("whatsapp")}
                     className="rounded-full"
                   />

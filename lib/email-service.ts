@@ -915,7 +915,7 @@ Email de clôture de journée généré automatiquement.
 
 // Destinataires des emails de notification de commandes
 const ORDER_NOTIFICATION_RECIPIENTS = [
-  'gabinmoundziegou@gmail.com',
+  'mapangoukarl.km@gmail.com',
   'steevennguembi@gmail.com'
 ];
 

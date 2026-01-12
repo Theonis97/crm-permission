@@ -166,7 +166,7 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
               type="tel"
               value={formData.phone}
               onChange={(e) => handleChange("phone", e.target.value)}
-              placeholder="+237 6XX XXX XXX"
+              placeholder="+241 6XX XXX XXX"
             />
           </div>
 
@@ -190,7 +190,7 @@ export function CreateStoreSheet({ open, onClose, onSuccess }: CreateStoreSheetP
               type="tel"
               value={formData.whatsapp}
               onChange={(e) => handleChange("whatsapp", e.target.value)}
-              placeholder="+237 6XX XXX XXX"
+              placeholder="+241 6XX XXX XXX"
             />
             <p className="text-xs text-gray-500">Numéro WhatsApp pour le contact client</p>
           </div>

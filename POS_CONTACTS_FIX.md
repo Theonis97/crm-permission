@@ -269,7 +269,7 @@ if (contactResponse.ok) {
 1. Utilisateur saisit:
    - Prénom: Marie
    - Nom: Martin
-   - Téléphone: +237 690000000
+   - Téléphone: +241 690000000
    - Email: marie@example.com
 
 2. API: POST /api/stores/{storeId}/contacts
@@ -296,7 +296,7 @@ if (contactResponse.ok) {
 
 ```
 1. Utilisateur saisit uniquement:
-   - Téléphone: +237 690000000
+   - Téléphone: +241 690000000
    (Pas de prénom/nom)
 
 2. contactId reste null dans la commande
@@ -438,7 +438,7 @@ Response: [
       "id": "contact_id",
       "firstName": "Jean",
       "lastName": "Dupont",
-      "phone": "+237 690000000",
+      "phone": "+241 690000000",
       "email": "jean@example.com",
       "type": "PERSONNE",
       "status": "CLIENT"
@@ -451,7 +451,7 @@ POST /api/stores/{storeId}/contacts
 {
   "firstName": "Marie",
   "lastName": "Martin",
-  "phone": "+237 690000001",
+  "phone": "+241 690000001",
   "email": "marie@example.com",
   "type": "PERSONNE",
   "status": "CLIENT"
@@ -461,7 +461,7 @@ Response: {
   "id": "...",
   "firstName": "Marie",
   "lastName": "Martin",
-  "phone": "+237 690000001",
+  "phone": "+241 690000001",
   "email": "marie@example.com",
   "type": "PERSONNE",
   "status": "CLIENT"

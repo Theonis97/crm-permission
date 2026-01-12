@@ -302,7 +302,7 @@ export function ExpenseForm({
             id="supplierPhone"
             value={formData.supplierPhone}
             onChange={(e) => setFormData({ ...formData, supplierPhone: e.target.value })}
-            placeholder="+237 6XX XXX XXX"
+            placeholder="+241 6XX XXX XXX"
           />
         </div>
       </div>

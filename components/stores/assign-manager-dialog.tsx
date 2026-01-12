@@ -381,7 +381,7 @@ export function AssignManagerDialog({
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="+237 6XX XXX XXX"
+                  placeholder="+241 6XX XXX XXX"
                   value={newUserData.phone}
                   onChange={(e) => setNewUserData({ ...newUserData, phone: e.target.value })}
                   className="rounded-full"

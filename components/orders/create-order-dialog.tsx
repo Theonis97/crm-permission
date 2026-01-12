@@ -320,7 +320,7 @@ export function CreateOrderDialog({
                   id="customerPhone"
                   value={formData.customerPhone}
                   onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                  placeholder="+237 6XX XXX XXX"
+                  placeholder="+241 6XX XXX XXX"
                   required
                 />
               </div>

@@ -906,6 +906,7 @@ model User {
   createdExpenses           Expense[]          @relation("ExpenseCreator")
   expensePayments           ExpensePayment[]   @relation("ExpensePaymentPayer")
   createdDailyRevenues      DailyRevenue[]     @relation("DailyRevenueCreatedBy")
+  accountingAccessCodes     AccountingAccessCode[]
 
   @@map("users")
 }
@@ -1996,5 +1997,21 @@ model ExpensePayment {
   @@index([expenseId])
   @@index([paymentDate])
   @@map("expense_payments")
+}
+
+// Codes de vérification pour l'accès à la comptabilité
+model AccountingAccessCode {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  code        String   // Code à 6 chiffres
+  expiresAt   DateTime @map("expires_at")
+  isUsed      Boolean  @default(false) @map("is_used")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+  @@map("accounting_access_codes")
 }
 
