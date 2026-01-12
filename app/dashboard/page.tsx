@@ -11,12 +11,12 @@ import {
   Contact,
   Warehouse,
   TrendingUp,
-  Building2,
   Store,
   ArrowRight,
   Sparkles,
   Calendar,
   Clock,
+  Calculator,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
@@ -67,17 +67,6 @@ const modules = [
     clickable: true,
   },
   {
-    id: "crm",
-    name: "CRM",
-    description: "Gestion relation client",
-    icon: Building2,
-    color: "from-indigo-500 to-indigo-600",
-    permission: "opportunities.view",
-    href: "/dashboard/opportunities",
-    stats: "15 opportunités",
-    clickable: true,
-  },
-  {
     id: "sales",
     name: "Ventes",
     description: "Devis, factures et commandes",
@@ -108,6 +97,17 @@ const modules = [
     permission: "store.pos.access", // Utiliser une permission existante
     href: "/dashboard/day-closes",
     stats: "Mes clôtures",
+    clickable: true,
+  },
+  {
+    id: "accounting",
+    name: "Comptabilité",
+    description: "Dépenses, recettes et résultats",
+    icon: Calculator,
+    color: "from-rose-500 to-pink-600",
+    permission: "accounting.view",
+    href: "/dashboard/accounting",
+    stats: "Résultat du mois",
     clickable: true,
   },
 ]

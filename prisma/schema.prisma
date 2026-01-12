@@ -70,6 +70,29 @@ enum ContactStatus {
   ARCHIVE
 }
 
+// ============================================================================
+// MODULE COMPTABILITÉ
+// ============================================================================
+
+enum ExpenseStatus {
+  PENDING          // En attente
+  PARTIALLY_PAID   // Payée partiellement
+  PAID             // Payée
+}
+
+enum ExpensePeriodicity {
+  ONCE        // Unique
+  WEEKLY      // Hebdomadaire
+  MONTHLY     // Mensuelle
+  YEARLY      // Annuelle
+}
+
+enum ExpensePaymentMode {
+  CASH          // Caisse
+  BANK          // Banque
+  MOBILE_MONEY  // Mobile Money
+}
+
 model MyPvitSecret {
   id                    String   @id @default(cuid())
   operation_account_code String
@@ -149,6 +172,9 @@ model Store {
   
   // Sous-caisses
   subBoxes SubBox[]
+  
+  // Comptabilité - Dépenses liées à ce magasin
+  expenses Expense[]
 
   @@map("stores")
 }
@@ -870,6 +896,10 @@ model User {
   approvedAttendanceDevices AttendanceDevice[] @relation("DeviceApprover") // Appareils approuvés par cet utilisateur
   attendanceLogs            AttendanceLog[] // Historique des pointages
   usedQRTokens              AttendanceQRToken[] // Tokens QR utilisés
+  
+  // Comptabilité - Relations
+  createdExpenses           Expense[]          @relation("ExpenseCreator")
+  expensePayments           ExpensePayment[]   @relation("ExpensePaymentPayer")
 
   @@map("users")
 }
@@ -1806,5 +1836,98 @@ model AttendanceLog {
   @@index([type])
   @@index([isFlagged])
   @@map("attendance_logs")
+}
+
+// ============================================================================
+// MODULE COMPTABILITÉ - MODÈLES
+// ============================================================================
+
+// Catégories de dépenses (globales)
+model ExpenseCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  color       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  expenses Expense[]
+
+  @@index([isActive])
+  @@map("expense_categories")
+}
+
+// Dépenses
+model Expense {
+  id              String             @id @default(cuid())
+  storeId         String?            @map("store_id")
+  categoryId      String             @map("category_id")
+  
+  title           String
+  description     String?
+  amount          Float
+  
+  supplierName    String?            @map("supplier_name")
+  supplierPhone   String?            @map("supplier_phone")
+  
+  dueDate         DateTime           @map("due_date")
+  periodicity     ExpensePeriodicity @default(ONCE)
+  paymentDay      Int?               @map("payment_day")
+  
+  documentUrl     String?            @map("document_url")
+  documentName    String?            @map("document_name")
+  
+  status          ExpenseStatus      @default(PENDING)
+  paidAmount      Float              @default(0) @map("paid_amount")
+  remainingAmount Float              @default(0) @map("remaining_amount")
+  
+  parentExpenseId String?            @map("parent_expense_id")
+  isRecurring     Boolean            @default(false) @map("is_recurring")
+  
+  createdById     String             @map("created_by_id")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  store           Store?             @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  category        ExpenseCategory    @relation(fields: [categoryId], references: [id])
+  createdBy       User               @relation("ExpenseCreator", fields: [createdById], references: [id])
+  parentExpense   Expense?           @relation("RecurringExpenses", fields: [parentExpenseId], references: [id])
+  childExpenses   Expense[]          @relation("RecurringExpenses")
+  payments        ExpensePayment[]
+
+  @@index([storeId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([isRecurring])
+  @@map("expenses")
+}
+
+// Paiements de dépenses
+model ExpensePayment {
+  id           String             @id @default(cuid())
+  expenseId    String             @map("expense_id")
+  
+  amount       Float
+  paymentDate  DateTime           @map("payment_date")
+  paymentMode  ExpensePaymentMode @map("payment_mode")
+  reference    String?
+  
+  receiptUrl   String?            @map("receipt_url")
+  receiptName  String?            @map("receipt_name")
+  notes        String?
+  
+  paidById     String             @map("paid_by_id")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  expense      Expense            @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  paidBy       User               @relation("ExpensePaymentPayer", fields: [paidById], references: [id])
+
+  @@index([expenseId])
+  @@index([paymentDate])
+  @@map("expense_payments")
 }
 

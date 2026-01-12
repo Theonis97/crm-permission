@@ -198,6 +198,19 @@ async function main() {
       { name: "attendance.delete", description: "Supprimer les pointages", module: "attendance", action: "delete" },
       { name: "attendance.export", description: "Exporter les pointages", module: "attendance", action: "export" },
       { name: "attendance.manage", description: "Gérer les paramètres de pointage", module: "attendance", action: "manage" },
+
+      // Accounting management (Comptabilité)
+      { name: "accounting.view", description: "Voir la comptabilité", module: "accounting", action: "view" },
+      { name: "accounting.dashboard", description: "Voir le tableau de bord comptable", module: "accounting", action: "dashboard" },
+      { name: "accounting.expenses.view", description: "Voir les dépenses", module: "accounting", action: "view" },
+      { name: "accounting.expenses.create", description: "Créer des dépenses", module: "accounting", action: "create" },
+      { name: "accounting.expenses.edit", description: "Modifier les dépenses", module: "accounting", action: "edit" },
+      { name: "accounting.expenses.delete", description: "Supprimer les dépenses", module: "accounting", action: "delete" },
+      { name: "accounting.expenses.pay", description: "Enregistrer des paiements", module: "accounting", action: "pay" },
+      { name: "accounting.categories.view", description: "Voir les catégories de dépenses", module: "accounting", action: "view" },
+      { name: "accounting.categories.manage", description: "Gérer les catégories de dépenses", module: "accounting", action: "manage" },
+      { name: "accounting.reports.view", description: "Voir les rapports comptables", module: "accounting", action: "view" },
+      { name: "accounting.reports.export", description: "Exporter les rapports comptables", module: "accounting", action: "export" },
     ]
 
     const permissions = await Promise.all(
@@ -376,7 +389,33 @@ async function main() {
 
     console.log("✅ Rôles assignés aux utilisateurs")
 
-    // 6. Vérification finale
+    // 6. Créer les catégories de dépenses par défaut
+    console.log("💰 Création des catégories de dépenses...")
+    const expenseCategoriesData = [
+      { name: "Achat Fournisseur", description: "Achats auprès des fournisseurs", icon: "Package", color: "#3B82F6", isSystem: true },
+      { name: "Salaire", description: "Salaires des employés", icon: "Users", color: "#10B981", isSystem: true },
+      { name: "Transport", description: "Frais de transport et déplacement", icon: "Truck", color: "#F59E0B", isSystem: true },
+      { name: "Internet", description: "Abonnement internet", icon: "Wifi", color: "#8B5CF6", isSystem: true },
+      { name: "Loyer", description: "Loyer des locaux", icon: "Home", color: "#EF4444", isSystem: true },
+      { name: "Électricité", description: "Factures d'électricité", icon: "Zap", color: "#F97316", isSystem: true },
+      { name: "Eau", description: "Factures d'eau", icon: "Droplet", color: "#06B6D4", isSystem: true },
+      { name: "Prestation", description: "Prestations de services", icon: "Briefcase", color: "#6366F1", isSystem: true },
+      { name: "Impôts & Taxes", description: "Impôts et taxes diverses", icon: "FileText", color: "#DC2626", isSystem: true },
+      { name: "Assurance", description: "Assurances diverses", icon: "Shield", color: "#059669", isSystem: true },
+      { name: "Autre", description: "Autres dépenses", icon: "MoreHorizontal", color: "#6B7280", isSystem: true },
+    ]
+
+    const expenseCategories = await Promise.all(
+      expenseCategoriesData.map((category) =>
+        prisma.expenseCategory.create({
+          data: category,
+        }),
+      ),
+    )
+
+    console.log(`✅ ${expenseCategories.length} catégories de dépenses créées`)
+
+    // 7. Vérification finale
     console.log("\n📊 Résumé de la création:")
     const counts = {
       roles: await prisma.role.count(),
