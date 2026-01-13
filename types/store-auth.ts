@@ -110,6 +110,13 @@ export const STORE_PERMISSIONS = {
   USERS_INVITE: 'store.users.invite',
   USERS_ROLES: 'store.users.roles',
   SETTINGS_EDIT: 'store.settings.edit',
+
+  // Dépenses
+  EXPENSES_VIEW: 'store.expenses.view',
+  EXPENSES_CREATE: 'store.expenses.create',
+  EXPENSES_EDIT: 'store.expenses.edit',
+  EXPENSES_DELETE: 'store.expenses.delete',
+  EXPENSES_APPROVE: 'store.expenses.approve',
 } as const
 
 // Type pour les permissions (union des valeurs)
@@ -176,6 +183,13 @@ export const STORE_PERMISSION_GROUPS = {
   ],
   settings: [
     STORE_PERMISSIONS.SETTINGS_EDIT,
+  ],
+  expenses: [
+    STORE_PERMISSIONS.EXPENSES_VIEW,
+    STORE_PERMISSIONS.EXPENSES_CREATE,
+    STORE_PERMISSIONS.EXPENSES_EDIT,
+    STORE_PERMISSIONS.EXPENSES_DELETE,
+    STORE_PERMISSIONS.EXPENSES_APPROVE,
   ],
 } as const
 

@@ -15,7 +15,9 @@ async function initializeStorePermissions(tx: any, storeId: string, creatorUserI
     'store.contacts.edit', 'store.contacts.delete', 'store.drivers.view', 'store.drivers.manage',
     'store.drivers.assign', 'store.zones.view', 'store.zones.manage', 'store.movements.view',
     'store.movements.create', 'store.users.view', 'store.users.invite', 'store.users.roles',
-    'store.settings.edit'
+    'store.settings.edit',
+    // Permissions comptabilité
+    'store.expenses.view', 'store.expenses.create', 'store.expenses.edit', 'store.expenses.delete', 'store.expenses.approve'
   ]
 
   // 1. Vérifier si le rôle Manager existe déjà pour ce magasin

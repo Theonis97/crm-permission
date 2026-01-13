@@ -1,7 +1,8 @@
+
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
-import { hasPermission } from "@/lib/auth-helpers"
+import { hasPermission, hasStorePermission } from "@/lib/auth-helpers"
 
 // GET /api/accounting/expenses - Liste des dépenses
 export async function GET(request: Request) {
@@ -9,13 +10,39 @@ export async function GET(request: Request) {
     const { session, error } = await getAuthenticatedSession()
     if (error) return error
 
-    const canView = await hasPermission(session.user.id, "accounting.expenses.view")
-    if (!canView) {
-      return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
+    const { searchParams } = new URL(request.url)
+    const storeIdParam = searchParams.get("storeId")
+    
+    // Vérification des permissions
+    const hasGlobalView = await hasPermission(session.user.id, "accounting.expenses.view")
+    
+    let permittedStoreIds: string[] = []
+    
+    if (!hasGlobalView) {
+      // Si pas de permission globale, récupérer les magasins autorisés
+      const userStoreRoles = await prisma.storeUserRole.findMany({
+        where: {
+          userId: session.user.id,
+          role: {
+            storeRolePermissions: {
+              some: {
+                permission: {
+                  name: "store.expenses.view"
+                }
+              }
+            }
+          }
+        },
+        select: { storeId: true }
+      })
+      
+      permittedStoreIds = userStoreRoles.map(role => role.storeId)
+      
+      if (permittedStoreIds.length === 0) {
+        return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
+      }
     }
 
-    const { searchParams } = new URL(request.url)
-    const storeId = searchParams.get("storeId")
     const categoryId = searchParams.get("categoryId")
     const status = searchParams.get("status")
     const startDate = searchParams.get("startDate")
@@ -28,10 +55,29 @@ export async function GET(request: Request) {
     // Construire les filtres
     const where: any = {}
 
-    if (storeId === "null") {
-      where.storeId = null
-    } else if (storeId) {
-      where.storeId = storeId
+    // Filtrage par magasin
+    if (hasGlobalView) {
+      // Admin global
+      if (storeIdParam === "null") {
+        where.storeId = null
+      } else if (storeIdParam) {
+        where.storeId = storeIdParam
+      }
+    } else {
+      // Utilisateur restreint aux magasins
+      if (storeIdParam) {
+        if (storeIdParam === "null") {
+           return NextResponse.json({ error: "Accès refusé aux dépenses générales" }, { status: 403 })
+        }
+        // Vérifier si le magasin demandé est autorisé
+        if (!permittedStoreIds.includes(storeIdParam)) {
+          return NextResponse.json({ error: "Permission refusée pour ce magasin" }, { status: 403 })
+        }
+        where.storeId = storeIdParam
+      } else {
+        // Pas de magasin spécifié, on limite à tous les magasins autorisés
+        where.storeId = { in: permittedStoreIds }
+      }
     }
 
     if (categoryId) {
@@ -107,11 +153,6 @@ export async function POST(request: Request) {
     const { session, error } = await getAuthenticatedSession()
     if (error) return error
 
-    const canCreate = await hasPermission(session.user.id, "accounting.expenses.create")
-    if (!canCreate) {
-      return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
-    }
-
     const body = await request.json()
     const {
       storeId,
@@ -128,6 +169,23 @@ export async function POST(request: Request) {
       documentName,
       isRecurring,
     } = body
+
+    // Vérification des permissions
+    if (storeId) {
+      // Pour un magasin spécifique : permission magasin OU permission globale
+      const canCreateStore = await hasStorePermission(session.user.id, storeId, "store.expenses.create")
+      const canCreateGlobal = await hasPermission(session.user.id, "accounting.expenses.create")
+      
+      if (!canCreateStore && !canCreateGlobal) {
+        return NextResponse.json({ error: "Permission refusée pour ce magasin" }, { status: 403 })
+      }
+    } else {
+      // Pour une dépense générale : permission globale requise
+      const canCreateGlobal = await hasPermission(session.user.id, "accounting.expenses.create")
+      if (!canCreateGlobal) {
+        return NextResponse.json({ error: "Permission refusée (Dépense générale)" }, { status: 403 })
+      }
+    }
 
     // Validations
     if (!title || title.trim() === "") {

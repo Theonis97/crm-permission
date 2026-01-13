@@ -183,3 +183,49 @@ export async function hasGlobalOrStorePermission(userId: string, globalPermissio
     return false
   }
 }
+
+/**
+ * Vérifie si un utilisateur a une permission spécifique pour un magasin donné
+ */
+export async function hasStorePermission(userId: string, storeId: string, permission: string): Promise<boolean> {
+  try {
+    console.log(`Checking store permission "${permission}" for user ${userId} in store ${storeId}`)
+    
+    const userWithStoreRole = await prisma.storeUserRole.findFirst({
+      where: {
+        userId,
+        storeId,
+      },
+      include: {
+        role: {
+          include: {
+            storeRolePermissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!userWithStoreRole) {
+      console.log(`User has no role in store ${storeId}`)
+      return false
+    }
+
+    // Vérifier si le rôle a la permission
+    for (const rolePermission of userWithStoreRole.role.storeRolePermissions) {
+      if (rolePermission.permission.name === permission) {
+        console.log(`✅ Store permission "${permission}" found`)
+        return true
+      }
+    }
+
+    console.log(`❌ Store permission "${permission}" NOT found`)
+    return false
+  } catch (error) {
+    console.error("Error checking store permission:", error)
+    return false
+  }
+}

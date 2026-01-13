@@ -38,8 +38,9 @@ import {
   Map,
   Shield,
   UserCog,
-  Calendar,
+ Calendar,
   RotateCcw,
+  Receipt,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
@@ -166,6 +167,12 @@ const menuItems: MenuItem[] = [
     label: "SAV", 
     href: "/sav",
     permission: STORE_PERMISSIONS.SAV_VIEW
+  },
+  { 
+    icon: Receipt, 
+    label: "Dépenses", 
+    href: "/expenses",
+    permission: STORE_PERMISSIONS.EXPENSES_VIEW
   },
 ]
 

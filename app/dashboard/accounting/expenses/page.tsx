@@ -67,9 +67,11 @@ export default function ExpensesPage() {
   
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [stores, setStores] = useState<Array<{ id: string; name: string }>>([])
+  const [createStores, setCreateStores] = useState<Array<{ id: string; name: string }>>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [accessDenied, setAccessDenied] = useState(false)
   
   // Filters
   const [selectedStoreId, setSelectedStoreId] = useState("all")
@@ -91,17 +93,39 @@ export default function ExpensesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const fetchStores = useCallback(async () => {
+    if (permissionsLoading) return
+
     try {
-      const response = await fetch("/api/stores")
-      if (response.ok) {
-        const data = await response.json()
-        // L'API retourne directement un tableau de magasins
-        setStores(Array.isArray(data) ? data : [])
+      // 1. Récupérer les magasins pour le filtre (Vue)
+      let viewUrl = "/api/user/permitted-stores?permission=store.expenses.view"
+      if (hasPermission("accounting.expenses.view")) {
+        viewUrl = "/api/stores"
       }
+      
+      const responseView = await fetch(viewUrl)
+      if (responseView.ok) {
+        const data = await responseView.json()
+        setStores(Array.isArray(data) ? data : (data.stores || []))
+      }
+
+      // 2. Récupérer les magasins pour la création (Create)
+      // Si permission globale, on peut créer partout (donc on prend la liste complète des stores)
+      // Sinon, on cherche spécifiquement les droits de création
+      let createUrl = "/api/user/permitted-stores?permission=store.expenses.create"
+      if (hasPermission("accounting.expenses.create")) {
+        createUrl = "/api/stores"
+      }
+
+      const responseCreate = await fetch(createUrl)
+      if (responseCreate.ok) {
+        const data = await responseCreate.json()
+        setCreateStores(Array.isArray(data) ? data : (data.stores || []))
+      }
+
     } catch (err) {
       console.error("Error fetching stores:", err)
     }
-  }, [])
+  }, [permissionsLoading, hasPermission])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -118,6 +142,7 @@ export default function ExpensesPage() {
   const fetchExpenses = useCallback(async () => {
     setIsLoading(true)
     setError(null)
+    setAccessDenied(false)
     try {
       const params = new URLSearchParams()
       params.append("startDate", format(startDate, "yyyy-MM-dd"))
@@ -133,6 +158,13 @@ export default function ExpensesPage() {
       }
       
       const response = await fetch(`/api/accounting/expenses?${params}`)
+      
+      if (response.status === 403) {
+        setAccessDenied(true)
+        setIsLoading(false)
+        return
+      }
+
       if (!response.ok) {
         throw new Error("Erreur lors du chargement des dépenses")
       }
@@ -146,9 +178,11 @@ export default function ExpensesPage() {
   }, [selectedStoreId, selectedCategoryId, selectedStatus, startDate, endDate])
 
   useEffect(() => {
-    fetchStores()
-    fetchCategories()
-  }, [fetchStores, fetchCategories])
+    if (!permissionsLoading) {
+      fetchStores()
+      fetchCategories()
+    }
+  }, [permissionsLoading, fetchStores, fetchCategories])
 
   useEffect(() => {
     if (!permissionsLoading) {
@@ -303,7 +337,7 @@ export default function ExpensesPage() {
     )
   }
 
-  if (!hasPermission("accounting.expenses.view")) {
+  if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
         <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
@@ -503,7 +537,7 @@ export default function ExpensesPage() {
             </SheetHeader>
             <div className="mt-6">
               <ExpenseForm
-                stores={stores}
+                stores={createStores}
                 categories={categories}
                 onSubmit={handleCreateExpense}
                 onCancel={() => setShowCreateSheet(false)}
