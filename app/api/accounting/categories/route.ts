@@ -9,12 +9,6 @@ export async function GET() {
     const { session, error } = await getAuthenticatedSession()
     if (error) return error
 
-    // Vérifier la permission
-    const canView = await hasPermission(session.user.id, "accounting.categories.view")
-    if (!canView) {
-      return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
-    }
-
     const categories = await prisma.expenseCategory.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
