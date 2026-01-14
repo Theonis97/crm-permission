@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, use } from "react"
+import { useState, useEffect, useCallback, use, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,16 +17,35 @@ import {
   AlertCircle,
   CalendarIcon,
   RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  MoreHorizontal,
+  Eye,
+  Pencil,
+  Trash2,
+  CreditCard,
 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { format } from "date-fns"
+import { format, isToday, isYesterday } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { ExpenseCard } from "@/components/accounting/expense-card"
 import { ExpenseForm } from "@/components/accounting/expense-form"
 import { ExpensePaymentForm } from "@/components/accounting/expense-payment-form"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
@@ -81,6 +100,9 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
   const [showDetailSheet, setShowDetailSheet] = useState(false)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // États pour les groupes de dates repliés/dépliés
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set())
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -233,6 +255,54 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
     setSelectedStatus("all")
   }
 
+  // Grouper les dépenses par date
+  const expensesByDate = useMemo(() => {
+    const grouped: { [key: string]: Expense[] } = {}
+    expenses.forEach(expense => {
+      const dateKey = expense.dueDate.split('T')[0]
+      if (!grouped[dateKey]) grouped[dateKey] = []
+      grouped[dateKey].push(expense)
+    })
+    
+    return Object.entries(grouped)
+      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+      .map(([date, items]) => ({
+        date,
+        expenses: items,
+        totalAmount: items.reduce((sum, e) => sum + e.amount, 0),
+        totalPaid: items.reduce((sum, e) => sum + e.paidAmount, 0),
+        totalRemaining: items.reduce((sum, e) => sum + e.remainingAmount, 0),
+        countPending: items.filter(e => e.status === "PENDING").length,
+        countPartial: items.filter(e => e.status === "PARTIALLY_PAID").length,
+        countPaid: items.filter(e => e.status === "PAID").length,
+      }))
+  }, [expenses])
+
+  const getDateLabel = (dateStr: string) => {
+    const date = new Date(dateStr)
+    if (isToday(date)) return "Aujourd'hui"
+    if (isYesterday(date)) return "Hier"
+    return format(date, "EEEE d MMMM", { locale: fr })
+  }
+
+  const toggleDateGroup = (dateKey: string) => {
+    setCollapsedDates(prev => {
+      const next = new Set(prev)
+      if (next.has(dateKey)) {
+        next.delete(dateKey)
+      } else {
+        next.add(dateKey)
+      }
+      return next
+    })
+  }
+
+  const formatCurrencyShort = (amount: number) => {
+    if (amount >= 1000000) return (amount / 1000000).toFixed(1) + "M"
+    if (amount >= 1000) return (amount / 1000).toFixed(0) + "K"
+    return amount.toLocaleString("fr-FR")
+  }
+
   return (
     <StorePermissionGuard 
       storeId={storeId} 
@@ -348,60 +418,214 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
           </div>
         )}
 
-        {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-gray-100 rounded-lg animate-pulse" />
-            ))}
+        {/* Timeline des dépenses par date */}
+        <div className="space-y-6">
+          {/* Header de la section */}
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-gray-500" />
+            <h2 className="text-lg font-semibold text-gray-900">Timeline des dépenses</h2>
           </div>
-        ) : expenses.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Receipt className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune dépense</h3>
-              <p className="text-gray-500 mb-4">
-                Aucune dépense trouvée pour cette période et ces filtres.
-              </p>
-              <StorePermissionGuard storeId={storeId} permission={STORE_PERMISSIONS.EXPENSES_CREATE} fallback={null}>
-                <Button onClick={() => setShowCreateSheet(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Créer une dépense
-                </Button>
-              </StorePermissionGuard>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {expenses.map((expense) => (
-              <ExpenseCard
-                key={expense.id}
-                expense={expense}
-                onView={(id) => {
-                  const exp = expenses.find(e => e.id === id)
-                  if (exp) {
-                    setSelectedExpense(exp)
-                    setShowDetailSheet(true)
-                  }
-                }}
-                onEdit={(id) => {
-                  const exp = expenses.find(e => e.id === id)
-                  if (exp) {
-                    setSelectedExpense(exp)
-                    setShowEditSheet(true)
-                  }
-                }}
-                onPay={(id) => {
-                  const exp = expenses.find(e => e.id === id)
-                  if (exp) {
-                    setSelectedExpense(exp)
-                    setShowPaymentSheet(true)
-                  }
-                }}
-                onDelete={handleDeleteExpense}
-              />
-            ))}
-          </div>
-        )}
+
+          {isLoading ? (
+            <div className="space-y-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-6 w-32 bg-gray-200 rounded mb-3" />
+                  <div className="h-20 bg-gray-100 rounded-lg" />
+                </div>
+              ))}
+            </div>
+          ) : expensesByDate.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Receipt className="h-8 w-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">Aucune dépense</h3>
+                <p className="text-gray-500 mb-4">
+                  Aucune dépense trouvée pour cette période et ces filtres.
+                </p>
+                <StorePermissionGuard storeId={storeId} permission={STORE_PERMISSIONS.EXPENSES_CREATE} fallback={null}>
+                  <Button onClick={() => setShowCreateSheet(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Créer une dépense
+                  </Button>
+                </StorePermissionGuard>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="relative">
+              {/* Ligne verticale de la timeline */}
+              <div className="absolute left-[19px] top-8 bottom-8 w-0.5 bg-gradient-to-b from-gray-300 via-gray-200 to-transparent" />
+              
+              {expensesByDate.map((dayGroup) => {
+                const isCollapsed = collapsedDates.has(dayGroup.date)
+                
+                return (
+                  <div key={dayGroup.date} className="relative mb-6 last:mb-0">
+                    {/* Point de la timeline */}
+                    <div className="absolute left-0 top-0 z-10">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center shadow-sm",
+                        isToday(new Date(dayGroup.date)) 
+                          ? "bg-blue-600 text-white" 
+                          : "bg-white border-2 border-gray-300 text-gray-600"
+                      )}>
+                        <span className="text-sm font-bold">
+                          {format(new Date(dayGroup.date), "d", { locale: fr })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Contenu du jour */}
+                    <div className="ml-14">
+                      <Collapsible open={!isCollapsed} onOpenChange={() => toggleDateGroup(dayGroup.date)}>
+                        {/* Header du jour - cliquable */}
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between mb-3 cursor-pointer group">
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <h3 className="font-semibold text-gray-900 capitalize">
+                                  {getDateLabel(dayGroup.date)}
+                                </h3>
+                                <p className="text-xs text-gray-500">
+                                  {format(new Date(dayGroup.date), "yyyy", { locale: fr })} • {dayGroup.expenses.length} dépense{dayGroup.expenses.length > 1 ? 's' : ''}
+                                </p>
+                              </div>
+                              {/* Badges de statut */}
+                              <div className="flex items-center gap-1">
+                                {dayGroup.countPending > 0 && (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700">
+                                    {dayGroup.countPending} en attente
+                                  </span>
+                                )}
+                                {dayGroup.countPartial > 0 && (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                    {dayGroup.countPartial} partiel
+                                  </span>
+                                )}
+                                {dayGroup.countPaid > 0 && (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">
+                                    {dayGroup.countPaid} payé
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Résumé du jour + chevron */}
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">Total jour</p>
+                                <p className="font-bold text-gray-900">
+                                  {formatCurrencyShort(dayGroup.totalAmount)} FCFA
+                                </p>
+                              </div>
+                              <ChevronDown className={cn(
+                                "h-5 w-5 text-gray-400 transition-transform",
+                                isCollapsed && "-rotate-90"
+                              )} />
+                            </div>
+                          </div>
+                        </CollapsibleTrigger>
+
+                        {/* Liste des dépenses du jour */}
+                        <CollapsibleContent>
+                          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                            <div className="divide-y divide-gray-100">
+                              {dayGroup.expenses.map((expense) => (
+                                <div key={expense.id} className="p-3 hover:bg-gray-50 transition-colors">
+                                  <div className="flex items-start justify-between gap-4">
+                                    {/* Infos de la dépense */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span 
+                                          className="px-2 py-0.5 text-xs rounded-full font-medium"
+                                          style={{ 
+                                            backgroundColor: expense.category.color ? `${expense.category.color}20` : "#f3f4f6",
+                                            color: expense.category.color || "#6b7280"
+                                          }}
+                                        >
+                                          {expense.category.name}
+                                        </span>
+                                        <span className={cn(
+                                          "px-2 py-0.5 text-xs rounded-full font-medium",
+                                          expense.status === "PAID" && "bg-green-100 text-green-700",
+                                          expense.status === "PARTIALLY_PAID" && "bg-blue-100 text-blue-700",
+                                          expense.status === "PENDING" && "bg-orange-100 text-orange-700"
+                                        )}>
+                                          {expense.status === "PAID" ? "Payée" : expense.status === "PARTIALLY_PAID" ? "Partiel" : "En attente"}
+                                        </span>
+                                      </div>
+                                      <h4 className="font-medium text-gray-900 truncate">{expense.title}</h4>
+                                      <p className="text-xs text-gray-500">
+                                        {expense.createdBy?.firstName || expense.createdBy?.name}
+                                        {expense.supplierName && ` • Fournisseur: ${expense.supplierName}`}
+                                      </p>
+                                    </div>
+                                    
+                                    {/* Montant et actions */}
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-right">
+                                        <p className="font-bold text-gray-900">{expense.amount.toLocaleString("fr-FR")} FCFA</p>
+                                        {expense.remainingAmount > 0 && expense.remainingAmount < expense.amount && (
+                                          <p className="text-xs text-orange-600">Reste: {expense.remainingAmount.toLocaleString("fr-FR")}</p>
+                                        )}
+                                      </div>
+                                      {/* Dropdown Menu des actions */}
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                            <MoreHorizontal className="h-4 w-4 text-gray-500" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="z-[100]">
+                                          <DropdownMenuItem onClick={() => {
+                                            setSelectedExpense(expense)
+                                            setShowDetailSheet(true)
+                                          }}>
+                                            <Eye className="h-4 w-4 mr-2" />
+                                            Voir les détails
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => {
+                                            setSelectedExpense(expense)
+                                            setShowEditSheet(true)
+                                          }}>
+                                            <Pencil className="h-4 w-4 mr-2" />
+                                            Modifier
+                                          </DropdownMenuItem>
+                                          {expense.status !== "PAID" && (
+                                            <DropdownMenuItem onClick={() => {
+                                              setSelectedExpense(expense)
+                                              setShowPaymentSheet(true)
+                                            }}>
+                                              <CreditCard className="h-4 w-4 mr-2" />
+                                              Enregistrer un paiement
+                                            </DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem 
+                                            className="text-red-600"
+                                            onClick={() => handleDeleteExpense(expense.id)}
+                                          >
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Supprimer
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
           <SheetContent className="sm:max-w-xl overflow-y-auto">
