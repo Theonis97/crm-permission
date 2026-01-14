@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
-import { hasPermission } from "@/lib/auth-helpers"
+import { hasPermission, hasStorePermission } from "@/lib/auth-helpers"
 
 // Fonction pour calculer le statut d'une dépense
 function calculateExpenseStatus(paidAmount: number, totalAmount: number): "PENDING" | "PARTIALLY_PAID" | "PAID" {
@@ -72,8 +72,26 @@ export async function POST(
 
     const { id } = await params
 
-    const canPay = await hasPermission(session.user.id, "accounting.expenses.pay")
-    if (!canPay) {
+    // Récupérer d'abord la dépense pour vérifier les permissions
+    const expense = await prisma.expense.findUnique({
+      where: { id },
+      select: { id: true, storeId: true, amount: true, paidAmount: true, remainingAmount: true }
+    })
+
+    if (!expense) {
+      return NextResponse.json({ error: "Dépense non trouvée" }, { status: 404 })
+    }
+
+    // Vérifier les permissions : soit permission globale, soit permission magasin
+    const canPayGlobal = await hasPermission(session.user.id, "accounting.expenses.pay")
+    let canPayStore = false
+    
+    if (!canPayGlobal && expense.storeId) {
+      // Vérifier si l'utilisateur a accès aux dépenses de ce magasin
+      canPayStore = await hasStorePermission(session.user.id, expense.storeId, "store.expenses.view")
+    }
+
+    if (!canPayGlobal && !canPayStore) {
       return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
     }
 
@@ -91,15 +109,6 @@ export async function POST(
 
     if (!paymentMode) {
       return NextResponse.json({ error: "Le mode de paiement est requis" }, { status: 400 })
-    }
-
-    // Vérifier que la dépense existe
-    const expense = await prisma.expense.findUnique({
-      where: { id }
-    })
-
-    if (!expense) {
-      return NextResponse.json({ error: "Dépense non trouvée" }, { status: 404 })
     }
 
     // Vérifier que le montant ne dépasse pas le reste à payer
