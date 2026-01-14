@@ -329,6 +329,14 @@ export default function ExpensesPage() {
     setSelectedStatus("all")
   }
 
+  // Calculer le total des dépenses filtrées
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
+  const totalPaid = expenses.reduce((sum, expense) => sum + expense.paidAmount, 0)
+  const totalRemaining = expenses.reduce((sum, expense) => sum + expense.remainingAmount, 0)
+  
+  // Récupérer le nom de la catégorie sélectionnée
+  const selectedCategoryName = categories.find(cat => cat.id === selectedCategoryId)?.name
+
   if (permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -628,6 +636,44 @@ export default function ExpensesPage() {
             </div>
           </SheetContent>
         </Sheet>
+
+        {/* Barre fixe du total - visible uniquement si filtre par catégorie appliqué */}
+        {selectedCategoryId !== "all" && !isLoading && expenses.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: categories.find(c => c.id === selectedCategoryId)?.color || "#6b7280" }}
+                  />
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      Total pour <span className="font-medium text-gray-700">{selectedCategoryName}</span>
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {format(startDate, "dd/MM/yyyy")} → {format(endDate, "dd/MM/yyyy")} • {expenses.length} dépense(s)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Payé</p>
+                    <p className="text-sm font-medium text-green-600">{totalPaid.toLocaleString("fr-FR")} FCFA</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Restant</p>
+                    <p className="text-sm font-medium text-orange-600">{totalRemaining.toLocaleString("fr-FR")} FCFA</p>
+                  </div>
+                  <div className="text-right border-l pl-6">
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-lg font-bold text-gray-900">{totalExpenses.toLocaleString("fr-FR")} FCFA</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Detail Sheet */}
         <Sheet 
