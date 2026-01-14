@@ -69,8 +69,42 @@ export async function GET(request: Request) {
       orderBy: { date: "desc" },
     })
 
-    // Calculer les totaux
-    const totals = dailyRevenues.reduce(
+    // Recalculer les totaux dynamiquement pour chaque recette
+    const revenuesWithCalculatedTotals = await Promise.all(
+      dailyRevenues.map(async (dr) => {
+        const dayStart = new Date(dr.date)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(dr.date)
+        dayEnd.setHours(23, 59, 59, 999)
+
+        // Récupérer les clôtures de caisse du jour
+        const dayCloses = await prisma.dayClose.findMany({
+          where: {
+            storeId: dr.storeId,
+            closeDate: { gte: dayStart, lte: dayEnd },
+          },
+        })
+        const calculatedTotalDayCloses = dayCloses.reduce((sum, dc) => sum + dc.totalRevenue, 0)
+
+        // Récupérer les dépenses du jour (par date d'échéance)
+        const expenses = await prisma.expense.findMany({
+          where: {
+            storeId: dr.storeId,
+            dueDate: { gte: dayStart, lte: dayEnd },
+          },
+        })
+        const calculatedTotalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+
+        return {
+          ...dr,
+          totalDayCloses: calculatedTotalDayCloses,
+          totalExpenses: calculatedTotalExpenses,
+        }
+      })
+    )
+
+    // Calculer les totaux globaux
+    const totals = revenuesWithCalculatedTotals.reduce(
       (acc, dr) => ({
         totalDayCloses: acc.totalDayCloses + dr.totalDayCloses,
         totalExpenses: acc.totalExpenses + dr.totalExpenses,
@@ -81,7 +115,7 @@ export async function GET(request: Request) {
     )
 
     return NextResponse.json({
-      dailyRevenues,
+      dailyRevenues: revenuesWithCalculatedTotals,
       totals,
       period: {
         startDate: startDate.toISOString(),
@@ -138,11 +172,11 @@ export async function POST(request: Request) {
     })
     const totalDayCloses = dayCloses.reduce((sum, dc) => sum + dc.totalRevenue, 0)
 
-    // Calculer la somme des dépenses du jour pour ce magasin
+    // Calculer la somme des dépenses du jour pour ce magasin (par date d'échéance)
     const expenses = await prisma.expense.findMany({
       where: {
         storeId,
-        createdAt: {
+        dueDate: {
           gte: targetDate,
           lte: endOfDay,
         },

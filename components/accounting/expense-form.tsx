@@ -9,10 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2, Upload, X, FileText } from "lucide-react"
+import { CalendarIcon, Loader2, Upload, X, FileText, Plus } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+
+interface ExpenseDocument {
+  id?: string
+  url: string
+  name: string
+  type?: string
+  size?: number
+  mimeType?: string
+  isNew?: boolean // Pour distinguer les nouveaux fichiers
+  file?: File // Fichier local avant upload
+}
 
 interface ExpenseFormProps {
   stores: Array<{ id: string; name: string }>
@@ -31,6 +42,7 @@ interface ExpenseFormProps {
     paymentDay?: number
     isRecurring?: boolean
     documentUrl?: string
+    documents?: Array<{ id: string; url: string; name: string; type?: string }>
   }
   onSubmit: (data: any) => Promise<void>
   onCancel: () => void
@@ -58,76 +70,130 @@ export function ExpenseForm({
     paymentDay: initialData?.paymentDay || 1,
     isRecurring: initialData?.isRecurring || false,
   })
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
-  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(initialData?.documentUrl || null)
+  // Gestion des documents multiples
+  const [documents, setDocuments] = useState<ExpenseDocument[]>(() => {
+    // Initialiser avec les documents existants
+    if (initialData?.documents && initialData.documents.length > 0) {
+      return initialData.documents.map(doc => ({
+        id: doc.id,
+        url: doc.url,
+        name: doc.name,
+        type: doc.type,
+        isNew: false
+      }))
+    }
+    // Rétrocompatibilité avec documentUrl
+    if (initialData?.documentUrl) {
+      return [{
+        url: initialData.documentUrl,
+        name: "Document",
+        type: "invoice",
+        isNew: false
+      }]
+    }
+    return []
+  })
+  const [documentsToDelete, setDocumentsToDelete] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setAttachmentFile(file)
-      // Créer une preview pour les images
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          setAttachmentPreview(reader.result as string)
-        }
-        reader.readAsDataURL(file)
-      } else {
-        setAttachmentPreview(file.name)
-      }
-    }
-  }
-
-  const removeAttachment = () => {
-    setAttachmentFile(null)
-    setAttachmentPreview(null)
-  }
-
-  const uploadFile = async (): Promise<string | null> => {
-    if (!attachmentFile) return attachmentPreview // Retourner l'URL existante si pas de nouveau fichier
-    
-    setIsUploading(true)
-    try {
-      const formDataUpload = new FormData()
-      formDataUpload.append("file", attachmentFile)
-      formDataUpload.append("folder", "expenses")
+    const files = e.target.files
+    if (files && files.length > 0) {
+      const newDocs: ExpenseDocument[] = []
       
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formDataUpload,
+      Array.from(files).forEach(file => {
+        // Créer une preview pour les images
+        const doc: ExpenseDocument = {
+          url: "",
+          name: file.name,
+          type: file.type.includes("pdf") ? "invoice" : "other",
+          size: file.size,
+          mimeType: file.type,
+          isNew: true,
+          file: file
+        }
+        
+        if (file.type.startsWith("image/")) {
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            doc.url = reader.result as string
+            setDocuments(prev => [...prev])
+          }
+          reader.readAsDataURL(file)
+        }
+        
+        newDocs.push(doc)
       })
       
-      if (!response.ok) {
-        throw new Error("Erreur lors de l'upload")
-      }
-      
-      const data = await response.json()
-      return data.fileUrl
-    } catch (error) {
-      console.error("Upload error:", error)
-      return null
-    } finally {
-      setIsUploading(false)
+      setDocuments(prev => [...prev, ...newDocs])
     }
+    // Reset input
+    e.target.value = ""
+  }
+
+  const removeDocument = (index: number) => {
+    const doc = documents[index]
+    // Si c'est un document existant (avec ID), le marquer pour suppression
+    if (doc.id) {
+      setDocumentsToDelete(prev => [...prev, doc.id!])
+    }
+    setDocuments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const uploadFiles = async (): Promise<Array<{ url: string; name: string; type?: string; size?: number; mimeType?: string }>> => {
+    const uploadedDocs: Array<{ url: string; name: string; type?: string; size?: number; mimeType?: string }> = []
+    
+    for (const doc of documents) {
+      if (doc.isNew && doc.file) {
+        // Upload du nouveau fichier
+        const formDataUpload = new FormData()
+        formDataUpload.append("file", doc.file)
+        formDataUpload.append("folder", "expenses")
+        
+        try {
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            body: formDataUpload,
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            uploadedDocs.push({
+              url: data.fileUrl,
+              name: doc.name,
+              type: doc.type,
+              size: doc.size,
+              mimeType: doc.mimeType
+            })
+          }
+        } catch (error) {
+          console.error("Upload error:", error)
+        }
+      }
+    }
+    
+    return uploadedDocs
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsUploading(true)
     
-    // Upload du fichier si présent
-    let attachmentUrl = null
-    if (attachmentFile || attachmentPreview) {
-      attachmentUrl = await uploadFile()
+    try {
+      // Upload des nouveaux fichiers
+      const newDocuments = await uploadFiles()
+      
+      await onSubmit({
+        ...formData,
+        storeId: formData.storeId === "" ? null : formData.storeId,
+        amount: Number(formData.amount),
+        paymentDay: formData.periodicity !== "ONCE" ? formData.paymentDay : null,
+        documents: newDocuments, // Nouveaux documents à créer
+        documentsToDelete: documentsToDelete, // Documents à supprimer
+      })
+    } finally {
+      setIsUploading(false)
     }
-    
-    await onSubmit({
-      ...formData,
-      storeId: formData.storeId === "" ? null : formData.storeId,
-      amount: Number(formData.amount),
-      paymentDay: formData.periodicity !== "ONCE" ? formData.paymentDay : null,
-      documentUrl: attachmentUrl,
-    })
   }
 
   return (
@@ -318,66 +384,80 @@ export function ExpenseForm({
         />
       </div>
 
-      {/* Upload de fichier */}
+      {/* Upload de fichiers multiples */}
       <div className="space-y-2">
-        <Label>Pièce jointe (facture, reçu...)</Label>
-        {attachmentPreview ? (
-          <div className="relative border rounded-lg p-3 bg-gray-50">
-            <div className="flex items-center gap-3">
-              {attachmentPreview.startsWith("data:image") || attachmentPreview.startsWith("http") ? (
-                <img 
-                  src={attachmentPreview} 
-                  alt="Aperçu" 
-                  className="w-16 h-16 object-cover rounded"
-                />
-              ) : (
-                <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
-                  <FileText className="h-8 w-8 text-gray-500" />
+        <Label>Pièces jointes (factures, reçus...)</Label>
+        
+        {/* Liste des documents */}
+        {documents.length > 0 && (
+          <div className="space-y-2 mb-3">
+            {documents.map((doc, index) => (
+              <div key={index} className="relative border rounded-lg p-3 bg-gray-50">
+                <div className="flex items-center gap-3">
+                  {(doc.url.startsWith("data:image") || doc.url.startsWith("http")) && doc.mimeType?.startsWith("image") ? (
+                    <img 
+                      src={doc.url} 
+                      alt="Aperçu" 
+                      className="w-12 h-12 object-cover rounded"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                      <FileText className="h-6 w-6 text-gray-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">
+                      {doc.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {doc.isNew ? (
+                        doc.size ? `${(doc.size / 1024).toFixed(1)} Ko - Nouveau` : "Nouveau"
+                      ) : (
+                        "Fichier existant"
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeDocument(index)}
+                    className="text-red-500 hover:text-red-700 flex-shrink-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">
-                  {attachmentFile?.name || "Fichier joint"}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {attachmentFile ? `${(attachmentFile.size / 1024).toFixed(1)} Ko` : "Fichier existant"}
-                </p>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={removeAttachment}
-                className="text-red-500 hover:text-red-700"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            ))}
           </div>
-        ) : (
-          <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-            <div className="flex flex-col items-center justify-center pt-2 pb-3">
-              <Upload className="h-6 w-6 text-gray-400 mb-1" />
-              <p className="text-sm text-gray-500">Cliquez pour ajouter un fichier</p>
-              <p className="text-xs text-gray-400">PDF, Image (max 5Mo)</p>
-            </div>
-            <input
-              type="file"
-              className="hidden"
-              accept="image/*,.pdf"
-              onChange={handleFileChange}
-            />
-          </label>
         )}
+        
+        {/* Bouton d'ajout */}
+        <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <div className="flex flex-col items-center justify-center">
+            <Plus className="h-5 w-5 text-gray-400 mb-1" />
+            <p className="text-sm text-gray-500">
+              {documents.length > 0 ? "Ajouter d'autres fichiers" : "Ajouter des fichiers"}
+            </p>
+            <p className="text-xs text-gray-400">PDF, Images (max 5Mo chacun)</p>
+          </div>
+          <input
+            type="file"
+            className="hidden"
+            accept="image/*,.pdf"
+            multiple
+            onChange={handleFileChange}
+          />
+        </label>
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || isUploading}>
           Annuler
         </Button>
-        <Button type="submit" disabled={isLoading || !formData.title || !formData.categoryId || formData.amount <= 0}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {initialData?.id ? "Modifier" : "Créer"}
+        <Button type="submit" disabled={isLoading || isUploading || !formData.title || !formData.categoryId || formData.amount <= 0}>
+          {(isLoading || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isUploading ? "Upload en cours..." : (initialData?.id ? "Modifier" : "Créer")}
         </Button>
       </div>
     </form>

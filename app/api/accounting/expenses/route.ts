@@ -167,6 +167,7 @@ export async function POST(request: Request) {
       paymentDay,
       documentUrl,
       documentName,
+      documents, // Nouveau: tableau de documents [{url, name, type?, size?, mimeType?}]
       isRecurring,
     } = body
 
@@ -223,37 +224,71 @@ export async function POST(request: Request) {
       }
     }
 
-    const expense = await prisma.expense.create({
-      data: {
-        storeId: storeId || null,
-        categoryId,
-        title: title.trim(),
-        description: description?.trim() || null,
-        amount,
-        supplierName: supplierName?.trim() || null,
-        supplierPhone: supplierPhone?.trim() || null,
-        dueDate: new Date(dueDate),
-        periodicity: periodicity || "ONCE",
-        paymentDay: paymentDay || null,
-        documentUrl: documentUrl || null,
-        documentName: documentName || null,
-        isRecurring: isRecurring || false,
-        status: "PENDING",
-        paidAmount: 0,
-        remainingAmount: amount,
-        createdById: session.user.id,
-      },
-      include: {
-        store: {
-          select: { id: true, name: true }
+    // Utiliser une transaction pour créer la dépense et les documents
+    const expense = await prisma.$transaction(async (tx) => {
+      // Créer la dépense
+      const newExpense = await tx.expense.create({
+        data: {
+          storeId: storeId || null,
+          categoryId,
+          title: title.trim(),
+          description: description?.trim() || null,
+          amount,
+          supplierName: supplierName?.trim() || null,
+          supplierPhone: supplierPhone?.trim() || null,
+          dueDate: new Date(dueDate),
+          periodicity: periodicity || "ONCE",
+          paymentDay: paymentDay || null,
+          documentUrl: documentUrl || null, // Conservé pour rétrocompatibilité
+          documentName: documentName || null,
+          isRecurring: isRecurring || false,
+          status: "PENDING",
+          paidAmount: 0,
+          remainingAmount: amount,
+          createdById: session.user.id,
         },
-        category: {
-          select: { id: true, name: true, icon: true, color: true }
-        },
-        createdBy: {
-          select: { id: true, name: true }
-        }
+      })
+
+      // Créer les documents si fournis
+      if (documents && Array.isArray(documents) && documents.length > 0) {
+        await tx.expenseDocument.createMany({
+          data: documents.map((doc: { url: string; name: string; type?: string; size?: number; mimeType?: string }) => ({
+            expenseId: newExpense.id,
+            url: doc.url,
+            name: doc.name,
+            type: doc.type || "other",
+            size: doc.size || null,
+            mimeType: doc.mimeType || null,
+          }))
+        })
+      } else if (documentUrl) {
+        // Rétrocompatibilité: si un seul document est fourni via documentUrl
+        await tx.expenseDocument.create({
+          data: {
+            expenseId: newExpense.id,
+            url: documentUrl,
+            name: documentName || "Document",
+            type: "invoice",
+          }
+        })
       }
+
+      // Récupérer la dépense avec toutes les relations
+      return tx.expense.findUnique({
+        where: { id: newExpense.id },
+        include: {
+          store: {
+            select: { id: true, name: true }
+          },
+          category: {
+            select: { id: true, name: true, icon: true, color: true }
+          },
+          createdBy: {
+            select: { id: true, name: true }
+          },
+          documents: true
+        }
+      })
     })
 
     return NextResponse.json({ expense }, { status: 201 })

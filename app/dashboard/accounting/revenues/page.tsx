@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { usePermissions } from "@/hooks/use-permissions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { 
   TrendingUp, 
   TrendingDown,
@@ -25,8 +27,13 @@ import {
   Receipt,
   Wallet,
   Calculator,
+  ChevronRight,
+  Building2,
+  ArrowUpRight,
+  ArrowDownRight,
+  Clock,
 } from "lucide-react"
-import { format } from "date-fns"
+import { format, isToday, isYesterday, parseISO } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -96,7 +103,12 @@ export default function RevenuesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // États pour le dialog de détails
+  // États pour les accordéons et détails
+  const [expandedRevenues, setExpandedRevenues] = useState<Set<string>>(new Set())
+  const [revenueDetails, setRevenueDetails] = useState<{ [key: string]: DailyRevenueDetail }>({})
+  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set())
+  
+  // États pour le dialog de détails (conservé pour édition)
   const [selectedRevenue, setSelectedRevenue] = useState<DailyRevenueDetail | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -163,6 +175,45 @@ export default function RevenuesPage() {
     } finally {
       setLoadingDetail(false)
     }
+  }
+
+  const toggleAccordion = async (id: string) => {
+    const newExpanded = new Set(expandedRevenues)
+    
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id)
+      setExpandedRevenues(newExpanded)
+    } else {
+      newExpanded.add(id)
+      setExpandedRevenues(newExpanded)
+      
+      // Charger les détails si pas encore en cache
+      if (!revenueDetails[id]) {
+        setLoadingDetails(prev => new Set(prev).add(id))
+        try {
+          const response = await fetch(`/api/accounting/daily-revenues/${id}`)
+          if (response.ok) {
+            const data = await response.json()
+            setRevenueDetails(prev => ({ ...prev, [id]: data }))
+          }
+        } catch (err) {
+          console.error("Erreur chargement détails:", err)
+        } finally {
+          setLoadingDetails(prev => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+        }
+      }
+    }
+  }
+
+  const openEditDialog = (detail: DailyRevenueDetail) => {
+    setSelectedRevenue(detail)
+    setEditCountedRevenue(detail.countedRevenue?.toString() || "")
+    setEditNotes(detail.notes || "")
+    setShowDetailDialog(true)
   }
 
   const handleCreateRevenue = async () => {
@@ -245,6 +296,16 @@ export default function RevenuesPage() {
     return amount.toLocaleString("fr-FR") + " FCFA"
   }
 
+  const formatCurrencyShort = (amount: number) => {
+    if (amount >= 1000000) {
+      return (amount / 1000000).toFixed(1) + "M"
+    }
+    if (amount >= 1000) {
+      return (amount / 1000).toFixed(0) + "K"
+    }
+    return amount.toLocaleString("fr-FR")
+  }
+
   const getPeriodLabel = () => {
     const start = format(startDate, "d MMM yyyy", { locale: fr })
     const end = format(endDate, "d MMM yyyy", { locale: fr })
@@ -255,6 +316,35 @@ export default function RevenuesPage() {
   const getNetRevenue = (dr: DailyRevenue) => {
     return (dr.countedRevenue || dr.totalDayCloses) - dr.totalExpenses
   }
+
+  const getDateLabel = (dateStr: string) => {
+    const date = new Date(dateStr)
+    if (isToday(date)) return "Aujourd'hui"
+    if (isYesterday(date)) return "Hier"
+    return format(date, "EEEE d MMMM", { locale: fr })
+  }
+
+  // Grouper les recettes par date
+  const revenuesByDate = useMemo(() => {
+    if (!revenueData?.dailyRevenues) return []
+    
+    const grouped: { [key: string]: DailyRevenue[] } = {}
+    revenueData.dailyRevenues.forEach(dr => {
+      const dateKey = dr.date.split('T')[0]
+      if (!grouped[dateKey]) grouped[dateKey] = []
+      grouped[dateKey].push(dr)
+    })
+    
+    return Object.entries(grouped)
+      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+      .map(([date, revenues]) => ({
+        date,
+        revenues,
+        totalCloses: revenues.reduce((sum, r) => sum + r.totalDayCloses, 0),
+        totalExpenses: revenues.reduce((sum, r) => sum + r.totalExpenses, 0),
+        totalNet: revenues.reduce((sum, r) => sum + getNetRevenue(r), 0),
+      }))
+  }, [revenueData])
 
   if (permissionsLoading) {
     return (
@@ -357,281 +447,452 @@ export default function RevenuesPage() {
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-100">
-                <Wallet className="h-5 w-5 text-blue-600" />
+      {/* Summary Cards - Design moderne pour décideurs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Clôtures caisse */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-lg">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-16 w-16 rounded-full bg-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 rounded-xl bg-white/20">
+                <Wallet className="h-5 w-5" />
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Clôtures caisse</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {isLoading ? "..." : formatCurrency(revenueData?.totals?.totalDayCloses || 0)}
-                </p>
-              </div>
+              <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">
+                {revenuesByDate.length} jours
+              </span>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-blue-100 text-sm mb-1">Clôtures caisse</p>
+            <p className="text-2xl font-bold">
+              {isLoading ? "..." : formatCurrencyShort(revenueData?.totals?.totalDayCloses || 0)}
+              <span className="text-sm font-normal ml-1">FCFA</span>
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100">
-                <TrendingDown className="h-5 w-5 text-red-600" />
+        {/* Dépenses */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 p-5 text-white shadow-lg">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-16 w-16 rounded-full bg-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 rounded-xl bg-white/20">
+                <Receipt className="h-5 w-5" />
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Dépenses</p>
-                <p className="text-xl font-bold text-red-600">
-                  {isLoading ? "..." : formatCurrency(revenueData?.totals?.totalExpenses || 0)}
-                </p>
+              <div className="flex items-center gap-1 text-xs font-medium bg-white/20 px-2 py-1 rounded-full">
+                <ArrowDownRight className="h-3 w-3" />
+                Sorties
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-red-100 text-sm mb-1">Dépenses</p>
+            <p className="text-2xl font-bold">
+              {isLoading ? "..." : formatCurrencyShort(revenueData?.totals?.totalExpenses || 0)}
+              <span className="text-sm font-normal ml-1">FCFA</span>
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-100">
-                <Calculator className="h-5 w-5 text-purple-600" />
+        {/* Recette comptée */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-violet-600 p-5 text-white shadow-lg">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-16 w-16 rounded-full bg-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 rounded-xl bg-white/20">
+                <Calculator className="h-5 w-5" />
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Recette comptée</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {isLoading ? "..." : formatCurrency(revenueData?.totals?.totalCountedRevenue || 0)}
-                </p>
-              </div>
+              <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">
+                Manuel
+              </span>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-purple-100 text-sm mb-1">Recette comptée</p>
+            <p className="text-2xl font-bold">
+              {isLoading ? "..." : formatCurrencyShort(revenueData?.totals?.totalCountedRevenue || 0)}
+              <span className="text-sm font-normal ml-1">FCFA</span>
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-100">
-                <TrendingUp className="h-5 w-5 text-green-600" />
+        {/* Résultat net - Card principale */}
+        <div className={cn(
+          "relative overflow-hidden rounded-2xl p-5 text-white shadow-lg",
+          (revenueData?.totals?.totalNetRevenue || 0) >= 0 
+            ? "bg-gradient-to-br from-emerald-500 to-teal-600" 
+            : "bg-gradient-to-br from-orange-500 to-red-600"
+        )}>
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-16 w-16 rounded-full bg-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 rounded-xl bg-white/20">
+                {(revenueData?.totals?.totalNetRevenue || 0) >= 0 ? (
+                  <TrendingUp className="h-5 w-5" />
+                ) : (
+                  <TrendingDown className="h-5 w-5" />
+                )}
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Résultat net</p>
-                <p className={cn("text-xl font-bold", (revenueData?.totals?.totalNetRevenue || 0) >= 0 ? "text-green-600" : "text-red-600")}>
-                  {isLoading ? "..." : formatCurrency(revenueData?.totals?.totalNetRevenue || 0)}
-                </p>
+              <div className="flex items-center gap-1 text-xs font-medium bg-white/20 px-2 py-1 rounded-full">
+                {(revenueData?.totals?.totalNetRevenue || 0) >= 0 ? (
+                  <>
+                    <ArrowUpRight className="h-3 w-3" />
+                    Bénéfice
+                  </>
+                ) : (
+                  <>
+                    <ArrowDownRight className="h-3 w-3" />
+                    Perte
+                  </>
+                )}
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-white/80 text-sm mb-1">Résultat net</p>
+            <p className="text-3xl font-bold">
+              {isLoading ? "..." : (
+                <>
+                  {(revenueData?.totals?.totalNetRevenue || 0) >= 0 ? "+" : ""}
+                  {formatCurrencyShort(revenueData?.totals?.totalNetRevenue || 0)}
+                  <span className="text-sm font-normal ml-1">FCFA</span>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Daily Revenues List */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5 text-gray-500" />
-            Recettes journalières
-          </CardTitle>
-          <Button onClick={() => {
-            setCreateStoreId("")
-            setCreateDate(new Date())
-            setEditCountedRevenue("")
-            setEditNotes("")
-            setShowCreateDialog(true)
-          }}>
+      {/* Timeline des recettes journalières */}
+      <div className="space-y-6">
+        {/* Header de la section */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-indigo-600" />
+              Timeline des recettes
+            </h2>
+            <p className="text-sm text-gray-500">Vue chronologique par magasin</p>
+          </div>
+          <Button 
+            onClick={() => {
+              setCreateStoreId("")
+              setCreateDate(new Date())
+              setEditCountedRevenue("")
+              setEditNotes("")
+              setShowCreateDialog(true)
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nouvelle recette
           </Button>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : !revenueData?.dailyRevenues?.length ? (
-            <div className="text-center py-8">
-              <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">Aucune recette pour cette période</p>
-              <Button variant="outline" className="mt-3" onClick={() => setShowCreateDialog(true)}>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-6 w-32 bg-gray-200 rounded mb-3" />
+                <div className="h-24 bg-gray-100 rounded-xl" />
+              </div>
+            ))}
+          </div>
+        ) : !revenuesByDate.length ? (
+          <Card className="border-dashed">
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <CalendarIcon className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Aucune recette</h3>
+              <p className="text-gray-500 mb-4">Aucune recette enregistrée pour cette période</p>
+              <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Créer une recette
               </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {revenueData.dailyRevenues.map((dr) => (
-                <div 
-                  key={dr.id} 
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => fetchRevenueDetail(dr.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-gray-100">
-                        <CalendarIcon className="h-5 w-5 text-gray-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {format(new Date(dr.date), "EEEE d MMMM yyyy", { locale: fr })}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {dr.store.name}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">Clôtures</p>
-                        <p className="font-medium text-blue-600">{formatCurrency(dr.totalDayCloses)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">Dépenses</p>
-                        <p className="font-medium text-red-600">{formatCurrency(dr.totalExpenses)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">Comptée</p>
-                        <p className="font-medium text-purple-600">
-                          {dr.countedRevenue ? formatCurrency(dr.countedRevenue) : "-"}
-                        </p>
-                      </div>
-                      <div className="text-right min-w-[120px]">
-                        <p className="text-xs text-gray-500">Résultat</p>
-                        <p className={cn("text-lg font-bold", getNetRevenue(dr) >= 0 ? "text-green-600" : "text-red-600")}>
-                          {formatCurrency(getNetRevenue(dr))}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); fetchRevenueDetail(dr.id) }}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); handleDeleteRevenue(dr.id) }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="relative">
+            {/* Ligne verticale de la timeline */}
+            <div className="absolute left-[19px] top-8 bottom-8 w-0.5 bg-gradient-to-b from-indigo-200 via-indigo-100 to-transparent" />
+            
+            {revenuesByDate.map((dayGroup, dayIndex) => (
+              <div key={dayGroup.date} className="relative mb-8 last:mb-0">
+                {/* Point de la timeline */}
+                <div className="absolute left-0 top-0 z-10">
+                  <div className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center shadow-md",
+                    isToday(new Date(dayGroup.date)) 
+                      ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white" 
+                      : "bg-white border-2 border-indigo-200 text-indigo-600"
+                  )}>
+                    <span className="text-sm font-bold">
+                      {format(new Date(dayGroup.date), "d", { locale: fr })}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Dialog de détails */}
+                {/* Contenu du jour */}
+                <div className="ml-14">
+                  {/* Header du jour */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 capitalize">
+                        {getDateLabel(dayGroup.date)}
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        {format(new Date(dayGroup.date), "yyyy", { locale: fr })} • {dayGroup.revenues.length} magasin{dayGroup.revenues.length > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    {/* Résumé du jour */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">Total jour</p>
+                        <p className={cn(
+                          "text-lg font-bold",
+                          dayGroup.totalNet >= 0 ? "text-emerald-600" : "text-red-600"
+                        )}>
+                          {dayGroup.totalNet >= 0 ? "+" : ""}{formatCurrencyShort(dayGroup.totalNet)} FCFA
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cards des magasins avec accordéon */}
+                  <div className="space-y-2">
+                    {dayGroup.revenues.map((dr) => {
+                      const netRevenue = getNetRevenue(dr)
+                      const isPositive = netRevenue >= 0
+                      const isExpanded = expandedRevenues.has(dr.id)
+                      const detail = revenueDetails[dr.id]
+                      const isLoadingThis = loadingDetails.has(dr.id)
+                      
+                      return (
+                        <Collapsible
+                          key={dr.id}
+                          open={isExpanded}
+                          onOpenChange={() => toggleAccordion(dr.id)}
+                        >
+                          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                            {/* Header cliquable */}
+                            <CollapsibleTrigger asChild>
+                              <div className="p-4 cursor-pointer hover:bg-gray-50 transition-colors">
+                                <div className="flex items-center justify-between">
+                                  {/* Info magasin */}
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
+                                      <Building2 className="h-4 w-4 text-gray-600" />
+                                    </div>
+                                    <div>
+                                      <h4 className="font-medium text-gray-900">{dr.store.name}</h4>
+                                      {dr.countedRevenue && (
+                                        <span className="text-xs text-purple-600">Recette comptée</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Métriques résumées */}
+                                  <div className="flex items-center gap-6">
+                                    <div className="text-right hidden sm:block">
+                                      <p className="text-xs text-gray-500">Clôtures</p>
+                                      <p className="font-medium text-gray-900">{formatCurrencyShort(dr.totalDayCloses)}</p>
+                                    </div>
+                                    <div className="text-right hidden sm:block">
+                                      <p className="text-xs text-gray-500">Dépenses</p>
+                                      <p className="font-medium text-gray-900">{formatCurrencyShort(dr.totalExpenses)}</p>
+                                    </div>
+                                    <div className="text-right min-w-[80px]">
+                                      <p className="text-xs text-gray-500">Résultat</p>
+                                      <p className={cn(
+                                        "font-bold",
+                                        isPositive ? "text-emerald-600" : "text-red-600"
+                                      )}>
+                                        {isPositive ? "+" : ""}{formatCurrencyShort(netRevenue)}
+                                      </p>
+                                    </div>
+                                    <ChevronRight className={cn(
+                                      "h-5 w-5 text-gray-400 transition-transform",
+                                      isExpanded && "rotate-90"
+                                    )} />
+                                  </div>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+
+                            {/* Contenu déroulé */}
+                            <CollapsibleContent>
+                              <div className="border-t border-gray-100 bg-gray-50/50">
+                                {isLoadingThis ? (
+                                  <div className="p-6 flex items-center justify-center">
+                                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                                  </div>
+                                ) : detail ? (
+                                  <div className="p-4 space-y-4">
+                                    {/* Grille des informations */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      {/* Clôtures de caisse */}
+                                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Wallet className="h-4 w-4 text-blue-600" />
+                                          <span className="text-sm font-medium text-gray-700">Clôtures de caisse</span>
+                                        </div>
+                                        {detail.dayCloses?.length ? (
+                                          <div className="space-y-1.5">
+                                            {detail.dayCloses.map((dc) => (
+                                              <div key={dc.id} className="flex justify-between text-sm">
+                                                <span className="text-gray-600">{dc.user?.firstName || dc.user?.name}</span>
+                                                <span className="font-medium">{formatCurrency(dc.totalRevenue)}</span>
+                                              </div>
+                                            ))}
+                                            <div className="pt-1.5 mt-1.5 border-t border-gray-100 flex justify-between text-sm font-medium">
+                                              <span>Total</span>
+                                              <span className="text-blue-600">{formatCurrency(detail.totalDayCloses)}</span>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-gray-400">Aucune clôture</p>
+                                        )}
+                                      </div>
+
+                                      {/* Dépenses */}
+                                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Receipt className="h-4 w-4 text-red-500" />
+                                          <span className="text-sm font-medium text-gray-700">Dépenses du jour</span>
+                                        </div>
+                                        {detail.expenses?.length ? (
+                                          <div className="space-y-1.5">
+                                            {detail.expenses.map((exp) => (
+                                              <div key={exp.id} className="flex justify-between text-sm">
+                                                <span className="text-gray-600 truncate max-w-[120px]">{exp.category?.name}</span>
+                                                <span className="font-medium">{formatCurrency(exp.amount)}</span>
+                                              </div>
+                                            ))}
+                                            <div className="pt-1.5 mt-1.5 border-t border-gray-100 flex justify-between text-sm font-medium">
+                                              <span>Total</span>
+                                              <span className="text-red-600">{formatCurrency(detail.totalExpenses)}</span>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-gray-400">Aucune dépense</p>
+                                        )}
+                                      </div>
+
+                                      {/* Résumé */}
+                                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Calculator className="h-4 w-4 text-gray-600" />
+                                          <span className="text-sm font-medium text-gray-700">Résumé</span>
+                                        </div>
+                                        <div className="space-y-1.5 text-sm">
+                                          <div className="flex justify-between">
+                                            <span className="text-gray-600">Clôtures</span>
+                                            <span className="font-medium">{formatCurrency(detail.totalDayCloses)}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="text-gray-600">Dépenses</span>
+                                            <span className="font-medium text-red-600">-{formatCurrency(detail.totalExpenses)}</span>
+                                          </div>
+                                          {detail.countedRevenue && (
+                                            <div className="flex justify-between">
+                                              <span className="text-gray-600">Comptée</span>
+                                              <span className="font-medium text-purple-600">{formatCurrency(detail.countedRevenue)}</span>
+                                            </div>
+                                          )}
+                                          <div className="pt-1.5 mt-1.5 border-t border-gray-200 flex justify-between font-medium">
+                                            <span>Résultat net</span>
+                                            <span className={isPositive ? "text-emerald-600" : "text-red-600"}>
+                                              {isPositive ? "+" : ""}{formatCurrency(detail.netRevenue)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Notes */}
+                                    {detail.notes && (
+                                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                                        <p className="text-sm text-gray-500">Notes: {detail.notes}</p>
+                                      </div>
+                                    )}
+
+                                    {/* Actions */}
+                                    <div className="flex items-center justify-end gap-2 pt-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openEditDialog(detail)}
+                                      >
+                                        <Calculator className="h-4 w-4 mr-1" />
+                                        Modifier recette comptée
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        onClick={() => handleDeleteRevenue(dr.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-1" />
+                                        Supprimer
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="p-6 text-center text-gray-500">
+                                    Erreur de chargement
+                                  </div>
+                                )}
+                              </div>
+                            </CollapsibleContent>
+                          </div>
+                        </Collapsible>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dialog d'édition de la recette comptée */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5" />
-              {selectedRevenue && format(new Date(selectedRevenue.date), "EEEE d MMMM yyyy", { locale: fr })}
-              <span className="text-gray-500 font-normal">- {selectedRevenue?.store.name}</span>
-            </DialogTitle>
+            <DialogTitle>Modifier la recette comptée</DialogTitle>
+            {selectedRevenue && (
+              <p className="text-sm text-gray-500">
+                {format(new Date(selectedRevenue.date), "EEEE d MMMM yyyy", { locale: fr })} - {selectedRevenue.store.name}
+              </p>
+            )}
           </DialogHeader>
           
-          {loadingDetail ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-          ) : selectedRevenue && (
-            <div className="space-y-6">
-              {/* Clôtures de caisse */}
+          {selectedRevenue && (
+            <div className="space-y-4">
               <div>
-                <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-blue-600" />
-                  Clôtures de caisse ({selectedRevenue.dayCloses?.length || 0})
-                </h3>
-                {selectedRevenue.dayCloses?.length ? (
-                  <div className="space-y-2">
-                    {selectedRevenue.dayCloses.map((dc) => (
-                      <div key={dc.id} className="p-3 bg-blue-50 rounded-lg flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">{dc.user?.firstName || dc.user?.name || "Utilisateur"}</p>
-                          <p className="text-sm text-gray-500">{dc.totalSales} ventes • {dc.totalItems} articles</p>
-                        </div>
-                        <p className="font-bold text-blue-700">{formatCurrency(dc.totalRevenue)}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Aucune clôture de caisse</p>
-                )}
-                <div className="mt-2 p-2 bg-blue-100 rounded flex justify-between">
-                  <span className="font-medium">Total clôtures</span>
-                  <span className="font-bold text-blue-700">{formatCurrency(selectedRevenue.totalDayCloses)}</span>
-                </div>
-              </div>
-
-              {/* Dépenses */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <Receipt className="h-4 w-4 text-red-600" />
-                  Dépenses du jour ({selectedRevenue.expenses?.length || 0})
-                </h3>
-                {selectedRevenue.expenses?.length ? (
-                  <div className="space-y-2">
-                    {selectedRevenue.expenses.map((exp) => (
-                      <div key={exp.id} className="p-3 bg-red-50 rounded-lg flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">{exp.description}</p>
-                          <p className="text-sm text-gray-500">{exp.category?.name}</p>
-                        </div>
-                        <p className="font-bold text-red-700">{formatCurrency(exp.amount)}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Aucune dépense</p>
-                )}
-                <div className="mt-2 p-2 bg-red-100 rounded flex justify-between">
-                  <span className="font-medium">Total dépenses</span>
-                  <span className="font-bold text-red-700">{formatCurrency(selectedRevenue.totalExpenses)}</span>
-                </div>
-              </div>
-
-              {/* Recette comptée */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-purple-600" />
-                  Recette comptée (saisie manuelle)
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <Label>Montant compté (FCFA)</Label>
-                    <Input
-                      type="number"
-                      value={editCountedRevenue}
-                      onChange={(e) => setEditCountedRevenue(e.target.value)}
-                      placeholder="Saisir le montant compté..."
-                    />
-                  </div>
-                  <div>
-                    <Label>Notes</Label>
-                    <Input
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="Notes optionnelles..."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Résultat */}
-              <div className={cn("p-4 rounded-lg", selectedRevenue.netRevenue >= 0 ? "bg-green-100" : "bg-red-100")}>
-                <div className="flex justify-between items-center">
-                  <span className="font-medium text-lg">Résultat net</span>
-                  <span className={cn("text-2xl font-bold", selectedRevenue.netRevenue >= 0 ? "text-green-700" : "text-red-700")}>
-                    {formatCurrency(selectedRevenue.netRevenue)}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  = (Recette comptée ou Clôtures) - Dépenses
+                <Label>Montant compté (FCFA)</Label>
+                <Input
+                  type="number"
+                  value={editCountedRevenue}
+                  onChange={(e) => setEditCountedRevenue(e.target.value)}
+                  placeholder="Saisir le montant compté..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Clôtures caisse: {formatCurrency(selectedRevenue.totalDayCloses)}
                 </p>
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Input
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Notes optionnelles..."
+                />
               </div>
             </div>
           )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
-              Fermer
+              Annuler
             </Button>
             <Button onClick={handleUpdateCountedRevenue} disabled={isSaving}>
               {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

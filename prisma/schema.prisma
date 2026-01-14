@@ -1965,6 +1965,7 @@ model Expense {
   parentExpense   Expense?           @relation("RecurringExpenses", fields: [parentExpenseId], references: [id])
   childExpenses   Expense[]          @relation("RecurringExpenses")
   payments        ExpensePayment[]
+  documents       ExpenseDocument[]
 
   @@index([storeId])
   @@index([categoryId])
@@ -1993,10 +1994,34 @@ model ExpensePayment {
 
   expense      Expense            @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   paidBy       User               @relation("ExpensePaymentPayer", fields: [paidById], references: [id])
+  documents    ExpenseDocument[]
 
   @@index([expenseId])
   @@index([paymentDate])
   @@map("expense_payments")
+}
+
+// Documents attachés aux dépenses et paiements
+model ExpenseDocument {
+  id          String   @id @default(cuid())
+  
+  expenseId   String?  @map("expense_id")
+  paymentId   String?  @map("payment_id")
+  
+  url         String
+  name        String
+  type        String?  // "invoice", "receipt", "contract", "other"
+  size        Int?     // Taille en bytes
+  mimeType    String?  @map("mime_type")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  expense     Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  payment     ExpensePayment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@index([paymentId])
+  @@map("expense_documents")
 }
 
 // Codes de vérification pour l'accès à la comptabilité

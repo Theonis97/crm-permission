@@ -41,7 +41,8 @@ export async function GET(
       include: {
         paidBy: {
           select: { id: true, name: true, firstName: true, lastName: true }
-        }
+        },
+        documents: true
       },
       orderBy: { paymentDate: "desc" }
     })
@@ -96,7 +97,16 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { amount, paymentDate, paymentMode, reference, receiptUrl, receiptName, notes } = body
+    const { 
+      amount, 
+      paymentDate, 
+      paymentMode, 
+      reference, 
+      receiptUrl, 
+      receiptName, 
+      documents, // Nouveau: tableau de documents [{url, name, type?, size?, mimeType?}]
+      notes 
+    } = body
 
     // Validations
     if (!amount || amount <= 0) {
@@ -128,17 +138,36 @@ export async function POST(
           paymentDate: new Date(paymentDate),
           paymentMode,
           reference: reference?.trim() || null,
-          receiptUrl: receiptUrl || null,
+          receiptUrl: receiptUrl || null, // Conservé pour rétrocompatibilité
           receiptName: receiptName || null,
           notes: notes?.trim() || null,
           paidById: session.user.id,
         },
-        include: {
-          paidBy: {
-            select: { id: true, name: true, firstName: true, lastName: true }
-          }
-        }
       })
+
+      // Créer les documents si fournis
+      if (documents && Array.isArray(documents) && documents.length > 0) {
+        await tx.expenseDocument.createMany({
+          data: documents.map((doc: { url: string; name: string; type?: string; size?: number; mimeType?: string }) => ({
+            paymentId: payment.id,
+            url: doc.url,
+            name: doc.name,
+            type: doc.type || "receipt",
+            size: doc.size || null,
+            mimeType: doc.mimeType || null,
+          }))
+        })
+      } else if (receiptUrl) {
+        // Rétrocompatibilité: si un seul reçu est fourni via receiptUrl
+        await tx.expenseDocument.create({
+          data: {
+            paymentId: payment.id,
+            url: receiptUrl,
+            name: receiptName || "Reçu",
+            type: "receipt",
+          }
+        })
+      }
 
       // Mettre à jour la dépense
       const newPaidAmount = expense.paidAmount + amount
@@ -154,7 +183,18 @@ export async function POST(
         }
       })
 
-      return { payment, expense: updatedExpense }
+      // Récupérer le paiement avec les documents
+      const paymentWithDocs = await tx.expensePayment.findUnique({
+        where: { id: payment.id },
+        include: {
+          paidBy: {
+            select: { id: true, name: true, firstName: true, lastName: true }
+          },
+          documents: true
+        }
+      })
+
+      return { payment: paymentWithDocs, expense: updatedExpense }
     })
 
     return NextResponse.json({ 

@@ -35,10 +35,12 @@ export async function GET(
           include: {
             paidBy: {
               select: { id: true, name: true, firstName: true, lastName: true }
-            }
+            },
+            documents: true
           },
           orderBy: { paymentDate: "desc" }
         },
+        documents: true,
         parentExpense: {
           select: { id: true, title: true }
         },
@@ -91,6 +93,8 @@ export async function PUT(
       paymentDay,
       documentUrl,
       documentName,
+      documents, // Nouveau: tableau de documents [{url, name, type?, size?, mimeType?}]
+      documentsToDelete, // IDs des documents à supprimer
       isRecurring,
     } = body
 
@@ -126,38 +130,67 @@ export async function PUT(
       }
     }
 
-    const expense = await prisma.expense.update({
-      where: { id },
-      data: {
-        ...(storeId !== undefined && { storeId: storeId || null }),
-        ...(categoryId && { categoryId }),
-        ...(title && { title: title.trim() }),
-        ...(description !== undefined && { description: description?.trim() || null }),
-        ...(amount !== undefined && { 
-          amount,
-          remainingAmount: newRemainingAmount,
-          status: newStatus
-        }),
-        ...(supplierName !== undefined && { supplierName: supplierName?.trim() || null }),
-        ...(supplierPhone !== undefined && { supplierPhone: supplierPhone?.trim() || null }),
-        ...(dueDate && { dueDate: new Date(dueDate) }),
-        ...(periodicity && { periodicity }),
-        ...(paymentDay !== undefined && { paymentDay }),
-        ...(documentUrl !== undefined && { documentUrl }),
-        ...(documentName !== undefined && { documentName }),
-        ...(isRecurring !== undefined && { isRecurring }),
-      },
-      include: {
-        store: {
-          select: { id: true, name: true }
-        },
-        category: {
-          select: { id: true, name: true, icon: true, color: true }
-        },
-        createdBy: {
-          select: { id: true, name: true }
-        }
+    // Utiliser une transaction pour mettre à jour la dépense et gérer les documents
+    const expense = await prisma.$transaction(async (tx) => {
+      // Supprimer les documents marqués pour suppression
+      if (documentsToDelete && Array.isArray(documentsToDelete) && documentsToDelete.length > 0) {
+        await tx.expenseDocument.deleteMany({
+          where: {
+            id: { in: documentsToDelete },
+            expenseId: id
+          }
+        })
       }
+
+      // Ajouter les nouveaux documents
+      if (documents && Array.isArray(documents) && documents.length > 0) {
+        await tx.expenseDocument.createMany({
+          data: documents.map((doc: { url: string; name: string; type?: string; size?: number; mimeType?: string }) => ({
+            expenseId: id,
+            url: doc.url,
+            name: doc.name,
+            type: doc.type || "other",
+            size: doc.size || null,
+            mimeType: doc.mimeType || null,
+          }))
+        })
+      }
+
+      // Mettre à jour la dépense
+      return tx.expense.update({
+        where: { id },
+        data: {
+          ...(storeId !== undefined && { storeId: storeId || null }),
+          ...(categoryId && { categoryId }),
+          ...(title && { title: title.trim() }),
+          ...(description !== undefined && { description: description?.trim() || null }),
+          ...(amount !== undefined && { 
+            amount,
+            remainingAmount: newRemainingAmount,
+            status: newStatus
+          }),
+          ...(supplierName !== undefined && { supplierName: supplierName?.trim() || null }),
+          ...(supplierPhone !== undefined && { supplierPhone: supplierPhone?.trim() || null }),
+          ...(dueDate && { dueDate: new Date(dueDate) }),
+          ...(periodicity && { periodicity }),
+          ...(paymentDay !== undefined && { paymentDay }),
+          ...(documentUrl !== undefined && { documentUrl }),
+          ...(documentName !== undefined && { documentName }),
+          ...(isRecurring !== undefined && { isRecurring }),
+        },
+        include: {
+          store: {
+            select: { id: true, name: true }
+          },
+          category: {
+            select: { id: true, name: true, icon: true, color: true }
+          },
+          createdBy: {
+            select: { id: true, name: true }
+          },
+          documents: true
+        }
+      })
     })
 
     return NextResponse.json({ expense })

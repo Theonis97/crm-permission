@@ -60,11 +60,11 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     })
 
-    // Récupérer les dépenses du jour
+    // Récupérer les dépenses du jour (par date d'échéance)
     const expenses = await prisma.expense.findMany({
       where: {
         storeId: dailyRevenue.storeId,
-        createdAt: {
+        dueDate: {
           gte: dayStart,
           lte: dayEnd,
         },
@@ -80,11 +80,18 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     })
 
+    // Calculer les totaux dynamiquement à partir des données réelles
+    const calculatedTotalDayCloses = dayCloses.reduce((sum, dc) => sum + dc.totalRevenue, 0)
+    const calculatedTotalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+    const calculatedNetRevenue = (dailyRevenue.countedRevenue || calculatedTotalDayCloses) - calculatedTotalExpenses
+
     return NextResponse.json({
       ...dailyRevenue,
+      totalDayCloses: calculatedTotalDayCloses,
+      totalExpenses: calculatedTotalExpenses,
       dayCloses,
       expenses,
-      netRevenue: (dailyRevenue.countedRevenue || dailyRevenue.totalDayCloses) - dailyRevenue.totalExpenses,
+      netRevenue: calculatedNetRevenue,
     })
   } catch (error) {
     console.error("[DAILY_REVENUE_GET]", error)
