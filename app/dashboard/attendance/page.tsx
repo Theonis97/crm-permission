@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import useSWR from "swr"
 import { usePermissions } from "@/hooks/use-permissions"
 import { Card, CardContent } from "@/components/ui/card"
@@ -58,7 +58,10 @@ import {
     Trash2,
     Settings,
     QrCode,
+    Edit3,
+    History,
 } from "lucide-react"
+import { EmployeeHistorySheet, ManualEntryDialog } from "@/components/attendance"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -145,6 +148,17 @@ export default function AttendancePage() {
     const [selectedTerminalCode, setSelectedTerminalCode] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
     const ITEMS_PER_PAGE = 10
+
+    // États pour les modals d'historique et saisie manuelle
+    const [showHistorySheet, setShowHistorySheet] = useState(false)
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+    const [selectedEmployeeName, setSelectedEmployeeName] = useState("")
+    const [showManualEntryDialog, setShowManualEntryDialog] = useState(false)
+    const [manualEntryUserId, setManualEntryUserId] = useState<string | null>(null)
+    const [manualEntryUserName, setManualEntryUserName] = useState("")
+    const [manualEntryDate, setManualEntryDate] = useState<string | null>(null)
+    const [manualEntryCheckIn, setManualEntryCheckIn] = useState<string | null>(null)
+    const [manualEntryCheckOut, setManualEntryCheckOut] = useState<string | null>(null)
 
     // Fetcher pour SWR
     const fetcher = (url: string) => fetch(url).then(res => res.json())
@@ -297,6 +311,21 @@ export default function AttendancePage() {
         }
     }
 
+    // Map des stats par userId pour accès rapide
+    const userStatsMap = useMemo(() => {
+        const map = new Map<string, { totalHours: number; daysWorked: number; avgHoursPerDay: number }>()
+        if (stats?.userStats) {
+            stats.userStats.forEach((stat) => {
+                map.set(stat.user.id, {
+                    totalHours: stat.totalHours,
+                    daysWorked: stat.daysWorked,
+                    avgHoursPerDay: stat.avgHoursPerDay,
+                })
+            })
+        }
+        return map
+    }, [stats])
+
     const getHoursColor = (hours: number, expected: number = 8) => {
         const ratio = hours / expected
         if (ratio >= 1) return "text-green-600"
@@ -414,6 +443,27 @@ export default function AttendancePage() {
             default:
                 return <Badge variant="outline">{status}</Badge>
         }
+    }
+
+    // Fonctions pour ouvrir les modals
+    const openEmployeeHistory = (user: AttendanceUser) => {
+        setSelectedEmployeeId(user.id)
+        setSelectedEmployeeName(getUserDisplayName(user))
+        setShowHistorySheet(true)
+    }
+
+    const openManualEntry = (userId: string | null = null, userName: string = "", date: string | null = null, checkIn: string | null = null, checkOut: string | null = null) => {
+        setManualEntryUserId(userId)
+        setManualEntryUserName(userName)
+        setManualEntryDate(date)
+        setManualEntryCheckIn(checkIn)
+        setManualEntryCheckOut(checkOut)
+        setShowManualEntryDialog(true)
+    }
+
+    const handleEditDay = (userId: string, date: string, checkIn: string | null, checkOut: string | null) => {
+        const user = users.find(u => u.id === userId)
+        openManualEntry(userId, user ? getUserDisplayName(user) : "", date, checkIn, checkOut)
     }
 
     // Tabs Material Design
@@ -633,6 +683,15 @@ export default function AttendancePage() {
                                                 className="pl-9 w-[200px] h-9 text-sm"
                                             />
                                         </div>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => openManualEntry()}
+                                            className="h-9 text-cyan-600 border-cyan-200 hover:bg-cyan-50"
+                                        >
+                                            <Edit3 className="h-4 w-4 mr-2" />
+                                            Saisie manuelle
+                                        </Button>
                                         <Button variant="ghost" size="icon" onClick={() => mutateUsers()} className="h-9 w-9">
                                             <RefreshCw className="h-4 w-4" />
                                         </Button>
@@ -653,6 +712,10 @@ export default function AttendancePage() {
                                                 <TableHead className="text-center font-semibold">Arrivée</TableHead>
                                                 <TableHead className="text-center font-semibold">Départ</TableHead>
                                                 <TableHead className="text-center font-semibold">Heures</TableHead>
+                                                <TableHead className="text-center font-semibold">
+                                                    <span className="text-xs">Moy/J</span>
+                                                    <span className="block text-[10px] text-gray-400 font-normal">({statsPeriod === "week" ? "sem." : "mois"})</span>
+                                                </TableHead>
                                                 <TableHead className="font-semibold">Appareil</TableHead>
                                                 <TableHead className="w-[50px]"></TableHead>
                                             </TableRow>
@@ -671,7 +734,13 @@ export default function AttendancePage() {
                                                                 </AvatarFallback>
                                                             </Avatar>
                                                             <div>
-                                                                <p className="font-medium text-sm">{getUserDisplayName(user)}</p>
+                                                                <button
+                                                                    onClick={() => openEmployeeHistory(user)}
+                                                                    className="font-medium text-sm text-left hover:text-cyan-600 hover:underline transition-colors flex items-center gap-1 group"
+                                                                >
+                                                                    {getUserDisplayName(user)}
+                                                                    <History className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                </button>
                                                                 <p className="text-xs text-gray-500">{user.email}</p>
                                                             </div>
                                                         </div>
@@ -709,6 +778,19 @@ export default function AttendancePage() {
                                                             {user.hoursWorked > 0 ? `${user.hoursWorked}h` : "-"}
                                                         </span>
                                                     </TableCell>
+                                                    <TableCell className="text-center">
+                                                        {userStatsMap.get(user.id) ? (
+                                                            <span className={cn(
+                                                                "text-sm font-medium",
+                                                                userStatsMap.get(user.id)!.avgHoursPerDay >= 8 ? "text-green-600" : 
+                                                                userStatsMap.get(user.id)!.avgHoursPerDay >= 6 ? "text-yellow-600" : "text-orange-600"
+                                                            )}>
+                                                                {userStatsMap.get(user.id)!.avgHoursPerDay}h
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-sm">-</span>
+                                                        )}
+                                                    </TableCell>
                                                     <TableCell>
                                                         {getDeviceStatusBadge(user.deviceStatus)}
                                                     </TableCell>
@@ -720,6 +802,22 @@ export default function AttendancePage() {
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem onClick={() => openEmployeeHistory(user)}>
+                                                                    <History className="h-4 w-4 mr-2" />
+                                                                    Voir l'historique
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => openManualEntry(
+                                                                        user.id, 
+                                                                        getUserDisplayName(user), 
+                                                                        dateStr,
+                                                                        user.checkIn ? formatTime(user.checkIn) : null,
+                                                                        user.checkOut ? formatTime(user.checkOut) : null
+                                                                    )}
+                                                                >
+                                                                    <Edit3 className="h-4 w-4 mr-2" />
+                                                                    Modifier les heures
+                                                                </DropdownMenuItem>
                                                                 {(!user.hasDevice || user.deviceStatus === "REVOKED") && (
                                                                     <DropdownMenuItem
                                                                         onClick={() => generateRegistrationLink(user.id)}
@@ -751,7 +849,7 @@ export default function AttendancePage() {
                                             ))}
                                             {paginatedUsers.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={7} className="text-center py-12 text-gray-500">
+                                                    <TableCell colSpan={8} className="text-center py-12 text-gray-500">
                                                         <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                                                         <p>Aucun utilisateur trouvé</p>
                                                     </TableCell>
@@ -1184,6 +1282,34 @@ export default function AttendancePage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Sheet pour l'historique d'un employé */}
+            <EmployeeHistorySheet
+                isOpen={showHistorySheet}
+                onClose={() => setShowHistorySheet(false)}
+                userId={selectedEmployeeId}
+                userName={selectedEmployeeName}
+                onEditDay={handleEditDay}
+            />
+
+            {/* Dialog pour la saisie manuelle */}
+            <ManualEntryDialog
+                isOpen={showManualEntryDialog}
+                onClose={() => setShowManualEntryDialog(false)}
+                userId={manualEntryUserId}
+                userName={manualEntryUserName}
+                date={manualEntryDate}
+                initialCheckIn={manualEntryCheckIn}
+                initialCheckOut={manualEntryCheckOut}
+                users={users.map(u => ({
+                    id: u.id,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    name: u.name,
+                    email: u.email,
+                }))}
+                onSuccess={() => mutateUsers()}
+            />
         </PermissionGuard>
     )
 }

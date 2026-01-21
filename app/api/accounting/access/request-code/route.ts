@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { createTransporter } from "@/lib/email-service"
 
-const ACCOUNTING_ACCESS_EMAIL = "mapangoukarl.km@gmail.com"
+const ACCOUNTING_ACCESS_EMAIL = "gabinmoundziegou@gmail.com"
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
