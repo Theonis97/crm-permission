@@ -175,7 +175,7 @@ export function ExpensePaymentForm({
                 {formData.paymentDate ? format(formData.paymentDate, "PPP", { locale: fr }) : "Sélectionner"}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[60]">
+            <PopoverContent className="w-auto p-0 z-[2100]">
               <Calendar
                 mode="single"
                 selected={formData.paymentDate}
@@ -197,7 +197,7 @@ export function ExpensePaymentForm({
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[60]">
+            <SelectContent className="z-[2100]">
               <SelectItem value="CASH">Caisse</SelectItem>
               <SelectItem value="BANK">Banque</SelectItem>
               <SelectItem value="MOBILE_MONEY">Mobile Money</SelectItem>

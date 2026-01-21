@@ -32,6 +32,7 @@ import {
   Pencil,
   Trash2,
   CreditCard,
+  Printer,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -50,6 +51,7 @@ import { ExpenseCard } from "@/components/accounting/expense-card"
 import { ExpenseFilters } from "@/components/accounting/expense-filters"
 import { ExpenseForm } from "@/components/accounting/expense-form"
 import { ExpensePaymentForm } from "@/components/accounting/expense-payment-form"
+import { ExpensePrintSheet } from "@/components/accounting/expense-print-sheet"
 import { toast } from "sonner"
 
 interface Expense {
@@ -105,6 +107,8 @@ export default function ExpensesPage() {
   const [showEditSheet, setShowEditSheet] = useState(false)
   const [showPaymentSheet, setShowPaymentSheet] = useState(false)
   const [showDetailSheet, setShowDetailSheet] = useState(false)
+  const [showPrintSheet, setShowPrintSheet] = useState(false)
+  const [printExpenseId, setPrintExpenseId] = useState<string | null>(null)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
@@ -800,6 +804,13 @@ export default function ExpensesPage() {
                                                         Enregistrer un paiement
                                                       </DropdownMenuItem>
                                                     )}
+                                                    <DropdownMenuItem onClick={() => {
+                                                      setPrintExpenseId(expense.id)
+                                                      setShowPrintSheet(true)
+                                                    }}>
+                                                      <Printer className="h-4 w-4 mr-2" />
+                                                      Imprimer bon de paiement
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem 
                                                       className="text-red-600"
@@ -1105,6 +1116,17 @@ export default function ExpensesPage() {
                 <div className="flex gap-3 pt-4 border-t">
                   <Button
                     variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setPrintExpenseId(selectedExpense.id)
+                      setShowPrintSheet(true)
+                    }}
+                    title="Imprimer bon de paiement"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="flex-1"
                     onClick={() => {
                       setShowDetailSheet(false)
@@ -1129,6 +1151,18 @@ export default function ExpensesPage() {
             )}
           </SheetContent>
         </Sheet>
-    </div>
+
+        {/* Print Sheet */}
+        <ExpensePrintSheet
+          open={showPrintSheet}
+          onOpenChange={(open) => {
+            setShowPrintSheet(open)
+            if (!open) {
+              setPrintExpenseId(null)
+            }
+          }}
+          expenseId={printExpenseId}
+        />
+        </div>
   )
 }
