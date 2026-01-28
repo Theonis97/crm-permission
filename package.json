@@ -106,11 +106,11 @@
     "@types/react": "19.2.9",
     "@types/react-dom": "19.2.3",
     "@types/uuid": "^10.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.4",
-    "typescript": "^5",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.4"
+    "typescript": "^5"
   },
   "overrides": {
     "@types/react": "19.2.9",

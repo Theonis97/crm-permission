@@ -292,7 +292,7 @@ export function ExpenseForm({
               <Calendar
                 mode="single"
                 selected={formData.dueDate}
-                onSelect={(date) => date && setFormData({ ...formData, dueDate: date })}
+                onSelect={(date: Date | undefined) => date && setFormData({ ...formData, dueDate: date })}
                 initialFocus
               />
             </PopoverContent>

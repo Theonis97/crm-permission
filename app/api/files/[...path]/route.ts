@@ -25,7 +25,9 @@ export async function GET(
     }
 
     // Retourner le fichier avec le bon Content-Type
-    return new NextResponse(result.data, {
+    // Convertir Buffer en Uint8Array pour compatibilité avec NextResponse
+    const uint8Array = new Uint8Array(result.data)
+    return new NextResponse(uint8Array, {
       headers: {
         "Content-Type": result.contentType || "application/octet-stream",
         "Cache-Control": "public, max-age=31536000, immutable",

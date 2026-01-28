@@ -179,7 +179,7 @@ export function ExpensePaymentForm({
               <Calendar
                 mode="single"
                 selected={formData.paymentDate}
-                onSelect={(date) => date && setFormData({ ...formData, paymentDate: date })}
+                onSelect={(date: Date | undefined) => date && setFormData({ ...formData, paymentDate: date })}
                 initialFocus
               />
             </PopoverContent>

@@ -278,7 +278,7 @@ export default function WarehouseDashboardPage() {
                   <YAxis stroke="#6b7280" fontSize={12} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                    formatter={(value: number) => `${(value / 1000).toFixed(0)}k XAF`}
+                    formatter={(value: number | undefined) => value !== undefined ? `${(value / 1000).toFixed(0)}k XAF` : ''}
                   />
                   <Bar dataKey="value" fill="#f59e0b" name="Valeur (XAF)" radius={[8, 8, 0, 0]} />
                 </BarChart>
@@ -302,7 +302,7 @@ export default function WarehouseDashboardPage() {
                   <YAxis stroke="#6b7280" fontSize={12} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                    formatter={(value: number) => value.toLocaleString()}
+                    formatter={(value: number | undefined) => value !== undefined ? value.toLocaleString() : ''}
                   />
                   <Legend />
                   <Line 

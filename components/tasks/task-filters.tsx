@@ -164,7 +164,7 @@ export function TaskFiltersComponent({ filters, onFiltersChange, users, opportun
                       <Calendar
                         mode="single"
                         selected={filters.dueDateFrom}
-                        onSelect={(date) => updateFilters("dueDateFrom", date)}
+                        onSelect={(date: Date | undefined) => updateFilters("dueDateFrom", date)}
                         locale={fr}
                       />
                     </PopoverContent>
@@ -186,7 +186,7 @@ export function TaskFiltersComponent({ filters, onFiltersChange, users, opportun
                       <Calendar
                         mode="single"
                         selected={filters.dueDateTo}
-                        onSelect={(date) => updateFilters("dueDateTo", date)}
+                        onSelect={(date: Date | undefined) => updateFilters("dueDateTo", date)}
                         locale={fr}
                       />
                     </PopoverContent>

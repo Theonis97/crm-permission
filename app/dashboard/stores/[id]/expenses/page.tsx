@@ -334,7 +334,7 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
                 <Calendar
                   mode="single"
                   selected={startDate}
-                  onSelect={(date) => date && setStartDate(date)}
+                  onSelect={(date: Date | undefined) => date && setStartDate(date)}
                   initialFocus
                   locale={fr}
                 />
@@ -354,7 +354,7 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
                 <Calendar
                   mode="single"
                   selected={endDate}
-                  onSelect={(date) => date && setEndDate(date)}
+                  onSelect={(date: Date | undefined) => date && setEndDate(date)}
                   initialFocus
                   locale={fr}
                 />

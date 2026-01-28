@@ -195,7 +195,7 @@ export function EditTaskSheet({ task, open, onOpenChange, onTaskUpdated, users, 
                     <Calendar
                       mode="single"
                       selected={formData.startDate}
-                      onSelect={(date) => setFormData({ ...formData, startDate: date })}
+                      onSelect={(date: Date | undefined) => setFormData({ ...formData, startDate: date })}
                       locale={fr}
                     />
                   </PopoverContent>
@@ -215,7 +215,7 @@ export function EditTaskSheet({ task, open, onOpenChange, onTaskUpdated, users, 
                     <Calendar
                       mode="single"
                       selected={formData.dueDate}
-                      onSelect={(date) => setFormData({ ...formData, dueDate: date })}
+                      onSelect={(date: Date | undefined) => setFormData({ ...formData, dueDate: date })}
                       locale={fr}
                     />
                   </PopoverContent>

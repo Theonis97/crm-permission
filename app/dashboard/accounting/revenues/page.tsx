@@ -386,7 +386,7 @@ export default function RevenuesPage() {
               <Calendar
                 mode="single"
                 selected={startDate}
-                onSelect={(date) => date && setStartDate(date)}
+                onSelect={(date: Date | undefined) => date && setStartDate(date)}
                 initialFocus
                 locale={fr}
               />
@@ -407,7 +407,7 @@ export default function RevenuesPage() {
               <Calendar
                 mode="single"
                 selected={endDate}
-                onSelect={(date) => date && setEndDate(date)}
+                onSelect={(date: Date | undefined) => date && setEndDate(date)}
                 initialFocus
                 locale={fr}
               />
@@ -939,7 +939,7 @@ export default function RevenuesPage() {
                   <Calendar
                     mode="single"
                     selected={createDate}
-                    onSelect={(date) => date && setCreateDate(date)}
+                    onSelect={(date: Date | undefined) => date && setCreateDate(date)}
                     locale={fr}
                   />
                 </PopoverContent>

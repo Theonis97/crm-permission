@@ -525,7 +525,7 @@ export function StoreProductDetailsSheet({
                                 borderRadius: '8px',
                                 fontSize: '12px'
                               }}
-                              formatter={(value: any, name: string) => {
+                              formatter={(value: any, name: string | undefined) => {
                                 if (name === 'revenue') {
                                   return [`${Number(value).toLocaleString()} FCFA`, 'CA']
                                 }

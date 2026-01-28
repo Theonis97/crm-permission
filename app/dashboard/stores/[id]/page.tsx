@@ -741,7 +741,7 @@ export default function StorePage({ params }: StorePageProps) {
                     />
                     <YAxis hide />
                     <Tooltip 
-                      formatter={(value: any, name: string) => [
+                      formatter={(value: any, name: string | undefined) => [
                         value, 
                         name === 'thisWeek' ? 'Cette semaine' : 'Semaine dernière'
                       ]}
