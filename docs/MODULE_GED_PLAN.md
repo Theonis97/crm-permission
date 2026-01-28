@@ -1,3 +1,9 @@
+# Module GED (Gestion Électronique de Documents) - Documentation
+
+## Statut : ✅ IMPLÉMENTÉ
+
+---
+
 # Plan d'Implémentation - Module GED (Gestion Électronique de Documents)
 
 ## 1. Vue d'Ensemble

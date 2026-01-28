@@ -18,6 +18,7 @@ import {
   Clock,
   Calculator,
   Banknote,
+  FolderOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
@@ -120,6 +121,17 @@ const modules = [
     permission: "payroll.view",
     href: "/dashboard/payroll",
     stats: "Bulletins de paie",
+    clickable: true,
+  },
+  {
+    id: "ged",
+    name: "Documents",
+    description: "Gestion électronique des documents",
+    icon: FolderOpen,
+    color: "from-teal-500 to-teal-600",
+    permission: "ged.view",
+    href: "/dashboard/ged",
+    stats: "Mes fichiers",
     clickable: true,
   },
 ]

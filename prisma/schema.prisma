@@ -958,6 +958,14 @@ model User {
   payrollAuditLogs          PayrollAuditLog[] @relation("PayrollAuditUser")
   payrollAccessCodes        PayrollAccessCode[]
   moduleAccessConfigs       ModuleAccessConfig[] @relation("ModuleAccessConfigUpdatedBy")
+  
+  // GED - Relations
+  gedFolders                GedFolder[] @relation("GedFolderOwner")
+  gedFiles                  GedFile[] @relation("GedFileOwner")
+  gedFileVersions           GedFileVersion[] @relation("GedVersionCreator")
+  gedSharesReceived         GedShare[] @relation("GedSharedWith")
+  gedSharesGiven            GedShare[] @relation("GedSharedBy")
+  gedFavorites              GedFavorite[] @relation("GedFavorites")
 
   @@map("users")
 }
@@ -2414,4 +2422,166 @@ model PayrollAuditLog {
   @@index([payrollId])
   @@index([createdAt])
   @@map("payroll_audit_logs")
+}
+
+// ============================================
+// MODULE GED (Gestion Électronique de Documents)
+// ============================================
+
+// Dossiers GED
+model GedFolder {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  color       String?     // Couleur du dossier (optionnel)
+  icon        String?     // Icône personnalisée (optionnel)
+  
+  // Hiérarchie
+  parentId    String?     @map("parent_id")
+  parent      GedFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    GedFolder[] @relation("FolderHierarchy")
+  
+  // Propriétaire
+  ownerId     String      @map("owner_id")
+  owner       User        @relation("GedFolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Métadonnées
+  isArchived  Boolean     @default(false) @map("is_archived")
+  isDeleted   Boolean     @default(false) @map("is_deleted")
+  deletedAt   DateTime?   @map("deleted_at")
+  
+  // Relations
+  files       GedFile[]
+  shares      GedShare[]  @relation("FolderShares")
+  favorites   GedFavorite[] @relation("FolderFavorites")
+  
+  // Timestamps
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@index([parentId])
+  @@index([isDeleted])
+  @@map("ged_folders")
+}
+
+// Fichiers GED
+model GedFile {
+  id            String      @id @default(cuid())
+  name          String      // Nom affiché
+  originalName  String      @map("original_name") // Nom original du fichier
+  
+  // Stockage S3
+  s3Key         String      @map("s3_key") // Clé S3 du fichier
+  s3Bucket      String      @map("s3_bucket")
+  thumbnailKey  String?     @map("thumbnail_key") // Clé S3 de la miniature
+  
+  // Métadonnées fichier
+  mimeType      String      @map("mime_type")
+  size          Int         // Taille en bytes
+  extension     String      // Extension du fichier
+  
+  // Organisation
+  folderId      String?     @map("folder_id")
+  folder        GedFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  
+  // Propriétaire
+  ownerId       String      @map("owner_id")
+  owner         User        @relation("GedFileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // État
+  isArchived    Boolean     @default(false) @map("is_archived")
+  isDeleted     Boolean     @default(false) @map("is_deleted")
+  deletedAt     DateTime?   @map("deleted_at")
+  
+  // Relations
+  shares        GedShare[]  @relation("FileShares")
+  favorites     GedFavorite[] @relation("FileFavorites")
+  versions      GedFileVersion[]
+  
+  // Timestamps
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@index([folderId])
+  @@index([mimeType])
+  @@index([isDeleted])
+  @@map("ged_files")
+}
+
+// Versions de fichiers GED
+model GedFileVersion {
+  id          String    @id @default(cuid())
+  fileId      String    @map("file_id")
+  file        GedFile   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  version     Int       // Numéro de version
+  s3Key       String    @map("s3_key")
+  size        Int
+  
+  createdById String    @map("created_by_id")
+  createdBy   User      @relation("GedVersionCreator", fields: [createdById], references: [id])
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([fileId, version])
+  @@index([fileId])
+  @@map("ged_file_versions")
+}
+
+// Partages GED
+model GedShare {
+  id          String      @id @default(cuid())
+  
+  // Type de partage (fichier ou dossier)
+  fileId      String?     @map("file_id")
+  file        GedFile?    @relation("FileShares", fields: [fileId], references: [id], onDelete: Cascade)
+  
+  folderId    String?     @map("folder_id")
+  folder      GedFolder?  @relation("FolderShares", fields: [folderId], references: [id], onDelete: Cascade)
+  
+  // Utilisateur avec qui on partage
+  sharedWithId String     @map("shared_with_id")
+  sharedWith   User       @relation("GedSharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  
+  // Qui a partagé
+  sharedById   String     @map("shared_by_id")
+  sharedBy     User       @relation("GedSharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
+  
+  // Permissions
+  canEdit      Boolean    @default(false) @map("can_edit")
+  canDelete    Boolean    @default(false) @map("can_delete")
+  canShare     Boolean    @default(false) @map("can_share")
+  
+  // Expiration (optionnel)
+  expiresAt    DateTime?  @map("expires_at")
+  
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@unique([fileId, sharedWithId])
+  @@unique([folderId, sharedWithId])
+  @@index([sharedWithId])
+  @@index([sharedById])
+  @@map("ged_shares")
+}
+
+// Favoris GED
+model GedFavorite {
+  id        String      @id @default(cuid())
+  userId    String      @map("user_id")
+  user      User        @relation("GedFavorites", fields: [userId], references: [id], onDelete: Cascade)
+  
+  fileId    String?     @map("file_id")
+  file      GedFile?    @relation("FileFavorites", fields: [fileId], references: [id], onDelete: Cascade)
+  
+  folderId  String?     @map("folder_id")
+  folder    GedFolder?  @relation("FolderFavorites", fields: [folderId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@unique([userId, fileId])
+  @@unique([userId, folderId])
+  @@index([userId])
+  @@map("ged_favorites")
 }
