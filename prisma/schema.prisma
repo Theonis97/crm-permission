@@ -406,6 +406,47 @@ enum AttendanceMethod {
   BIOMETRIC  // Biométrie (futur)
 }
 
+// ============================================================================
+// MODULE PAIE - ENUMS
+// ============================================================================
+
+enum EmployeeType {
+  DECLARED      // Employé déclaré (cotisations sociales)
+  UNDECLARED    // Employé non déclaré (pas de cotisations)
+}
+
+enum ContractType {
+  CDI           // Contrat à durée indéterminée
+  CDD           // Contrat à durée déterminée
+  STAGE         // Stage
+  INTERIM       // Intérim / Mission temporaire
+  FREELANCE     // Prestataire / Freelance
+}
+
+enum PayrollStatus {
+  DRAFT         // Brouillon (en cours de calcul)
+  PENDING       // En attente de validation RH
+  VALIDATED     // Validé par RH
+  APPROVED      // Approuvé par direction
+  PAID          // Payé
+  CANCELLED     // Annulé
+}
+
+enum AdjustmentType {
+  BONUS         // Prime
+  DEDUCTION     // Retenue
+  OVERTIME      // Heures supplémentaires
+  ABSENCE       // Absence (non payée)
+  ADVANCE       // Avance sur salaire
+  OTHER         // Autre
+}
+
+enum PayrollPeriodType {
+  MONTHLY       // Mensuel
+  BIWEEKLY      // Bi-mensuel
+  WEEKLY        // Hebdomadaire
+}
+
 enum RestockingRequestStatus {
   PENDING      // En attente de validation
   APPROVED     // Approuvée
@@ -907,6 +948,16 @@ model User {
   expensePayments           ExpensePayment[]   @relation("ExpensePaymentPayer")
   createdDailyRevenues      DailyRevenue[]     @relation("DailyRevenueCreatedBy")
   accountingAccessCodes     AccountingAccessCode[]
+  
+  // Paie - Relations
+  payrollProfile            EmployeePayrollProfile?
+  validatedPayrolls         Payroll[] @relation("PayrollValidatedBy")
+  approvedPayrolls          Payroll[] @relation("PayrollApprovedBy")
+  closedPayrollPeriods      PayrollPeriod[] @relation("PayrollPeriodClosedBy")
+  createdAdjustments        PayrollAdjustment[] @relation("AdjustmentCreatedBy")
+  payrollAuditLogs          PayrollAuditLog[] @relation("PayrollAuditUser")
+  payrollAccessCodes        PayrollAccessCode[]
+  moduleAccessConfigs       ModuleAccessConfig[] @relation("ModuleAccessConfigUpdatedBy")
 
   @@map("users")
 }
@@ -2040,3 +2091,327 @@ model AccountingAccessCode {
   @@map("accounting_access_codes")
 }
 
+// Codes de vérification pour l'accès au module Paie
+model PayrollAccessCode {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  code        String   // Code à 6 chiffres
+  expiresAt   DateTime @map("expires_at")
+  isUsed      Boolean  @default(false) @map("is_used")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+  @@map("payroll_access_codes")
+}
+
+// Configuration des emails de réception des codes d'accès par module
+enum SecureModule {
+  ACCOUNTING
+  PAYROLL
+}
+
+model ModuleAccessConfig {
+  id              String       @id @default(cuid())
+  module          SecureModule @unique
+  recipientEmail  String       @map("recipient_email")
+  updatedById     String?      @map("updated_by_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  updatedBy       User?        @relation("ModuleAccessConfigUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("module_access_configs")
+}
+
+// ============================================================================
+// MODULE PAIE - MODÈLES
+// ============================================================================
+
+// Configuration du profil employé pour la paie
+model EmployeePayrollProfile {
+  id                  String        @id @default(cuid())
+  userId              String        @unique @map("user_id")
+  
+  // Type d'employé
+  employeeType        EmployeeType  @default(DECLARED) @map("employee_type")
+  contractType        ContractType  @default(CDI) @map("contract_type")
+  
+  // Salaire de référence
+  baseSalary          Float         @map("base_salary")
+  salaryIsNet         Boolean       @default(false) @map("salary_is_net")
+  
+  // Jours de travail (ex: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"])
+  workingDaysPattern  String[]      @default(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]) @map("working_days_pattern")
+  workingHoursPerDay  Float         @default(8) @map("working_hours_per_day")
+  
+  // Taux calculés automatiquement
+  dailyRate           Float?        @map("daily_rate")
+  hourlyRate          Float?        @map("hourly_rate")
+  
+  // Taux heures supplémentaires
+  overtimeRate        Float         @default(1.5) @map("overtime_rate")
+  
+  // Poste
+  position            String?       @map("position")
+  
+  // Dates
+  hireDate            DateTime?     @map("hire_date")
+  contractEndDate     DateTime?     @map("contract_end_date")
+  
+  // Informations bancaires (optionnel)
+  bankName            String?       @map("bank_name")
+  bankAccountNumber   String?       @map("bank_account_number")
+  
+  isActive            Boolean       @default(true) @map("is_active")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payrolls            Payroll[]
+  adjustments         PayrollAdjustment[]
+  contributions       EmployeeContribution[]
+
+  @@index([userId])
+  @@index([employeeType])
+  @@index([contractType])
+  @@map("employee_payroll_profiles")
+}
+
+// Configuration des cotisations et taxes
+model PayrollContribution {
+  id                String        @id @default(cuid())
+  
+  name              String        @unique
+  code              String        @unique
+  description       String?
+  
+  // Type de cotisation
+  isEmployeeShare   Boolean       @default(true) @map("is_employee_share")
+  isEmployerShare   Boolean       @default(false) @map("is_employer_share")
+  
+  // Taux en pourcentage
+  rate              Float
+  
+  // Plafond (optionnel)
+  ceiling           Float?
+  
+  // Applicable aux employés déclarés uniquement
+  declaredOnly      Boolean       @default(true) @map("declared_only")
+  
+  // Ordre d'affichage sur le bulletin
+  displayOrder      Int           @default(0) @map("display_order")
+  
+  isActive          Boolean       @default(true) @map("is_active")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  payrollLines             PayrollContributionLine[]
+  employeeContributions     EmployeeContribution[]
+
+  @@index([isActive])
+  @@map("payroll_contributions")
+}
+
+// Cotisations assignées à un employé
+model EmployeeContribution {
+  id                    String                  @id @default(cuid())
+  
+  employeeProfileId     String                  @map("employee_profile_id")
+  contributionId        String                  @map("contribution_id")
+  
+  // Permet de surcharger le taux par défaut si nécessaire
+  customRate            Float?                  @map("custom_rate")
+  
+  isActive              Boolean                 @default(true) @map("is_active")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  
+  employeeProfile       EmployeePayrollProfile  @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  contribution          PayrollContribution     @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+  
+  @@unique([employeeProfileId, contributionId])
+  @@index([employeeProfileId])
+  @@index([contributionId])
+  @@map("employee_contributions")
+}
+
+// Période de paie
+model PayrollPeriod {
+  id                String            @id @default(cuid())
+  
+  name              String
+  periodType        PayrollPeriodType @default(MONTHLY) @map("period_type")
+  
+  startDate         DateTime          @map("start_date")
+  endDate           DateTime          @map("end_date")
+  
+  // Jours ouvrés dans la période
+  workingDays       Int               @map("working_days")
+  
+  isClosed          Boolean           @default(false) @map("is_closed")
+  closedAt          DateTime?         @map("closed_at")
+  closedById        String?           @map("closed_by_id")
+  
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  closedBy          User?             @relation("PayrollPeriodClosedBy", fields: [closedById], references: [id])
+  payrolls          Payroll[]
+
+  @@unique([startDate, endDate])
+  @@index([isClosed])
+  @@map("payroll_periods")
+}
+
+// Bulletin de paie
+model Payroll {
+  id                String        @id @default(cuid())
+  
+  // Numéro unique du bulletin
+  number            String        @unique
+  
+  // Relations
+  employeeProfileId String        @map("employee_profile_id")
+  periodId          String        @map("period_id")
+  
+  // Données de temps (depuis pointage + ajustements)
+  daysWorked        Float         @map("days_worked")
+  hoursWorked       Float         @map("hours_worked")
+  overtimeHours     Float         @default(0) @map("overtime_hours")
+  absenceDays       Float         @default(0) @map("absence_days")
+  
+  // Données de pointage brutes (avant ajustement)
+  rawDaysWorked     Float         @map("raw_days_worked")
+  rawHoursWorked    Float         @map("raw_hours_worked")
+  
+  // Jours ouvrés attendus pour cet employé sur cette période
+  expectedWorkingDays Float       @default(22) @map("expected_working_days")
+  
+  // Montants calculés
+  grossSalary       Float         @map("gross_salary")
+  totalDeductions   Float         @default(0) @map("total_deductions")
+  totalBonuses      Float         @default(0) @map("total_bonuses")
+  netSalary         Float         @map("net_salary")
+  
+  // Charges patronales (pour info)
+  employerCharges   Float         @default(0) @map("employer_charges")
+  
+  // Statut et workflow
+  status            PayrollStatus @default(DRAFT)
+  
+  // Validation RH
+  validatedById     String?       @map("validated_by_id")
+  validatedAt       DateTime?     @map("validated_at")
+  validationNotes   String?       @map("validation_notes")
+  
+  // Approbation Direction
+  approvedById      String?       @map("approved_by_id")
+  approvedAt        DateTime?     @map("approved_at")
+  approvalNotes     String?       @map("approval_notes")
+  
+  // Paiement
+  paidAt            DateTime?     @map("paid_at")
+  paymentReference  String?       @map("payment_reference")
+  
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  employeeProfile   EmployeePayrollProfile @relation(fields: [employeeProfileId], references: [id])
+  period            PayrollPeriod          @relation(fields: [periodId], references: [id])
+  validatedBy       User?                  @relation("PayrollValidatedBy", fields: [validatedById], references: [id])
+  approvedBy        User?                  @relation("PayrollApprovedBy", fields: [approvedById], references: [id])
+  
+  contributionLines PayrollContributionLine[]
+  adjustments       PayrollAdjustment[]
+  auditLogs         PayrollAuditLog[]
+
+  @@index([employeeProfileId])
+  @@index([periodId])
+  @@index([status])
+  @@map("payrolls")
+}
+
+// Lignes de cotisations sur un bulletin
+model PayrollContributionLine {
+  id                String        @id @default(cuid())
+  
+  payrollId         String        @map("payroll_id")
+  contributionId    String        @map("contribution_id")
+  
+  // Montant de base pour le calcul
+  baseAmount        Float         @map("base_amount")
+  
+  // Taux appliqué (snapshot au moment du calcul)
+  appliedRate       Float         @map("applied_rate")
+  
+  // Montant calculé
+  amount            Float
+  
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  payroll           Payroll              @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  contribution      PayrollContribution  @relation(fields: [contributionId], references: [id])
+
+  @@index([payrollId])
+  @@map("payroll_contribution_lines")
+}
+
+// Ajustements manuels (primes, retenues, absences)
+model PayrollAdjustment {
+  id                String          @id @default(cuid())
+  
+  // Peut être lié à un profil (récurrent) ou à un bulletin (ponctuel)
+  employeeProfileId String?         @map("employee_profile_id")
+  payrollId         String?         @map("payroll_id")
+  
+  type              AdjustmentType
+  description       String
+  amount            Float
+  
+  // Pour les absences
+  daysAffected      Float?          @map("days_affected")
+  hoursAffected     Float?          @map("hours_affected")
+  
+  // Traçabilité
+  createdById       String          @map("created_by_id")
+  reason            String?
+  
+  isRecurring       Boolean         @default(false) @map("is_recurring")
+  
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  employeeProfile   EmployeePayrollProfile? @relation(fields: [employeeProfileId], references: [id])
+  payroll           Payroll?                @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  createdBy         User                    @relation("AdjustmentCreatedBy", fields: [createdById], references: [id])
+
+  @@index([employeeProfileId])
+  @@index([payrollId])
+  @@index([type])
+  @@map("payroll_adjustments")
+}
+
+// Audit trail des modifications de paie
+model PayrollAuditLog {
+  id                String        @id @default(cuid())
+  
+  payrollId         String        @map("payroll_id")
+  userId            String        @map("user_id")
+  
+  action            String
+  field             String?
+  oldValue          String?       @map("old_value")
+  newValue          String?       @map("new_value")
+  comment           String?
+  
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  payroll           Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  user              User          @relation("PayrollAuditUser", fields: [userId], references: [id])
+
+  @@index([payrollId])
+  @@index([createdAt])
+  @@map("payroll_audit_logs")
+}

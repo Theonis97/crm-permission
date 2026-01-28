@@ -17,6 +17,7 @@ import {
   Calendar,
   Clock,
   Calculator,
+  Banknote,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
@@ -108,6 +109,17 @@ const modules = [
     permission: "accounting.view",
     href: "/dashboard/accounting",
     stats: "Résultat du mois",
+    clickable: true,
+  },
+  {
+    id: "payroll",
+    name: "Paie",
+    description: "Gestion des salaires et bulletins",
+    icon: Banknote,
+    color: "from-indigo-500 to-indigo-600",
+    permission: "payroll.view",
+    href: "/dashboard/payroll",
+    stats: "Bulletins de paie",
     clickable: true,
   },
 ]

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Configuration CORS pour la production - Origines autorisées
   const allowedOrigins = [
     'https://inotech-gabon.com',

@@ -211,6 +211,10 @@ export async function DELETE(
 
     const { id } = await params
 
+    // Vérifier si on force la suppression (avec les paiements)
+    const url = new URL(request.url)
+    const forceDelete = url.searchParams.get("force") === "true"
+
     const canDelete = await hasPermission(session.user.id, "accounting.expenses.delete")
     if (!canDelete) {
       return NextResponse.json({ error: "Permission refusée" }, { status: 403 })
@@ -230,16 +234,40 @@ export async function DELETE(
       return NextResponse.json({ error: "Dépense non trouvée" }, { status: 404 })
     }
 
-    // Avertir si des paiements existent
-    if (existing._count.payments > 0) {
+    // Si des paiements existent et qu'on ne force pas la suppression
+    if (existing._count.payments > 0 && !forceDelete) {
       return NextResponse.json({ 
-        error: `Cette dépense a ${existing._count.payments} paiement(s). Supprimez d'abord les paiements.` 
+        error: `Cette dépense a ${existing._count.payments} paiement(s). Voulez-vous supprimer la dépense et ses paiements ?`,
+        hasPayments: true,
+        paymentsCount: existing._count.payments
       }, { status: 400 })
     }
 
-    // Supprimer la dépense (les childExpenses seront orphelines mais pas supprimées)
-    await prisma.expense.delete({
-      where: { id }
+    // Utiliser une transaction pour supprimer les paiements et la dépense
+    await prisma.$transaction(async (tx) => {
+      // Supprimer d'abord les documents des paiements
+      await tx.expenseDocument.deleteMany({
+        where: {
+          payment: {
+            expenseId: id
+          }
+        }
+      })
+
+      // Supprimer les paiements
+      await tx.expensePayment.deleteMany({
+        where: { expenseId: id }
+      })
+
+      // Supprimer les documents de la dépense
+      await tx.expenseDocument.deleteMany({
+        where: { expenseId: id }
+      })
+
+      // Supprimer la dépense
+      await tx.expense.delete({
+        where: { id }
+      })
     })
 
     return NextResponse.json({ success: true })

@@ -3,13 +3,13 @@ import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { createTransporter } from "@/lib/email-service"
 
-const DEFAULT_ACCOUNTING_ACCESS_EMAIL = "gabinmoundziegou@gmail.com"
+const DEFAULT_PAYROLL_ACCESS_EMAIL = "gabinmoundziegou@gmail.com"
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
-// POST /api/accounting/access/request-code - Demander un code d'accès
+// POST /api/payroll/access/request-code - Demander un code d'accès
 export async function POST() {
   try {
     const { session, error } = await getAuthenticatedSession()
@@ -19,14 +19,14 @@ export async function POST() {
     const userEmail = session.user.email
     const userName = session.user.name || userEmail
 
-    // Récupérer l'email configuré pour le module ACCOUNTING
+    // Récupérer l'email configuré pour le module PAYROLL
     const config = await prisma.moduleAccessConfig.findUnique({
-      where: { module: "ACCOUNTING" },
+      where: { module: "PAYROLL" },
     })
-    const recipientEmail = config?.recipientEmail || DEFAULT_ACCOUNTING_ACCESS_EMAIL
+    const recipientEmail = config?.recipientEmail || DEFAULT_PAYROLL_ACCESS_EMAIL
 
     // Invalider tous les codes précédents non utilisés
-    await prisma.accountingAccessCode.updateMany({
+    await prisma.payrollAccessCode.updateMany({
       where: {
         userId,
         isUsed: false,
@@ -41,7 +41,7 @@ export async function POST() {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // Expire dans 10 minutes
 
     // Sauvegarder le code
-    await prisma.accountingAccessCode.create({
+    await prisma.payrollAccessCode.create({
       data: {
         userId,
         code,
@@ -55,7 +55,7 @@ export async function POST() {
     await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to: recipientEmail,
-      subject: `🔐 Code d'accès Comptabilité - ${userName}`,
+      subject: `🔐 Code d'accès Module Paie - ${userName}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -64,7 +64,7 @@ export async function POST() {
           <style>
             body { font-family: Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
             .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-            .header { background: #2563eb; padding: 30px; text-align: center; }
+            .header { background: #4f46e5; padding: 30px; text-align: center; }
             .header h1 { color: white; margin: 0; font-size: 24px; }
             .content { padding: 30px; text-align: center; }
             .code { font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1f2937; background: #f3f4f6; padding: 20px 30px; border-radius: 8px; display: inline-block; margin: 20px 0; }
@@ -77,7 +77,7 @@ export async function POST() {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🔐 Accès Comptabilité</h1>
+              <h1>🔐 Accès Module Paie</h1>
             </div>
             <div class="content">
               <div class="user-info">
@@ -86,7 +86,7 @@ export async function POST() {
                 <p><strong>Date:</strong> ${new Date().toLocaleString('fr-FR')}</p>
               </div>
               
-              <p>Voici le code d'accès à l'espace comptabilité:</p>
+              <p>Voici le code d'accès au module Paie:</p>
               
               <div class="code">${code}</div>
               
@@ -99,7 +99,7 @@ export async function POST() {
       `,
     })
 
-    console.log(`📧 Code d'accès comptabilité envoyé à ${recipientEmail} pour l'utilisateur ${userName}`)
+    console.log(`📧 Code d'accès Paie envoyé à ${recipientEmail} pour l'utilisateur ${userName}`)
 
     return NextResponse.json({
       success: true,
@@ -107,7 +107,7 @@ export async function POST() {
       expiresAt: expiresAt.toISOString(),
     })
   } catch (error) {
-    console.error("[ACCOUNTING_ACCESS_REQUEST_CODE]", error)
+    console.error("[PAYROLL_ACCESS_REQUEST_CODE]", error)
     return NextResponse.json(
       { error: "Erreur lors de l'envoi du code" },
       { status: 500 }

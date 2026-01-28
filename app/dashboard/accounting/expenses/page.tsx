@@ -327,17 +327,33 @@ export default function ExpensesPage() {
     }
   }
 
-  const handleDeleteExpense = async (id: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette dépense ?")) return
+  const handleDeleteExpense = async (id: string, forceDelete: boolean = false) => {
+    if (!forceDelete && !confirm("Êtes-vous sûr de vouloir supprimer cette dépense ?")) return
     
     try {
-      const response = await fetch(`/api/accounting/expenses/${id}`, {
+      const url = forceDelete 
+        ? `/api/accounting/expenses/${id}?force=true`
+        : `/api/accounting/expenses/${id}`
+      
+      const response = await fetch(url, {
         method: "DELETE",
       })
       
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la suppression")
+        const errorData = await response.json()
+        
+        // Si la dépense a des paiements, demander confirmation pour suppression forcée
+        if (errorData.hasPayments) {
+          const confirmForce = confirm(
+            `Cette dépense a ${errorData.paymentsCount} paiement(s) associé(s).\n\nVoulez-vous supprimer la dépense ET tous ses paiements ?`
+          )
+          if (confirmForce) {
+            return handleDeleteExpense(id, true)
+          }
+          return
+        }
+        
+        throw new Error(errorData.error || "Erreur lors de la suppression")
       }
       
       toast.success("Dépense supprimée")

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
@@ -76,14 +76,14 @@
     "jsonwebtoken": "^9.0.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.525.0",
-    "next": "15.3.8",
+    "next": "16.1.4",
     "next-auth": "latest",
     "next-themes": "^0.4.6",
     "nodemailer": "latest",
     "prisma": "6.8.2",
-    "react": "^19.0.0",
+    "react": "19.2.3",
     "react-day-picker": "^9.7.0",
-    "react-dom": "^19.0.0",
+    "react-dom": "19.2.3",
     "react-hook-form": "^7.59.0",
     "react-leaflet": "^5.0.0",
     "react-resizable-panels": "^3.0.3",
@@ -103,11 +103,17 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.3",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "19.2.9",
+    "@types/react-dom": "19.2.3",
     "@types/uuid": "^10.0.0",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.4"
+  },
+  "overrides": {
+    "@types/react": "19.2.9",
+    "@types/react-dom": "19.2.3"
   }
 }

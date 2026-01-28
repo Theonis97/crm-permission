@@ -89,6 +89,15 @@ const getUserDisplayName = (user: { name: string | null; firstName: string | nul
   return user.name || "N/A"
 }
 
+// Informations par défaut pour les dépenses générales (sans boutique)
+const DEFAULT_COMPANY = {
+  name: "Intech Gabon",
+  logo: "/logo.jpeg", // Logo par défaut de l'entreprise
+  address: "Libreville, Gabon",
+  phone: null,
+  email: null,
+}
+
 export default function ExpensePrintPage() {
   const params = useParams()
   const router = useRouter()
@@ -133,7 +142,16 @@ export default function ExpensePrintPage() {
           const storeRes = await fetch(`/api/stores/${expenseData.expense.store.id}`)
           if (storeRes.ok) {
             const storeData = await storeRes.json()
-            storeWithLogo = storeData.store || storeData
+            // L'API retourne directement le store, pas dans un objet .store
+            storeWithLogo = {
+              id: storeData.id,
+              name: storeData.name,
+              logo: storeData.logo || null,
+              address: storeData.address || null,
+              phone: storeData.phone || null,
+              email: storeData.email || null,
+            }
+            console.log("[PRINT] Store loaded with logo:", storeWithLogo)
           }
         } catch (e) {
           console.error("Error fetching store details:", e)
@@ -211,11 +229,16 @@ export default function ExpensePrintPage() {
             {/* En-tête avec logo */}
             <div className="flex justify-between items-start border-b-2 border-gray-800 pb-4 mb-6">
               <div className="flex items-center gap-4">
-                {expense.store?.logo ? (
+                {/* Logo: boutique assignée ou logo par défaut Intech Gabon */}
+                {(expense.store?.logo || (!expense.store && DEFAULT_COMPANY.logo)) ? (
                   <img 
-                    src={expense.store.logo} 
-                    alt={expense.store.name} 
+                    src={expense.store?.logo || DEFAULT_COMPANY.logo} 
+                    alt={expense.store?.name || DEFAULT_COMPANY.name} 
                     className="h-20 w-20 object-contain"
+                    onError={(e) => {
+                      // Si le logo ne charge pas, masquer l'image
+                      (e.target as HTMLImageElement).style.display = 'none'
+                    }}
                   />
                 ) : (
                   <div className="h-20 w-20 bg-gray-200 rounded flex items-center justify-center text-gray-500 text-xs">
@@ -224,10 +247,10 @@ export default function ExpensePrintPage() {
                 )}
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
-                    {expense.store?.name || "Entreprise"}
+                    {expense.store?.name || DEFAULT_COMPANY.name}
                   </h1>
-                  {expense.store?.address && (
-                    <p className="text-sm text-gray-600">{expense.store.address}</p>
+                  {(expense.store?.address || (!expense.store && DEFAULT_COMPANY.address)) && (
+                    <p className="text-sm text-gray-600">{expense.store?.address || DEFAULT_COMPANY.address}</p>
                   )}
                   {expense.store?.phone && (
                     <p className="text-sm text-gray-600">Tél: {expense.store.phone}</p>

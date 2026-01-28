@@ -54,6 +54,11 @@ const menuItems: MenuItem[] = [
     label: "Catégories", 
     href: "/dashboard/accounting/categories",
   },
+  { 
+    icon: Settings, 
+    label: "Paramètres", 
+    href: "/dashboard/accounting/settings",
+  },
 ]
 
 export function AccountingSidebar() {
