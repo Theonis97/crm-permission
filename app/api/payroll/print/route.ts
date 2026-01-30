@@ -179,6 +179,8 @@ export async function GET(request: NextRequest) {
             <p>Emploi: ${profile.position || 'N/A'}</p>
             <p>Contrat: ${contractTypeLabels[profile.contractType] || profile.contractType}</p>
             <p>Classification: ${profile.employeeType || 'N/A'}</p>
+            ${profile.hireDate ? `<p>Date d'entrée: ${formatDate(profile.hireDate)}</p>` : ''}
+            ${profile.contractEndDate ? `<p>Fin de contrat: ${formatDate(profile.contractEndDate)}</p>` : ''}
           </div>
         </div>
 

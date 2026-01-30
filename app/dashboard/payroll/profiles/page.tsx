@@ -57,6 +57,7 @@ interface EmployeeProfile {
   workingHoursPerDay: number
   overtimeRate: number
   hireDate: string | null
+  contractEndDate: string | null
   isActive: boolean
   user: {
     id: string
@@ -88,6 +89,35 @@ const contractTypeLabels: Record<string, string> = {
 const employeeTypeColors: Record<string, string> = {
   DECLARED: "bg-green-100 text-green-800",
   UNDECLARED: "bg-orange-100 text-orange-800",
+}
+
+// Fonction pour formater les dates
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return null
+  try {
+    return new Date(dateString).toLocaleDateString('fr-FR')
+  } catch {
+    return null
+  }
+}
+
+// Fonction pour déterminer le statut du contrat (couleur)
+const getContractStatus = (contractEndDate: string | null) => {
+  if (!contractEndDate) return { status: 'no-end-date', color: 'text-gray-500' }
+  
+  const today = new Date()
+  const endDate = new Date(contractEndDate)
+  const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  
+  if (daysUntilEnd < 0) {
+    return { status: 'expired', color: 'text-red-600 bg-red-50' }
+  } else if (daysUntilEnd <= 30) {
+    return { status: 'expiring-soon', color: 'text-orange-600 bg-orange-50' }
+  } else if (daysUntilEnd <= 90) {
+    return { status: 'expiring', color: 'text-yellow-600 bg-yellow-50' }
+  } else {
+    return { status: 'active', color: 'text-green-600' }
+  }
 }
 
 export default function PayrollProfilesPage() {
@@ -309,6 +339,7 @@ export default function PayrollProfilesPage() {
                     <TableHead>Employé</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Contrat</TableHead>
+                    <TableHead className="text-center">Date fin contrat</TableHead>
                     <TableHead className="text-right">Salaire base</TableHead>
                     <TableHead className="text-right">Taux journalier</TableHead>
                     <TableHead className="text-center">Bulletins</TableHead>
@@ -343,6 +374,22 @@ export default function PayrollProfilesPage() {
                       <TableCell>
                         {contractTypeLabels[profile.contractType] ||
                           profile.contractType}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const contractStatus = getContractStatus(profile.contractEndDate)
+                          const formattedDate = formatDate(profile.contractEndDate)
+                          
+                          if (!formattedDate) {
+                            return <span className="text-gray-400">-</span>
+                          }
+                          
+                          return (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${contractStatus.color}`}>
+                              {formattedDate}
+                            </span>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(profile.baseSalary)}
