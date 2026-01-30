@@ -22,12 +22,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   Search, 
   Loader2, 
   User, 
   Check,
   UserPlus,
+  Plus,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -40,6 +42,12 @@ interface UserItem {
   matricule: string | null
   image: string | null
   hasPayrollProfile: boolean
+}
+
+interface Role {
+  id: string
+  name: string
+  description: string | null
 }
 
 interface Contribution {
@@ -88,12 +96,25 @@ const employeeStatuses = [
 ]
 
 export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEmployeeProfileSheetProps) {
-  const [step, setStep] = useState<"select" | "configure">("select")
+  const [step, setStep] = useState<"select" | "create-user" | "configure">("select")
   const [users, setUsers] = useState<UserItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCreatingUser, setIsCreatingUser] = useState(false)
+  const [loadingRoles, setLoadingRoles] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null)
+  
+  // États pour la création d'utilisateur
+  const [userFormData, setUserFormData] = useState({
+    email: "",
+    firstName: "",
+    lastName: "",
+    password: "",
+    status: "ACTIVE" as const,
+  })
+  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set())
+  const [roles, setRoles] = useState<Role[]>([])
   
   const [contributions, setContributions] = useState<Contribution[]>([])
   const [selectedContributions, setSelectedContributions] = useState<string[]>([])
@@ -115,9 +136,18 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
   useEffect(() => {
     if (open) {
       fetchUsers()
+      loadRoles()
       setStep("select")
       setSelectedUser(null)
       setSearchQuery("")
+      setUserFormData({
+        email: "",
+        firstName: "",
+        lastName: "",
+        password: "",
+        status: "ACTIVE",
+      })
+      setSelectedRoles(new Set())
       setFormData({
         baseSalary: "",
         contractType: "CDI",
@@ -135,6 +165,21 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
       fetchContributions()
     }
   }, [open])
+
+  const loadRoles = async () => {
+    setLoadingRoles(true)
+    try {
+      const response = await fetch("/api/roles")
+      if (response.ok) {
+        const data = await response.json()
+        setRoles(data)
+      }
+    } catch (error) {
+      console.error("Error loading roles:", error)
+    } finally {
+      // setLoadingRoles(false) // Retiré car non défini
+    }
+  }
 
   const fetchContributions = async () => {
     try {
@@ -174,9 +219,16 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
       const profilesRes = await fetch("/api/payroll/profiles")
       const profilesData = await profilesRes.json()
       
-      const profileUserIds = new Set(profilesData.map((p: any) => p.userId))
+      const profileUserIds = new Set(profilesData.map((p: { userId: string }) => p.userId))
       
-      const usersWithStatus = (usersData.users || usersData || []).map((user: any) => ({
+      const usersWithStatus = (usersData.users || usersData || []).map((user: { 
+        id: string
+        firstName: string | null
+        lastName: string | null
+        email: string
+        matricule: string | null
+        image: string | null
+      }) => ({
         id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -215,6 +267,73 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
     }
     setSelectedUser(user)
     setStep("configure")
+  }
+
+  const handleCreateUser = () => {
+    setStep("create-user")
+  }
+
+  const handleUserInputChange = (field: string, value: string) => {
+    setUserFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleUserRoleToggle = (roleId: string) => {
+    const newSelected = new Set(selectedRoles)
+    if (newSelected.has(roleId)) {
+      newSelected.delete(roleId)
+    } else {
+      newSelected.add(roleId)
+    }
+    setSelectedRoles(newSelected)
+  }
+
+  const createUserAndProceed = async () => {
+    if (!userFormData.email || !userFormData.password || !userFormData.firstName || !userFormData.lastName) {
+      toast.error("Veuillez remplir tous les champs obligatoires")
+      return
+    }
+
+    try {
+      setIsCreatingUser(true)
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...userFormData,
+          roleIds: Array.from(selectedRoles),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Erreur lors de la création de l'utilisateur")
+      }
+
+      const newUser = await response.json()
+      
+      // Créer un objet UserItem pour le nouvel utilisateur
+      const newUserItem: UserItem = {
+        id: newUser.id,
+        firstName: userFormData.firstName,
+        lastName: userFormData.lastName,
+        email: userFormData.email,
+        matricule: newUser.matricule || null,
+        image: newUser.image || null,
+        hasPayrollProfile: false,
+      }
+      
+      setSelectedUser(newUserItem)
+      toast.success("Utilisateur créé avec succès")
+      setStep("configure")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la création de l'utilisateur"
+      console.error("Error creating user:", error)
+      toast.error(errorMessage)
+    } finally {
+      setIsCreatingUser(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -272,9 +391,10 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
       toast.success("Profil employé créé avec succès")
       onOpenChange(false)
       onSuccess?.()
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la création"
       console.error("Submit error:", error)
-      toast.error(error.message || "Erreur lors de la création")
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -305,7 +425,9 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
           <SheetDescription>
             {step === "select" 
               ? "Sélectionnez un utilisateur pour créer son profil de paie"
-              : `Configuration du profil pour ${getUserName(selectedUser!)}`
+              : step === "create-user"
+              ? "Créez un nouvel utilisateur et configurez son profil de paie"
+              : `Configuration du profil pour ${selectedUser ? getUserName(selectedUser) : 'Nouvel utilisateur'}`
             }
           </SheetDescription>
         </SheetHeader>
@@ -323,6 +445,16 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
                     className="pl-10"
                   />
                 </div>
+                {/* Bouton créer nouvel utilisateur */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full mt-3 border-dashed"
+                  onClick={handleCreateUser}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Créer un nouvel utilisateur
+                </Button>
               </div>
 
               {isLoading ? (
@@ -331,83 +463,97 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
                 </div>
               ) : (
                 <ScrollArea className="flex-1 px-6">
-                  {availableUsers.length === 0 && configuredUsers.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <User className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                      <p>Aucun utilisateur trouvé</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 pb-4">
-                      {availableUsers.length > 0 && (
-                        <>
-                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                            Utilisateurs disponibles ({availableUsers.length})
-                          </p>
-                          {availableUsers.map((user) => (
-                            <button
-                              key={user.id}
-                              type="button"
-                              onClick={() => handleSelectUser(user)}
-                              className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-left"
-                            >
-                              <Avatar className="h-10 w-10 border">
-                                <AvatarImage src={user.image || undefined} />
-                                <AvatarFallback className="bg-indigo-100 text-indigo-600 font-medium">
-                                  {getInitials(user)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 truncate">
-                                  {getUserName(user)}
-                                </p>
-                                <p className="text-sm text-gray-500 truncate">
-                                  {user.email}
-                                </p>
-                              </div>
-                              {user.matricule && (
-                                <Badge variant="outline" className="shrink-0">
-                                  {user.matricule}
-                                </Badge>
-                              )}
-                            </button>
-                          ))}
-                        </>
-                      )}
+                  <div className="space-y-4 pb-4">
+                    {/* Bouton créer nouvel utilisateur */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-dashed"
+                      onClick={handleCreateUser}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Créer un nouvel utilisateur
+                    </Button>
+                    
+                    {availableUsers.length === 0 && configuredUsers.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <User className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                        <p>Aucun utilisateur disponible</p>
+                        <p className="text-sm">Créez un nouvel utilisateur ou modifiez vos filtres</p>
+                      </div>
+                    ) : (
+                      <>
+                        {availableUsers.length > 0 && (
+                          <>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                              Utilisateurs disponibles ({availableUsers.length})
+                            </p>
+                            {availableUsers.map((user) => (
+                              <button
+                                key={user.id}
+                                type="button"
+                                onClick={() => handleSelectUser(user)}
+                                className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-left"
+                              >
+                                <Avatar className="h-10 w-10 border">
+                                  <AvatarImage src={user.image || undefined} />
+                                  <AvatarFallback className="bg-indigo-100 text-indigo-600 font-medium">
+                                    {getInitials(user)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-900 truncate">
+                                    {getUserName(user)}
+                                  </p>
+                                  <p className="text-sm text-gray-500 truncate">
+                                    {user.email}
+                                  </p>
+                                </div>
+                                {user.matricule && (
+                                  <Badge variant="outline" className="shrink-0">
+                                    {user.matricule}
+                                  </Badge>
+                                )}
+                              </button>
+                            ))}
+                          </>
+                        )}
 
-                      {configuredUsers.length > 0 && (
-                        <>
-                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 mt-4">
-                            Déjà configurés ({configuredUsers.length})
-                          </p>
-                          {configuredUsers.map((user) => (
-                            <div
-                              key={user.id}
-                              className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50 opacity-60"
-                            >
-                              <Avatar className="h-10 w-10 border">
-                                <AvatarImage src={user.image || undefined} />
-                                <AvatarFallback className="bg-gray-200 text-gray-600 font-medium">
-                                  {getInitials(user)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-700 truncate">
-                                  {getUserName(user)}
-                                </p>
-                                <p className="text-sm text-gray-500 truncate">
-                                  {user.email}
-                                </p>
+                        {configuredUsers.length > 0 && (
+                          <>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 mt-4">
+                              Déjà configurés ({configuredUsers.length})
+                            </p>
+                            {configuredUsers.map((user) => (
+                              <div
+                                key={user.id}
+                                className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50 opacity-60"
+                              >
+                                <Avatar className="h-10 w-10 border">
+                                  <AvatarImage src={user.image || undefined} />
+                                  <AvatarFallback className="bg-gray-200 text-gray-600 font-medium">
+                                    {getInitials(user)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-700 truncate">
+                                    {getUserName(user)}
+                                  </p>
+                                  <p className="text-sm text-gray-500 truncate">
+                                    {user.email}
+                                  </p>
+                                </div>
+                                <Badge className="bg-green-100 text-green-700 shrink-0">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Configuré
+                                </Badge>
                               </div>
-                              <Badge className="bg-green-100 text-green-700 shrink-0">
-                                <Check className="h-3 w-3 mr-1" />
-                                Configuré
-                              </Badge>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
+                            ))}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </ScrollArea>
               )}
             </div>
@@ -418,6 +564,128 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
               </Button>
             </div>
           </>
+        ) : step === "create-user" ? (
+          <form onSubmit={(e) => { e.preventDefault(); createUserAndProceed(); }} className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto px-6">
+              <div className="space-y-6 py-4">
+                {/* Informations personnelles */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Informations personnelles</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="firstName">Prénom *</Label>
+                        <Input
+                          id="firstName"
+                          value={userFormData.firstName}
+                          onChange={(e) => handleUserInputChange("firstName", e.target.value)}
+                          placeholder="Prénom"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastName">Nom *</Label>
+                        <Input
+                          id="lastName"
+                          value={userFormData.lastName}
+                          onChange={(e) => handleUserInputChange("lastName", e.target.value)}
+                          placeholder="Nom"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={userFormData.email}
+                        onChange={(e) => handleUserInputChange("email", e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Mot de passe *</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={userFormData.password}
+                        onChange={(e) => handleUserInputChange("password", e.target.value)}
+                        placeholder="Mot de passe"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Statut</Label>
+                      <Select
+                        value={userFormData.status}
+                        onValueChange={(value) => handleUserInputChange("status", value)}
+                      >
+                        <SelectTrigger id="status">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ACTIVE">Actif</SelectItem>
+                          <SelectItem value="INACTIVE">Inactif</SelectItem>
+                          <SelectItem value="SUSPENDED">Suspendu</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Rôles */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Rôles</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {roles.map((role) => (
+                        <div key={role.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`role-${role.id}`}
+                            checked={selectedRoles.has(role.id)}
+                            onCheckedChange={() => handleUserRoleToggle(role.id)}
+                          />
+                          <Label htmlFor={`role-${role.id}`} className="text-sm">
+                            {role.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-gray-50 shrink-0 flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep("select")}
+                className="flex-1"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                disabled={isCreatingUser || !userFormData.email || !userFormData.password || !userFormData.firstName || !userFormData.lastName}
+                className="flex-1"
+              >
+                {isCreatingUser ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Création...
+                  </>
+                ) : (
+                  "Créer et continuer"
+                )}
+              </Button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto px-6">

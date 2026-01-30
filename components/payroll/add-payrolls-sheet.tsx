@@ -154,9 +154,11 @@ export function AddPayrollsSheet({
 
         if (res.ok) {
           const data = await res.json()
+          console.log(`📊 Lot ${Math.floor(i / batchSize) + 1} réussi:`, data)
           successCount += data.created || batch.length
         } else {
           const data = await res.json()
+          console.log(`❌ Lot ${Math.floor(i / batchSize) + 1} échoué:`, data)
           errors.push(data.error || `Erreur pour le lot ${Math.floor(i / batchSize) + 1}`)
         }
 
@@ -167,17 +169,25 @@ export function AddPayrollsSheet({
         })
       }
 
+      console.log(`📈 Total final: ${successCount} bulletins créés, ${errors.length} erreurs`)
+      
       if (successCount > 0) {
         console.log(`✅ ${successCount} bulletins générés, appel de onSuccess`)
         toast.success(`${successCount} bulletin(s) généré(s) avec succès`)
-        onSuccess?.()
-        console.log(`🔄 onSuccess appelé, fermeture du sheet`)
-        onOpenChange(false)
+        
+        // Attendre un court instant pour s'assurer que la base de données est mise à jour
+        console.log("⏳ Attente de 500ms avant de fermer...")
+        setTimeout(() => {
+          onSuccess?.()
+          console.log(`🔄 onSuccess appelé, fermeture du sheet`)
+          onOpenChange(false)
+        }, 500)
       } else if (errors.length > 0) {
         toast.error(errors[0])
       }
-    } catch (error: any) {
-      toast.error(error.message || "Erreur lors de la génération")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la génération"
+      toast.error(errorMessage)
     } finally {
       setIsGenerating(false)
     }
