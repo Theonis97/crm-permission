@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { EditPayrollSheet } from "@/components/payroll/edit-payroll-sheet"
+import { AddPayrollsSheet } from "@/components/payroll/add-payrolls-sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 
@@ -78,6 +79,7 @@ interface PayrollPeriodDetail {
     totalBonuses: number
     netSalary: number
     employeeProfile: {
+      id: string
       user: {
         id: string
         firstName: string | null
@@ -131,6 +133,8 @@ export default function PayrollPeriodDetailPage() {
   const [selectedPayrollId, setSelectedPayrollId] = useState<string | null>(null)
   const [showEditSheet, setShowEditSheet] = useState(false)
   const [selectedPayrolls, setSelectedPayrolls] = useState<Set<string>>(new Set())
+  const [showAddPayrollsSheet, setShowAddPayrollsSheet] = useState(false)
+  const [isGeneratingPayrolls, setIsGeneratingPayrolls] = useState(false)
 
   useEffect(() => {
     if (periodId) {
@@ -141,15 +145,19 @@ export default function PayrollPeriodDetailPage() {
   const fetchPeriod = async () => {
     try {
       setIsLoading(true)
+      setIsGeneratingPayrolls(false) // S'assurer que l'état de génération est réinitialisé
       const res = await fetch(`/api/payroll/periods/${periodId}`)
       if (!res.ok) throw new Error("Erreur lors du chargement")
       const data = await res.json()
       setPeriod(data)
+      // Réinitialiser la sélection après mise à jour
+      setSelectedPayrolls(new Set())
     } catch (error) {
       console.error("Error fetching period:", error)
       toast.error("Erreur lors du chargement de la période")
     } finally {
       setIsLoading(false)
+      setIsGeneratingPayrolls(false) // Double sécurité pour réinitialiser l'état
     }
   }
 
@@ -167,8 +175,9 @@ export default function PayrollPeriodDetailPage() {
       }
       toast.success("Bulletin validé avec succès")
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la validation"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -188,8 +197,9 @@ export default function PayrollPeriodDetailPage() {
       }
       toast.success("Bulletin approuvé avec succès")
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de l'approbation"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -209,8 +219,9 @@ export default function PayrollPeriodDetailPage() {
       }
       toast.success("Bulletin marqué comme payé")
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors du marquage du paiement"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -218,6 +229,7 @@ export default function PayrollPeriodDetailPage() {
 
   const handleGeneratePayrolls = async () => {
     try {
+      setIsGeneratingPayrolls(true)
       setActionLoading("generate")
       const res = await fetch(`/api/payroll/periods/${periodId}/generate`, {
         method: "POST",
@@ -230,11 +242,34 @@ export default function PayrollPeriodDetailPage() {
       }
       const data = await res.json()
       toast.success(data.message)
-      fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+      await fetchPeriod()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la génération"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
+      setIsGeneratingPayrolls(false)
+    }
+  }
+
+  const handleAddPayrollsSuccess = async () => {
+    console.log("🔄 Début de la mise à jour après ajout de bulletins")
+    console.log("📋 Période avant mise à jour:", {
+      id: period?.id,
+      payrollsCount: period?.payrolls?.length || 0
+    })
+    setIsGeneratingPayrolls(true)
+    try {
+      await fetchPeriod()
+      console.log("✅ Mise à jour terminée avec succès")
+      console.log("📋 Période après mise à jour:", {
+        id: period?.id,
+        payrollsCount: period?.payrolls?.length || 0
+      })
+    } catch (error) {
+      console.error("❌ Erreur lors de la mise à jour:", error)
+    } finally {
+      setIsGeneratingPayrolls(false)
     }
   }
 
@@ -242,6 +277,7 @@ export default function PayrollPeriodDetailPage() {
     if (!confirm("Êtes-vous sûr de vouloir supprimer et régénérer tous les bulletins ? Cette action est irréversible.")) return
 
     try {
+      setIsGeneratingPayrolls(true)
       setActionLoading("regenerate")
       
       // 1. Supprimer les bulletins existants
@@ -266,11 +302,13 @@ export default function PayrollPeriodDetailPage() {
       
       const data = await generateRes.json()
       toast.success(`Bulletins régénérés: ${data.message}`)
-      fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+      await fetchPeriod()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la régénération"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
+      setIsGeneratingPayrolls(false)
     }
   }
 
@@ -294,6 +332,17 @@ export default function PayrollPeriodDetailPage() {
     if (filterStatus === "all") return true
     return payroll.status === filterStatus
   }) || []
+
+  // Debug: Log l'état actuel
+  useEffect(() => {
+    console.log("📊 État actuel:", {
+      periodLoaded: !!period,
+      payrollsCount: period?.payrolls?.length || 0,
+      filteredCount: filteredPayrolls.length,
+      isGenerating: isGeneratingPayrolls,
+      isLoading: isLoading
+    })
+  }, [period, filteredPayrolls.length, isGeneratingPayrolls, isLoading])
 
   // Sélection multiple
   const toggleSelectPayroll = (payrollId: string) => {
@@ -352,8 +401,9 @@ export default function PayrollPeriodDetailPage() {
       toast.success(`${successCount} bulletin(s) validé(s)`)
       clearSelection()
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la validation"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -384,8 +434,9 @@ export default function PayrollPeriodDetailPage() {
       toast.success(`${successCount} bulletin(s) approuvé(s)`)
       clearSelection()
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de l'approbation"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -416,8 +467,9 @@ export default function PayrollPeriodDetailPage() {
       toast.success(`${successCount} bulletin(s) marqué(s) payé(s)`)
       clearSelection()
       fetchPeriod()
-    } catch (error: any) {
-      toast.error(error.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors du marquage du paiement"
+      toast.error(errorMessage)
     } finally {
       setActionLoading(null)
     }
@@ -517,15 +569,10 @@ export default function PayrollPeriodDetailPage() {
                 <Button
                   size="sm"
                   className="bg-indigo-600 hover:bg-indigo-700"
-                  onClick={handleGeneratePayrolls}
-                  disabled={actionLoading === "generate"}
+                  onClick={() => setShowAddPayrollsSheet(true)}
                 >
-                  {actionLoading === "generate" ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4 mr-2" />
-                  )}
-                  Générer les bulletins
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter des bulletins
                 </Button>
               </div>
             )}
@@ -627,7 +674,7 @@ export default function PayrollPeriodDetailPage() {
             </Select>
           </CardHeader>
           <CardContent className="p-0">
-            {filteredPayrolls.length === 0 ? (
+            {filteredPayrolls.length === 0 && !isGeneratingPayrolls ? (
               <div className="text-center py-12">
                 <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500">Aucun bulletin trouvé</p>
@@ -640,6 +687,11 @@ export default function PayrollPeriodDetailPage() {
                     Générer les bulletins
                   </Button>
                 )}
+              </div>
+            ) : isGeneratingPayrolls ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2 text-gray-600">Génération des bulletins en cours...</span>
               </div>
             ) : (
               <>
@@ -873,6 +925,15 @@ export default function PayrollPeriodDetailPage() {
           onOpenChange={setShowEditSheet}
           payrollId={selectedPayrollId}
           onSuccess={fetchPeriod}
+        />
+
+        {/* Add Payrolls Sheet */}
+        <AddPayrollsSheet
+          open={showAddPayrollsSheet}
+          onOpenChange={setShowAddPayrollsSheet}
+          periodId={periodId}
+          existingEmployeeProfileIds={period?.payrolls.map(p => p.employeeProfile.id) || []}
+          onSuccess={handleAddPayrollsSuccess}
         />
       </div>
     </PermissionGuard>

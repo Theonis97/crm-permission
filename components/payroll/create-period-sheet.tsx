@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   Sheet,
@@ -161,13 +161,14 @@ export function CreatePeriodSheet({ open, onOpenChange, onSuccess }: CreatePerio
     })
   }
 
-  const toggleEmployee = (employeeId: string) => {
-    setSelectedEmployees(prev => 
-      prev.includes(employeeId)
+  const toggleEmployee = useCallback((employeeId: string) => {
+    setSelectedEmployees(prev => {
+      const newSelection = prev.includes(employeeId)
         ? prev.filter(id => id !== employeeId)
         : [...prev, employeeId]
-    )
-  }
+      return newSelection
+    })
+  }, [])
 
   const selectAllEmployees = () => {
     if (selectedEmployees.length === employees.length) {
@@ -224,8 +225,9 @@ export function CreatePeriodSheet({ open, onOpenChange, onSuccess }: CreatePerio
       onOpenChange(false)
       onSuccess?.()
       router.push(`/dashboard/payroll/periods/${period.id}`)
-    } catch (error: any) {
-      toast.error(error.message || "Erreur lors de la création")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la création"
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -380,14 +382,17 @@ export function CreatePeriodSheet({ open, onOpenChange, onSuccess }: CreatePerio
                         <div
                           key={employee.id}
                           className={cn(
-                            "flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer",
+                            "flex items-center gap-3 p-3 hover:bg-gray-50",
                             selectedEmployees.includes(employee.id) && "bg-indigo-50"
                           )}
-                          onClick={() => toggleEmployee(employee.id)}
                         >
                           <Checkbox
                             checked={selectedEmployees.includes(employee.id)}
-                            onCheckedChange={() => toggleEmployee(employee.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked !== undefined) {
+                                toggleEmployee(employee.id)
+                              }
+                            }}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">

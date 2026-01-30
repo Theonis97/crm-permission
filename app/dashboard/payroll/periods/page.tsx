@@ -347,16 +347,6 @@ export default function PayrollPeriodsPage() {
                             {!period.isClosed && (
                               <>
                                 <DropdownMenuItem
-                                  onClick={() =>
-                                    router.push(
-                                      `/dashboard/payroll/periods/${period.id}/generate`
-                                    )
-                                  }
-                                >
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  Générer les bulletins
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
                                   onClick={() => handleClosePeriod(period.id)}
                                 >
                                   <Lock className="h-4 w-4 mr-2" />
