@@ -154,6 +154,26 @@ export async function POST(
           })
         }
 
+        // Créer les lignes de rubriques (primes et indemnités)
+        if (calculation.rubricLines.length > 0) {
+          await prisma.payrollRubricLine.createMany({
+            data: calculation.rubricLines.map((line) => ({
+              payrollId: payroll.id,
+              rubricId: line.rubricId,
+              rubricCode: line.rubricCode,
+              rubricName: line.rubricName,
+              rubricType: line.rubricType,
+              baseAmount: line.baseAmount,
+              rate: line.rate,
+              amount: line.amount,
+              isSubjectToTax: line.isSubjectToTax,
+              isSubjectToSocial: line.isSubjectToSocial,
+              exemptAmount: line.exemptAmount,
+              taxableAmount: line.taxableAmount,
+            })),
+          })
+        }
+
         // Créer l'entrée d'audit
         await prisma.payrollAuditLog.create({
           data: {

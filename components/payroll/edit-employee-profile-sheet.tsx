@@ -152,6 +152,7 @@ export function EditEmployeeProfileSheet({
     bankAccountNumber: "",
     workingDaysPattern: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] as string[],
     workingHoursPerDay: "8",
+    matricule: "",
   })
 
   useEffect(() => {
@@ -182,6 +183,7 @@ export function EditEmployeeProfileSheet({
         bankAccountNumber: data.bankAccountNumber || "",
         workingDaysPattern: data.workingDaysPattern || ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
         workingHoursPerDay: data.workingHoursPerDay?.toString() || "8",
+        matricule: data.user?.matricule || "",
       })
       
       // Set selected contributions
@@ -255,6 +257,7 @@ export function EditEmployeeProfileSheet({
       workingDaysPattern: formData.workingDaysPattern,
       workingHoursPerDay: parseFloat(formData.workingHoursPerDay) || 8,
       contributionIds: selectedContributions,
+      matricule: formData.matricule || null,
     }
 
     try {
@@ -356,9 +359,19 @@ export function EditEmployeeProfileSheet({
                       <p className="font-medium text-gray-900">{getUserName()}</p>
                       <p className="text-sm text-gray-500">{profile.user.email}</p>
                     </div>
-                    {profile.user.matricule && (
-                      <Badge variant="outline">{profile.user.matricule}</Badge>
-                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="matricule">Matricule (optionnel mais recommandé pour les cotisants)</Label>
+                    <Input
+                      id="matricule"
+                      placeholder="Ex: EMP-001, MAT-2024-001..."
+                      value={formData.matricule}
+                      onChange={(e) => setFormData(prev => ({ ...prev, matricule: e.target.value }))}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Le matricule apparaîtra sur les bulletins de paie
+                    </p>
                   </div>
 
                   <div className="space-y-2">

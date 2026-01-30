@@ -107,6 +107,7 @@ export async function PUT(
       bankAccountNumber,
       isActive,
       contributionIds,
+      matricule,
     } = body
 
     // Vérifier que le profil existe
@@ -170,6 +171,14 @@ export async function PUT(
         where: { id },
         data: updateData,
       })
+
+      // Mettre à jour le matricule sur l'utilisateur si fourni
+      if (matricule !== undefined) {
+        await tx.user.update({
+          where: { id: existingProfile.userId },
+          data: { matricule: matricule || null },
+        })
+      }
 
       // Mettre à jour les cotisations si fournies
       if (contributionIds !== undefined) {

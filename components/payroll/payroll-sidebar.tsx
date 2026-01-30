@@ -36,6 +36,7 @@ import {
   LayoutDashboard,
   Percent,
   ClipboardList,
+  Gift,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -61,6 +62,11 @@ const menuItems: MenuItem[] = [
     icon: Calendar,
     label: "Périodes de paie",
     href: "/dashboard/payroll/periods",
+  },
+  {
+    icon: Gift,
+    label: "Primes & Indemnités",
+    href: "/dashboard/payroll/rubrics",
   },
   {
     icon: Percent,

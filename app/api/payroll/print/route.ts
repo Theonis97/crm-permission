@@ -59,6 +59,12 @@ export async function GET(request: NextRequest) {
             contribution: true,
           },
         },
+        rubricLines: {
+          orderBy: [
+            { rubricType: "asc" },
+            { rubricName: "asc" },
+          ],
+        },
         adjustments: true,
       },
       orderBy: {
@@ -119,30 +125,46 @@ export async function GET(request: NextRequest) {
       FREELANCE: "Freelance",
     }
 
+    // Récupérer les paramètres de l'entreprise
+    const companySettings = await prisma.payrollCompanySettings.findFirst()
+
     const payslipsHtml = payrolls.map((payroll: any, index: number) => {
       const profile = payroll.employeeProfile
       const user = profile.user
       const period = payroll.period
       const hourlyRate = profile.baseSalary / (payroll.expectedWorkingDays * profile.workingHoursPerDay)
       
-      // Récupérer les informations de la boutique de l'employé
+      // Utiliser les paramètres entreprise s'ils existent, sinon fallback sur la boutique
       const storeRole = user.storeUserRoles?.[0]
       const store = storeRole?.store
-      const storeName = store?.name || 'Non défini'
-      const storeAddress = store?.address || 'Adresse non définie'
-      const storePhone = store?.phone || ''
-      const storeEmail = store?.email || ''
+      
+      const companyName = companySettings?.companyName || store?.name || 'Non défini'
+      const companyAddress = companySettings?.companyAddress || store?.address || 'Adresse non définie'
+      const companyCity = companySettings?.companyCity || ''
+      const companyPostalCode = companySettings?.companyPostalCode || ''
+      const companyCountry = companySettings?.companyCountry || ''
+      const companyPhone = companySettings?.companyPhone || store?.phone || ''
+      const companyEmail = companySettings?.companyEmail || store?.email || ''
+      const rccmNumber = companySettings?.rccmNumber || ''
+      const nifNumber = companySettings?.nifNumber || ''
+      const cnssEmployerNumber = companySettings?.cnssEmployerNumber || ''
+      const companyLogo = companySettings?.companyLogo || ''
       
       return `
       <div class="payslip ${index > 0 ? 'page-break' : ''}">
         <!-- En-tête avec informations employeur et employé -->
         <div class="header-section">
           <div class="employer-box">
+            ${companyLogo ? `<img src="${companyLogo}" alt="Logo" class="company-logo" />` : ''}
             <h2>EMPLOYEUR</h2>
-            <p class="company-name">${storeName}</p>
-            <p>Adresse: ${storeAddress}</p>
-            ${storePhone ? `<p>Tél: ${storePhone}</p>` : ''}
-            ${storeEmail ? `<p>Email: ${storeEmail}</p>` : ''}
+            <p class="company-name">${companyName}</p>
+            <p>${companyAddress}</p>
+            ${companyCity ? `<p>${companyPostalCode ? companyPostalCode + ' - ' : ''}${companyCity}${companyCountry ? ', ' + companyCountry : ''}</p>` : ''}
+            ${rccmNumber ? `<p>RCCM: ${rccmNumber}</p>` : ''}
+            ${nifNumber ? `<p>NIF: ${nifNumber}</p>` : ''}
+            ${cnssEmployerNumber ? `<p>CNSS Emp.: ${cnssEmployerNumber}</p>` : ''}
+            ${companyPhone ? `<p>Tél: ${companyPhone}</p>` : ''}
+            ${companyEmail ? `<p>Email: ${companyEmail}</p>` : ''}
           </div>
           <div class="payslip-title">
             <h1>BULLETIN DE PAIE</h1>
@@ -183,31 +205,45 @@ export async function GET(request: NextRequest) {
               <td class="right gain">${formatCurrency(payroll.grossSalary)}</td>
               <td></td>
             </tr>
-            ${payroll.overtimeHours > 0 ? `
-            <tr>
-              <td>Heures supplémentaires</td>
-              <td class="center">${payroll.overtimeHours.toFixed(1)} h</td>
-              <td class="right">${formatCurrency(Math.round(hourlyRate * profile.overtimeRate))}/h</td>
-              <td class="right gain">${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * profile.overtimeRate))}</td>
-              <td></td>
+            
+            ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
+            <!-- Section Primes -->
+            <tr class="section-header">
+              <td colspan="5">PRIMES</td>
             </tr>
+            ${payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').map((line: any) => `
+            <tr>
+              <td>${line.rubricName}</td>
+              <td class="center">${line.rate ? formatCurrency(line.baseAmount) : ''}</td>
+              <td class="right">${line.rate ? line.rate + '%' : ''}</td>
+              <td class="right gain">${formatCurrency(line.amount)}</td>
+              <td>${line.isSubjectToSocial && line.taxableAmount > 0 ? '<span style="font-size:8px;color:#666">*</span>' : ''}</td>
+            </tr>
+            `).join('')}
             ` : ''}
-            ${payroll.totalBonuses > 0 ? `
-            <tr>
-              <td>Primes et indemnités</td>
-              <td></td>
-              <td></td>
-              <td class="right gain">${formatCurrency(payroll.totalBonuses)}</td>
-              <td></td>
+
+            ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').length > 0 ? `
+            <!-- Section Indemnités -->
+            <tr class="section-header">
+              <td colspan="5">INDEMNITÉS</td>
             </tr>
+            ${payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').map((line: any) => `
+            <tr>
+              <td>${line.rubricName}${line.exemptAmount > 0 ? ' <span style="font-size:8px;color:#16a34a">(exonéré: ${formatCurrency(line.exemptAmount)})</span>' : ''}</td>
+              <td class="center">${line.rate ? formatCurrency(line.baseAmount) : ''}</td>
+              <td class="right">${line.rate ? line.rate + '%' : ''}</td>
+              <td class="right gain">${formatCurrency(line.amount)}</td>
+              <td>${line.isSubjectToSocial && line.taxableAmount > 0 ? '<span style="font-size:8px;color:#666">*</span>' : ''}</td>
+            </tr>
+            `).join('')}
             ` : ''}
             
             <!-- Ligne Total Brut -->
             <tr class="subtotal-row">
-              <td><strong>SALAIRE BRUT</strong></td>
+              <td><strong>SALAIRE BRUT + PRIMES + INDEMNITÉS</strong></td>
               <td></td>
               <td></td>
-              <td class="right"><strong>${formatCurrency(payroll.grossSalary + payroll.totalBonuses)}</strong></td>
+              <td class="right"><strong>${formatCurrency(payroll.grossSalary + (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0))}</strong></td>
               <td></td>
             </tr>
 
@@ -250,13 +286,15 @@ export async function GET(request: NextRequest) {
                 <td>Heures travaillées</td>
                 <td class="right">${payroll.hoursWorked.toFixed(1)} h</td>
               </tr>
+              ${payroll.daysWorked >= payroll.expectedWorkingDays && payroll.overtimeHours > 0 ? `
               <tr>
                 <td>Heures supplémentaires</td>
                 <td class="right">${payroll.overtimeHours.toFixed(1)} h</td>
               </tr>
+              ` : ''}
               <tr>
                 <td>Absences</td>
-                <td class="right">${payroll.absenceDays} j</td>
+                <td class="right">${Math.max(0, payroll.expectedWorkingDays - payroll.daysWorked)} j</td>
               </tr>
             </table>
           </div>
@@ -266,10 +304,18 @@ export async function GET(request: NextRequest) {
                 <td>Salaire brut</td>
                 <td class="right">${formatCurrency(payroll.grossSalary)}</td>
               </tr>
+              ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
               <tr>
                 <td>Primes</td>
-                <td class="right">+ ${formatCurrency(payroll.totalBonuses)}</td>
+                <td class="right">+ ${formatCurrency(payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').reduce((sum: number, r: any) => sum + r.amount, 0))}</td>
               </tr>
+              ` : ''}
+              ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').length > 0 ? `
+              <tr>
+                <td>Indemnités</td>
+                <td class="right">+ ${formatCurrency(payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').reduce((sum: number, r: any) => sum + r.amount, 0))}</td>
+              </tr>
+              ` : ''}
               <tr>
                 <td>Cotisations salariales</td>
                 <td class="right">- ${formatCurrency(payroll.totalDeductions)}</td>
@@ -386,6 +432,13 @@ export async function GET(request: NextRequest) {
           font-weight: bold;
           font-size: 12px;
           color: #1e3a5f;
+        }
+
+        .company-logo {
+          max-width: 80px;
+          max-height: 40px;
+          margin-bottom: 5px;
+          object-fit: contain;
         }
 
         .payslip-title {

@@ -39,6 +39,12 @@ export async function GET(
                 },
               },
             },
+            rubricLines: {
+              orderBy: [
+                { rubricType: "asc" },
+                { rubricName: "asc" },
+              ],
+            },
           },
           orderBy: { createdAt: "desc" },
         },

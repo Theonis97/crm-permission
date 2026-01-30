@@ -4,6 +4,8 @@ import {
   ContractType,
   AdjustmentType,
   PayrollStatus,
+  RubricType,
+  RubricCalculationBase,
 } from "@prisma/client"
 
 // ============================================================================
@@ -34,6 +36,20 @@ export interface ContributionLine {
   isEmployerShare: boolean
 }
 
+export interface RubricLine {
+  rubricId: string
+  rubricCode: string
+  rubricName: string
+  rubricType: RubricType
+  baseAmount: number
+  rate: number | null
+  amount: number
+  isSubjectToTax: boolean
+  isSubjectToSocial: boolean
+  exemptAmount: number
+  taxableAmount: number
+}
+
 export interface PayrollCalculationInput {
   employeeProfileId: string
   periodId: string
@@ -54,11 +70,16 @@ export interface PayrollCalculationResult {
   grossSalary: number
   totalDeductions: number
   totalBonuses: number
+  totalPrimes: number      // Total des primes (rubriques)
+  totalIndemnities: number // Total des indemnités (rubriques)
   netSalary: number
   employerCharges: number
 
   // Détail des cotisations
   contributionLines: ContributionLine[]
+
+  // Détail des rubriques (primes et indemnités)
+  rubricLines: RubricLine[]
 
   // Ajustements appliqués
   appliedAdjustments: Array<{
@@ -348,7 +369,7 @@ export function calculateOvertimeHours(
 export async function calculatePayroll(
   input: PayrollCalculationInput
 ): Promise<PayrollCalculationResult> {
-  // 1. Récupérer le profil employé avec ses cotisations assignées
+  // 1. Récupérer le profil employé avec ses cotisations et rubriques assignées
   const profile = await prisma.employeePayrollProfile.findUnique({
     where: { id: input.employeeProfileId },
     include: {
@@ -359,6 +380,12 @@ export async function calculatePayroll(
         where: { isActive: true },
         include: {
           contribution: true,
+        },
+      },
+      rubrics: {
+        where: { isActive: true },
+        include: {
+          rubric: true,
         },
       },
     },
@@ -462,7 +489,7 @@ export async function calculatePayroll(
     employerCharges = employerContributions.reduce((sum, c) => sum + c.amount, 0)
   }
 
-  // 10. Calculer les primes et retenues manuelles
+  // 10. Calculer les primes et retenues manuelles (ajustements)
   let totalBonuses = 0
   let totalPenalties = 0
 
@@ -489,12 +516,96 @@ export async function calculatePayroll(
     }
   })
 
-  // 11. Calculer le salaire net
+  // 11. Calculer les rubriques (primes et indemnités)
+  let rubricLines: RubricLine[] = []
+  let totalPrimes = 0
+  let totalIndemnities = 0
+  let rubricSocialContributions = 0 // Cotisations supplémentaires sur rubriques
+
+  if (profile.rubrics && profile.rubrics.length > 0) {
+    for (const employeeRubric of profile.rubrics) {
+      const rubric = employeeRubric.rubric
+      
+      // Vérifier la période d'application
+      const now = new Date()
+      if (employeeRubric.startDate && new Date(employeeRubric.startDate) > now) continue
+      if (employeeRubric.endDate && new Date(employeeRubric.endDate) < now) continue
+
+      // Calculer le montant selon la base de calcul
+      let baseAmount = 0
+      let calculatedAmount = 0
+      let appliedRate: number | null = null
+
+      switch (rubric.calculationBase) {
+        case "FIXED":
+          calculatedAmount = employeeRubric.amount ?? rubric.defaultAmount ?? 0
+          baseAmount = calculatedAmount
+          break
+        case "GROSS_SALARY":
+          baseAmount = grossSalary
+          appliedRate = employeeRubric.rate ?? rubric.defaultRate ?? 0
+          calculatedAmount = Math.round((baseAmount * appliedRate / 100) * 100) / 100
+          break
+        case "BASE_SALARY":
+          baseAmount = profile.baseSalary
+          appliedRate = employeeRubric.rate ?? rubric.defaultRate ?? 0
+          calculatedAmount = Math.round((baseAmount * appliedRate / 100) * 100) / 100
+          break
+        case "NET_SALARY":
+          // Calcul préliminaire du net (sera ajusté)
+          baseAmount = grossSalary - totalDeductions
+          appliedRate = employeeRubric.rate ?? rubric.defaultRate ?? 0
+          calculatedAmount = Math.round((baseAmount * appliedRate / 100) * 100) / 100
+          break
+      }
+
+      // Calculer les montants exonérés et imposables
+      let exemptAmount = 0
+      let taxableAmount = calculatedAmount
+
+      if (rubric.exemptionCeiling && rubric.exemptionCeiling > 0) {
+        exemptAmount = Math.min(calculatedAmount, rubric.exemptionCeiling)
+        taxableAmount = Math.max(0, calculatedAmount - rubric.exemptionCeiling)
+      }
+
+      // Ajouter la ligne de rubrique
+      rubricLines.push({
+        rubricId: rubric.id,
+        rubricCode: rubric.code,
+        rubricName: rubric.name,
+        rubricType: rubric.type,
+        baseAmount,
+        rate: appliedRate,
+        amount: calculatedAmount,
+        isSubjectToTax: rubric.isSubjectToTax,
+        isSubjectToSocial: rubric.isSubjectToSocial,
+        exemptAmount,
+        taxableAmount,
+      })
+
+      // Cumuler les totaux par type
+      if (rubric.type === "PRIME") {
+        totalPrimes += calculatedAmount
+      } else {
+        totalIndemnities += calculatedAmount
+      }
+
+      // Si soumis aux cotisations, calculer les cotisations supplémentaires
+      // (simplifié : on applique le même taux global de cotisations)
+      if (rubric.isSubjectToSocial && taxableAmount > 0) {
+        const socialRate = contributionLines.reduce((sum, c) => sum + c.rate, 0)
+        rubricSocialContributions += Math.round((taxableAmount * socialRate / 100) * 100) / 100
+      }
+    }
+  }
+
+  // 12. Calculer le salaire net final
+  // Net = Brut - Cotisations + Primes + Indemnités + Bonus - Pénalités - Cotisations sur rubriques
   const netSalary = Math.round(
-    (grossSalary - totalDeductions + totalBonuses - totalPenalties) * 100
+    (grossSalary - totalDeductions + totalPrimes + totalIndemnities + totalBonuses - totalPenalties - rubricSocialContributions) * 100
   ) / 100
 
-  // 12. Préparer les ajustements appliqués
+  // 13. Préparer les ajustements appliqués
   const appliedAdjustments = adjustments.map((a) => ({
     id: a.id,
     type: a.type,
@@ -511,11 +622,14 @@ export async function calculatePayroll(
     absenceDays,
     expectedWorkingDays,
     grossSalary,
-    totalDeductions: Math.round(totalDeductions * 100) / 100,
+    totalDeductions: Math.round((totalDeductions + rubricSocialContributions) * 100) / 100,
     totalBonuses: Math.round(totalBonuses * 100) / 100,
+    totalPrimes: Math.round(totalPrimes * 100) / 100,
+    totalIndemnities: Math.round(totalIndemnities * 100) / 100,
     netSalary: Math.max(0, netSalary),
     employerCharges: Math.round(employerCharges * 100) / 100,
     contributionLines,
+    rubricLines,
     appliedAdjustments,
   }
 }

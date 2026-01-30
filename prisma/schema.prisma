@@ -441,6 +441,20 @@ enum AdjustmentType {
   OTHER         // Autre
 }
 
+// Type de rubrique de paie
+enum RubricType {
+  PRIME         // Prime (complément de rémunération, soumise aux cotisations)
+  INDEMNITY     // Indemnité (compensation de charge, peut être exonérée)
+}
+
+// Base de calcul pour les rubriques en pourcentage
+enum RubricCalculationBase {
+  GROSS_SALARY    // Salaire brut
+  BASE_SALARY     // Salaire de base
+  NET_SALARY      // Salaire net
+  FIXED           // Montant fixe
+}
+
 enum PayrollPeriodType {
   MONTHLY       // Mensuel
   BIWEEKLY      // Bi-mensuel
@@ -958,6 +972,8 @@ model User {
   payrollAuditLogs          PayrollAuditLog[] @relation("PayrollAuditUser")
   payrollAccessCodes        PayrollAccessCode[]
   moduleAccessConfigs       ModuleAccessConfig[] @relation("ModuleAccessConfigUpdatedBy")
+  createdEmployeeRubrics    EmployeeRubric[] @relation("EmployeeRubricCreatedBy")
+  payrollCompanySettings    PayrollCompanySettings[] @relation("PayrollCompanySettingsUpdatedBy")
   
   // GED - Relations
   gedFolders                GedFolder[] @relation("GedFolderOwner")
@@ -2138,6 +2154,44 @@ model ModuleAccessConfig {
 // MODULE PAIE - MODÈLES
 // ============================================================================
 
+// Paramètres de l'entreprise pour les bulletins de paie
+model PayrollCompanySettings {
+  id                    String    @id @default(cuid())
+  
+  // Informations légales obligatoires
+  companyName           String    @map("company_name")           // Raison sociale
+  companyAddress        String    @map("company_address")        // Adresse complète
+  companyCity           String    @map("company_city")           // Ville
+  companyPostalCode     String?   @map("company_postal_code")    // Code postal / BP
+  companyCountry        String    @default("Gabon") @map("company_country") // Pays
+  
+  // Numéros d'identification
+  rccmNumber            String?   @map("rccm_number")            // Numéro RCCM
+  nifNumber             String?   @map("nif_number")             // Numéro d'Identification Fiscale
+  cnssEmployerNumber    String?   @map("cnss_employer_number")   // Numéro CNSS employeur
+  
+  // Coordonnées
+  companyPhone          String?   @map("company_phone")          // Téléphone
+  companyEmail          String?   @map("company_email")          // Email
+  companyWebsite        String?   @map("company_website")        // Site web
+  
+  // Logo
+  companyLogo           String?   @map("company_logo")           // URL du logo
+  
+  // Informations complémentaires
+  conventionCollective  String?   @map("convention_collective")  // Convention collective
+  codeApe               String?   @map("code_ape")               // Code APE/NAF
+  
+  // Métadonnées
+  updatedById           String?   @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  
+  updatedBy             User?     @relation("PayrollCompanySettingsUpdatedBy", fields: [updatedById], references: [id])
+  
+  @@map("payroll_company_settings")
+}
+
 // Configuration du profil employé pour la paie
 model EmployeePayrollProfile {
   id                  String        @id @default(cuid())
@@ -2181,6 +2235,7 @@ model EmployeePayrollProfile {
   payrolls            Payroll[]
   adjustments         PayrollAdjustment[]
   contributions       EmployeeContribution[]
+  rubrics             EmployeeRubric[]
 
   @@index([userId])
   @@index([employeeType])
@@ -2334,6 +2389,7 @@ model Payroll {
   contributionLines PayrollContributionLine[]
   adjustments       PayrollAdjustment[]
   auditLogs         PayrollAuditLog[]
+  rubricLines       PayrollRubricLine[]
 
   @@index([employeeProfileId])
   @@index([periodId])
@@ -2422,6 +2478,121 @@ model PayrollAuditLog {
   @@index([payrollId])
   @@index([createdAt])
   @@map("payroll_audit_logs")
+}
+
+// ============================================
+// RUBRIQUES DE PAIE (Primes et Indemnités)
+// ============================================
+
+// Catalogue des rubriques de paie (primes et indemnités)
+model PayrollRubric {
+  id                  String                @id @default(cuid())
+  
+  code                String                @unique // Ex: "PRIME_PERF", "IND_TRANSPORT"
+  name                String                         // Ex: "Prime de performance"
+  description         String?
+  
+  type                RubricType                     // PRIME ou INDEMNITY
+  
+  // Caractéristiques fiscales et sociales
+  isSubjectToTax      Boolean               @default(true) @map("is_subject_to_tax")      // Imposable (IRPP)
+  isSubjectToSocial   Boolean               @default(true) @map("is_subject_to_social")   // Soumis aux cotisations sociales
+  
+  // Mode de calcul
+  calculationBase     RubricCalculationBase @default(FIXED) @map("calculation_base")
+  defaultAmount       Float?                @map("default_amount")      // Montant par défaut
+  defaultRate         Float?                @map("default_rate")        // Taux par défaut (si pourcentage)
+  
+  // Plafond d'exonération (pour certaines indemnités)
+  exemptionCeiling    Float?                @map("exemption_ceiling")   // Plafond exonéré de cotisations
+  
+  // Affichage et organisation
+  displayOrder        Int                   @default(0) @map("display_order")
+  category            String?                          // Catégorie pour regroupement (ex: "Transport", "Performance")
+  
+  isActive            Boolean               @default(true) @map("is_active")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+  
+  // Relations
+  rubricLines         PayrollRubricLine[]
+  employeeRubrics     EmployeeRubric[]
+
+  @@index([type])
+  @@index([isActive])
+  @@index([category])
+  @@map("payroll_rubrics")
+}
+
+// Rubriques assignées à un employé (récurrentes ou temporaires)
+model EmployeeRubric {
+  id                  String                  @id @default(cuid())
+  
+  employeeProfileId   String                  @map("employee_profile_id")
+  rubricId            String                  @map("rubric_id")
+  
+  // Montant personnalisé pour cet employé
+  amount              Float?                  // Montant fixe (si applicable)
+  rate                Float?                  // Taux personnalisé (si pourcentage)
+  
+  // Période d'application
+  startDate           DateTime?               @map("start_date")   // Date de début (null = immédiat)
+  endDate             DateTime?               @map("end_date")     // Date de fin (null = permanent)
+  
+  isActive            Boolean                 @default(true) @map("is_active")
+  
+  // Traçabilité
+  createdById         String                  @map("created_by_id")
+  notes               String?
+  
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+  
+  employeeProfile     EmployeePayrollProfile  @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  rubric              PayrollRubric           @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  createdBy           User                    @relation("EmployeeRubricCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([employeeProfileId, rubricId])
+  @@index([employeeProfileId])
+  @@index([rubricId])
+  @@index([isActive])
+  @@map("employee_rubrics")
+}
+
+// Lignes de rubriques sur un bulletin de paie
+model PayrollRubricLine {
+  id                  String        @id @default(cuid())
+  
+  payrollId           String        @map("payroll_id")
+  rubricId            String        @map("rubric_id")
+  
+  // Snapshot des informations de la rubrique au moment du calcul
+  rubricCode          String        @map("rubric_code")
+  rubricName          String        @map("rubric_name")
+  rubricType          RubricType    @map("rubric_type")
+  
+  // Montants
+  baseAmount          Float         @map("base_amount")     // Base de calcul
+  rate                Float?                                 // Taux appliqué (si pourcentage)
+  amount              Float                                  // Montant final
+  
+  // Caractéristiques appliquées (snapshot)
+  isSubjectToTax      Boolean       @map("is_subject_to_tax")
+  isSubjectToSocial   Boolean       @map("is_subject_to_social")
+  
+  // Montant exonéré (si plafond d'exonération)
+  exemptAmount        Float         @default(0) @map("exempt_amount")
+  taxableAmount       Float         @default(0) @map("taxable_amount")
+  
+  createdAt           DateTime      @default(now()) @map("created_at")
+  
+  payroll             Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  rubric              PayrollRubric @relation(fields: [rubricId], references: [id])
+
+  @@index([payrollId])
+  @@index([rubricId])
+  @@index([rubricType])
+  @@map("payroll_rubric_lines")
 }
 
 // ============================================

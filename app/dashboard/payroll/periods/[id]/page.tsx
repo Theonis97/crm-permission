@@ -85,6 +85,12 @@ interface PayrollPeriodDetail {
         matricule: string | null
       }
     }
+    rubricLines: Array<{
+      id: string
+      rubricName: string
+      rubricType: string
+      amount: number
+    }>
   }>
   stats: {
     totalPayrolls: number
@@ -713,6 +719,7 @@ export default function PayrollPeriodDetailPage() {
                     <TableHead className="text-center">Jours attendus</TableHead>
                     <TableHead className="text-center">Heures</TableHead>
                     <TableHead className="text-right">Brut</TableHead>
+                    <TableHead>Primes / Indemnités</TableHead>
                     <TableHead className="text-right">Cotisations</TableHead>
                     <TableHead className="text-right">Net</TableHead>
                     <TableHead className="text-center">Statut</TableHead>
@@ -759,6 +766,26 @@ export default function PayrollPeriodDetailPage() {
                       <TableCell className="text-right">
                         {formatCurrency(payroll.grossSalary)}
                       </TableCell>
+                      <TableCell>
+                        {payroll.rubricLines && payroll.rubricLines.length > 0 ? (
+                          <div className="space-y-0.5 text-xs">
+                            {payroll.rubricLines.map((rubric) => (
+                              <div key={rubric.id} className="flex items-center gap-1">
+                                <Badge 
+                                  variant="outline" 
+                                  className={rubric.rubricType === 'PRIME' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}
+                                >
+                                  {rubric.rubricType === 'PRIME' ? 'P' : 'I'}
+                                </Badge>
+                                <span className="truncate max-w-[100px]" title={rubric.rubricName}>{rubric.rubricName}</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(rubric.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right text-red-600">
                         -{formatCurrency(payroll.totalDeductions)}
                       </TableCell>
@@ -795,7 +822,10 @@ export default function PayrollPeriodDetailPage() {
                               <Eye className="h-4 w-4 mr-2" />
                               Voir / Modifier
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => window.open(`/api/payroll/print?ids=${payroll.id}`, "_blank")}
+                              disabled={!["VALIDATED", "APPROVED", "PAID"].includes(payroll.status)}
+                            >
                               <Printer className="h-4 w-4 mr-2" />
                               Imprimer
                             </DropdownMenuItem>

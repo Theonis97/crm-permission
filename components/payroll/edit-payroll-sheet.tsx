@@ -37,6 +37,9 @@ import {
   DollarSign,
   AlertCircle,
   Info,
+  Plus,
+  Trash2,
+  Gift,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -100,6 +103,16 @@ interface PayrollDetail {
       code: string
     }
   }>
+  rubricLines: Array<{
+    id: string
+    rubricId: string
+    rubricCode: string
+    rubricName: string
+    rubricType: "PRIME" | "INDEMNITY"
+    amount: number
+    isSubjectToTax: boolean
+    isSubjectToSocial: boolean
+  }>
 }
 
 interface EditPayrollSheetProps {
@@ -143,11 +156,53 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
     netSalary: 0,
   })
 
+  // Gestion des rubriques (primes/indemnités)
+  const [availableRubrics, setAvailableRubrics] = useState<Array<{
+    id: string
+    code: string
+    name: string
+    type: "PRIME" | "INDEMNITY"
+    calculationBase: string
+    defaultAmount: number | null
+    defaultRate: number | null
+    isSubjectToTax: boolean
+    isSubjectToSocial: boolean
+    exemptionCeiling: number | null
+  }>>([])
+  const [selectedRubrics, setSelectedRubrics] = useState<Array<{
+    id: string
+    rubricId: string
+    rubricCode: string
+    rubricName: string
+    rubricType: "PRIME" | "INDEMNITY"
+    amount: number
+    isSubjectToTax: boolean
+    isSubjectToSocial: boolean
+  }>>([])
+  const [selectedRubricId, setSelectedRubricId] = useState("")
+  const [rubricAmount, setRubricAmount] = useState("")
+  const [isLoadingRubrics, setIsLoadingRubrics] = useState(false)
+
   useEffect(() => {
     if (open && payrollId) {
       fetchPayroll()
+      fetchRubrics()
     }
   }, [open, payrollId])
+
+  const fetchRubrics = async () => {
+    try {
+      setIsLoadingRubrics(true)
+      const res = await fetch("/api/payroll/rubrics?isActive=true")
+      if (!res.ok) throw new Error("Erreur lors du chargement des rubriques")
+      const data = await res.json()
+      setAvailableRubrics(data.rubrics || [])
+    } catch (error) {
+      console.error("Error fetching rubrics:", error)
+    } finally {
+      setIsLoadingRubrics(false)
+    }
+  }
 
   const fetchPayroll = async () => {
     if (!payrollId) return
@@ -167,6 +222,23 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
         totalDeductions: data.totalDeductions,
         netSalary: data.netSalary,
       })
+      // Charger les rubriques existantes du bulletin
+      if (data.rubricLines && data.rubricLines.length > 0) {
+        setSelectedRubrics(data.rubricLines.map((rl: any) => ({
+          id: rl.id,
+          rubricId: rl.rubricId,
+          rubricCode: rl.rubricCode,
+          rubricName: rl.rubricName,
+          rubricType: rl.rubricType,
+          amount: rl.amount,
+          isSubjectToTax: rl.isSubjectToTax,
+          isSubjectToSocial: rl.isSubjectToSocial,
+        })))
+      } else {
+        setSelectedRubrics([])
+      }
+      setSelectedRubricId("")
+      setRubricAmount("")
     } catch (error) {
       console.error("Error fetching payroll:", error)
       toast.error("Erreur lors du chargement du bulletin")
@@ -175,14 +247,89 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
     }
   }
 
+  // Calculer le total des rubriques ajoutées
+  const totalSelectedRubrics = selectedRubrics.reduce((sum, r) => sum + r.amount, 0)
+  const totalPrimes = selectedRubrics.filter(r => r.rubricType === "PRIME").reduce((sum, r) => sum + r.amount, 0)
+  const totalIndemnities = selectedRubrics.filter(r => r.rubricType === "INDEMNITY").reduce((sum, r) => sum + r.amount, 0)
+
   const recalculateNet = () => {
-    const net = formData.grossSalary - formData.totalDeductions + formData.totalBonuses
+    const net = formData.grossSalary - formData.totalDeductions + totalSelectedRubrics
     setFormData(prev => ({ ...prev, netSalary: Math.max(0, net) }))
   }
 
   useEffect(() => {
     recalculateNet()
-  }, [formData.grossSalary, formData.totalDeductions, formData.totalBonuses])
+  }, [formData.grossSalary, formData.totalDeductions, totalSelectedRubrics])
+
+  // Quand on sélectionne une rubrique, pré-remplir le montant par défaut
+  const handleRubricSelect = (rubricId: string) => {
+    setSelectedRubricId(rubricId)
+    const rubric = availableRubrics.find(r => r.id === rubricId)
+    if (rubric) {
+      if (rubric.calculationBase === "FIXED" && rubric.defaultAmount) {
+        setRubricAmount(rubric.defaultAmount.toString())
+      } else if (rubric.defaultRate && payroll) {
+        // Calculer le montant basé sur le taux
+        let baseAmount = 0
+        switch (rubric.calculationBase) {
+          case "GROSS_SALARY":
+            baseAmount = formData.grossSalary
+            break
+          case "BASE_SALARY":
+            baseAmount = payroll.employeeProfile.baseSalary
+            break
+          case "NET_SALARY":
+            baseAmount = formData.netSalary
+            break
+        }
+        const calculatedAmount = Math.round((baseAmount * rubric.defaultRate / 100) * 100) / 100
+        setRubricAmount(calculatedAmount.toString())
+      } else {
+        setRubricAmount("")
+      }
+    }
+  }
+
+  const addSelectedRubric = () => {
+    if (!selectedRubricId) {
+      toast.error("Veuillez sélectionner une rubrique")
+      return
+    }
+    const rubric = availableRubrics.find(r => r.id === selectedRubricId)
+    if (!rubric) return
+
+    const amount = parseFloat(rubricAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Le montant doit être un nombre positif")
+      return
+    }
+
+    // Vérifier si la rubrique n'est pas déjà ajoutée
+    if (selectedRubrics.some(r => r.rubricId === selectedRubricId)) {
+      toast.error("Cette rubrique est déjà ajoutée")
+      return
+    }
+
+    setSelectedRubrics(prev => [
+      ...prev,
+      {
+        id: `rubric-${Date.now()}`,
+        rubricId: rubric.id,
+        rubricCode: rubric.code,
+        rubricName: rubric.name,
+        rubricType: rubric.type,
+        amount,
+        isSubjectToTax: rubric.isSubjectToTax,
+        isSubjectToSocial: rubric.isSubjectToSocial,
+      }
+    ])
+    setSelectedRubricId("")
+    setRubricAmount("")
+  }
+
+  const removeSelectedRubric = (id: string) => {
+    setSelectedRubrics(prev => prev.filter(r => r.id !== id))
+  }
 
   const handleSave = async () => {
     if (!payroll) return
@@ -197,9 +344,10 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
           hoursWorked: formData.hoursWorked,
           overtimeHours: formData.overtimeHours,
           grossSalary: formData.grossSalary,
-          totalBonuses: formData.totalBonuses,
+          totalBonuses: totalSelectedRubrics, // Total des rubriques
           totalDeductions: formData.totalDeductions,
           netSalary: formData.netSalary,
+          rubricLines: selectedRubrics, // Envoyer les détails des rubriques
         }),
       })
       
@@ -298,40 +446,17 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                       ))}
                     </div>
                   </div>
-                </div>
-
-                {/* Period info */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    Période: {formatDate(payroll.period.startDate)} - {formatDate(payroll.period.endDate)}
-                  </span>
-                  <span className="text-gray-400">•</span>
-                  <span>{payroll.period.workingDays} jours ouvrés</span>
-                </div>
-
-                {/* Warning if no hours */}
-                {payroll.hoursWorked === 0 && (
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
-                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-amber-800">Aucune heure pointée</p>
-                      <p className="text-sm text-amber-700">
-                        Cet employé n'a pas de pointage pour cette période. 
-                        Vous pouvez ajuster manuellement les heures et le salaire.
-                      </p>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-indigo-600">{payroll.expectedWorkingDays}</p>
+                    <p className="text-xs text-gray-500">jours ouvrés</p>
                   </div>
-                )}
+                </div>
 
                 <Separator />
 
                 {/* Time data */}
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Temps de travail
-                  </h3>
+                 
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="daysWorked">Jours travaillés</Label>
@@ -370,55 +495,214 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                       />
                     </div>
                   </div>
-                  <div className="mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                    <p className="text-sm text-blue-800 font-medium">
-                      Jours attendus pour cet employé: <span className="font-bold">{payroll.expectedWorkingDays} jours</span>
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Basé sur son planning de travail ({payroll.employeeProfile.workingDaysPattern.length} jours/semaine)
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <Info className="h-3 w-3" />
-                    Données brutes du pointage: {payroll.rawDaysWorked} jours, {payroll.rawHoursWorked}h
-                  </p>
                 </div>
 
                 <Separator />
 
                 {/* Salary data */}
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" />
-                    Rémunération
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="grossSalary">Salaire brut (FCFA)</Label>
-                      <Input
-                        id="grossSalary"
-                        type="number"
-                        min={0}
-                        step={1000}
-                        value={formData.grossSalary}
-                        onChange={(e) => setFormData(prev => ({ ...prev, grossSalary: parseFloat(e.target.value) || 0 }))}
-                        disabled={!canEdit}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="totalBonuses">Primes (FCFA)</Label>
-                      <Input
-                        id="totalBonuses"
-                        type="number"
-                        min={0}
-                        step={1000}
-                        value={formData.totalBonuses}
-                        onChange={(e) => setFormData(prev => ({ ...prev, totalBonuses: parseFloat(e.target.value) || 0 }))}
-                        disabled={!canEdit}
-                      />
-                    </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="grossSalary">Salaire brut (FCFA)</Label>
+                    <Input
+                      id="grossSalary"
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={formData.grossSalary}
+                      onChange={(e) => setFormData(prev => ({ ...prev, grossSalary: parseFloat(e.target.value) || 0 }))}
+                      disabled={!canEdit}
+                    />
                   </div>
                 </div>
+
+                {/* Section Ajout de primes/indemnités via rubriques */}
+                {canEdit && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Gift className="h-4 w-4 text-green-600" />
+                        Ajouter des primes / indemnités
+                      </h3>
+                      
+                      {/* Liste des rubriques ajoutées */}
+                      {selectedRubrics.length > 0 && (
+                        <div className="mb-4 space-y-1">
+                          {selectedRubrics.map((rubric) => (
+                            <div key={rubric.id} className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className={`text-xs ${
+                                  rubric.rubricType === "PRIME" 
+                                    ? "bg-green-100 text-green-700 border-green-300" 
+                                    : "bg-blue-100 text-blue-700 border-blue-300"
+                                }`}>
+                                  {rubric.rubricType === "PRIME" ? "Prime" : "Indemnité"}
+                                </Badge>
+                                <span className="text-sm text-gray-900">{rubric.rubricName}</span>
+                                {rubric.isSubjectToTax && (
+                                  <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-600 border-orange-200">
+                                    Imposable
+                                  </Badge>
+                                )}
+                                {rubric.isSubjectToSocial && (
+                                  <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-600 border-purple-200">
+                                    Cotisable
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium text-gray-900">{formatCurrency(rubric.amount)}</span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeSelectedRubric(rubric.id)}
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex justify-end pt-2 text-sm font-medium text-gray-700">
+                            Total: {formatCurrency(totalSelectedRubrics)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Formulaire d'ajout */}
+                      <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50">
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Sélectionner une rubrique</Label>
+                            <Select value={selectedRubricId} onValueChange={handleRubricSelect}>
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Choisir une prime ou indemnité..." />
+                              </SelectTrigger>
+                              <SelectContent className="z-[9999]">
+                                {isLoadingRubrics ? (
+                                  <div className="p-2 text-center text-sm text-gray-500">Chargement...</div>
+                                ) : availableRubrics.length === 0 ? (
+                                  <div className="p-2 text-center text-sm text-gray-500">Aucune rubrique disponible</div>
+                                ) : (
+                                  <>
+                                    {availableRubrics.filter(r => r.type === "PRIME").length > 0 && (
+                                      <>
+                                        <div className="px-2 py-1.5 text-xs font-semibold text-green-700 bg-green-50">Primes</div>
+                                        {availableRubrics.filter(r => r.type === "PRIME").map((rubric) => (
+                                          <SelectItem key={rubric.id} value={rubric.id}>
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium">{rubric.name}</span>
+                                              <span className="text-xs text-gray-500">({rubric.code})</span>
+                                              {rubric.defaultAmount && (
+                                                <span className="text-xs text-green-600">{formatCurrency(rubric.defaultAmount)}</span>
+                                              )}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </>
+                                    )}
+                                    {availableRubrics.filter(r => r.type === "INDEMNITY").length > 0 && (
+                                      <>
+                                        <div className="px-2 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50">Indemnités</div>
+                                        {availableRubrics.filter(r => r.type === "INDEMNITY").map((rubric) => (
+                                          <SelectItem key={rubric.id} value={rubric.id}>
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium">{rubric.name}</span>
+                                              <span className="text-xs text-gray-500">({rubric.code})</span>
+                                              {rubric.defaultAmount && (
+                                                <span className="text-xs text-blue-600">{formatCurrency(rubric.defaultAmount)}</span>
+                                              )}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          {selectedRubricId && (
+                            <>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Montant (FCFA)</Label>
+                                <Input
+                                  type="number"
+                                  placeholder="Montant"
+                                  min={0}
+                                  value={rubricAmount}
+                                  onChange={(e) => setRubricAmount(e.target.value)}
+                                  className="h-9"
+                                />
+                                {availableRubrics.find(r => r.id === selectedRubricId)?.defaultAmount && (
+                                  <p className="text-xs text-gray-500">
+                                    Montant par défaut: {formatCurrency(availableRubrics.find(r => r.id === selectedRubricId)?.defaultAmount || 0)}
+                                  </p>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addSelectedRubric}
+                                className="w-full"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Ajouter cette rubrique
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Affichage des rubriques en lecture seule */}
+                {!canEdit && selectedRubrics.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Gift className="h-4 w-4 text-green-600" />
+                        Primes / Indemnités
+                      </h3>
+                      <div className="space-y-1">
+                        {selectedRubrics.map((rubric) => (
+                          <div key={rubric.id} className="flex items-center justify-between py-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className={`text-xs ${
+                                rubric.rubricType === "PRIME" 
+                                  ? "bg-green-100 text-green-700 border-green-300" 
+                                  : "bg-blue-100 text-blue-700 border-blue-300"
+                              }`}>
+                                {rubric.rubricType === "PRIME" ? "Prime" : "Indemnité"}
+                              </Badge>
+                              <span className="text-sm text-gray-900">{rubric.rubricName}</span>
+                              {rubric.isSubjectToTax && (
+                                <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-600 border-orange-200">
+                                  Imposable
+                                </Badge>
+                              )}
+                              {rubric.isSubjectToSocial && (
+                                <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-600 border-purple-200">
+                                  Cotisable
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-sm font-medium text-gray-900">{formatCurrency(rubric.amount)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-end pt-2 text-sm font-medium text-gray-700">
+                          Total: {formatCurrency(totalSelectedRubrics)}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* Contributions */}
                 {payroll.contributionLines.length > 0 && (
@@ -481,7 +765,8 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                     </div>
                     <div className="text-right text-sm text-green-700">
                       <p>Brut: {formatCurrency(formData.grossSalary)}</p>
-                      {formData.totalBonuses > 0 && <p>+ Primes: {formatCurrency(formData.totalBonuses)}</p>}
+                      {totalPrimes > 0 && <p>+ Primes: {formatCurrency(totalPrimes)}</p>}
+                      {totalIndemnities > 0 && <p>+ Indemnités: {formatCurrency(totalIndemnities)}</p>}
                       {formData.totalDeductions > 0 && <p>- Cotisations: {formatCurrency(formData.totalDeductions)}</p>}
                     </div>
                   </div>
