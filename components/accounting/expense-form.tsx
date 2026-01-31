@@ -7,11 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2, Upload, X, FileText, Plus } from "lucide-react"
-import { format } from "date-fns"
-import { fr } from "date-fns/locale"
+import { Loader2, Upload, X, FileText, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ExpenseDocument {
@@ -44,9 +40,37 @@ interface ExpenseFormProps {
     documentUrl?: string
     documents?: Array<{ id: string; url: string; name: string; type?: string }>
   }
-  onSubmit: (data: any) => Promise<void>
+  onSubmit: (data: {
+    storeId: string | null
+    categoryId: string
+    title: string
+    description: string
+    amount: number
+    supplierName: string
+    supplierPhone: string
+    dueDate: Date
+    periodicity: string
+    paymentDay: number | null
+    isRecurring: boolean
+    documents: ExpenseDocument[]
+    documentsToDelete: string[]
+  }) => Promise<void>
   onCancel: () => void
   isLoading?: boolean
+}
+
+interface FormData {
+  storeId: string
+  categoryId: string
+  title: string
+  description: string
+  amount: number
+  supplierName: string
+  supplierPhone: string
+  dueDate: Date
+  periodicity: string
+  paymentDay: number
+  isRecurring: boolean
 }
 
 export function ExpenseForm({
@@ -57,6 +81,12 @@ export function ExpenseForm({
   onCancel,
   isLoading = false,
 }: ExpenseFormProps) {
+  
+  // Fonction pour formater une date au format ISO (YYYY-MM-DD) pour l'input date
+  const formatDateISO = (date: Date): string => {
+    return date.toISOString().split('T')[0]
+  }
+  
   const [formData, setFormData] = useState({
     storeId: initialData?.storeId || "",
     categoryId: initialData?.categoryId || "",
@@ -274,29 +304,22 @@ export function ExpenseForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Date d'échéance *</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !formData.dueDate && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.dueDate ? format(formData.dueDate, "PPP", { locale: fr }) : "Sélectionner"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[2100]">
-              <Calendar
-                mode="single"
-                selected={formData.dueDate}
-                onSelect={(date: Date | undefined) => date && setFormData({ ...formData, dueDate: date })}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+          <Label htmlFor="dueDate">Date d&apos;échéance *</Label>
+          <Input
+            id="dueDate"
+            type="date"
+            value={formData.dueDate ? formatDateISO(formData.dueDate) : ""}
+            onChange={(e) => {
+              const dateValue = e.target.value
+              if (dateValue) {
+                setFormData({ ...formData, dueDate: new Date(dateValue) })
+              } else {
+                setFormData({ ...formData, dueDate: new Date() })
+              }
+            }}
+            required
+            className="w-full"
+          />
         </div>
 
         <div className="space-y-2">
