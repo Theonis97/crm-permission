@@ -464,16 +464,7 @@ export function AddEmployeeProfileSheet({ open, onOpenChange, onSuccess }: AddEm
               ) : (
                 <ScrollArea className="flex-1 px-6">
                   <div className="space-y-4 pb-4">
-                    {/* Bouton créer nouvel utilisateur */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full border-dashed"
-                      onClick={handleCreateUser}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Créer un nouvel utilisateur
-                    </Button>
+                    
                     
                     {availableUsers.length === 0 && configuredUsers.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
