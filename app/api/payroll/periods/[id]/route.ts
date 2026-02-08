@@ -69,6 +69,7 @@ export async function GET(
         PENDING: period.payrolls.filter((p) => p.status === "PENDING").length,
         VALIDATED: period.payrolls.filter((p) => p.status === "VALIDATED").length,
         APPROVED: period.payrolls.filter((p) => p.status === "APPROVED").length,
+        PARTIALLY_PAID: period.payrolls.filter((p) => p.status === "PARTIALLY_PAID").length,
         PAID: period.payrolls.filter((p) => p.status === "PAID").length,
         CANCELLED: period.payrolls.filter((p) => p.status === "CANCELLED").length,
       },

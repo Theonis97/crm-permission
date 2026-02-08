@@ -78,6 +78,8 @@ interface PayrollPeriodDetail {
     totalDeductions: number
     totalBonuses: number
     netSalary: number
+    paidAmount: number
+    remainingAmount: number
     employeeProfile: {
       id: string
       user: {
@@ -108,6 +110,7 @@ const statusColors: Record<string, string> = {
   PENDING: "bg-yellow-100 text-yellow-800",
   VALIDATED: "bg-blue-100 text-blue-800",
   APPROVED: "bg-purple-100 text-purple-800",
+  PARTIALLY_PAID: "bg-orange-100 text-orange-800",
   PAID: "bg-green-100 text-green-800",
   CANCELLED: "bg-red-100 text-red-800",
 }
@@ -117,6 +120,7 @@ const statusLabels: Record<string, string> = {
   PENDING: "En attente",
   VALIDATED: "Validé RH",
   APPROVED: "Approuvé",
+  PARTIALLY_PAID: "Partiellement payé",
   PAID: "Payé",
   CANCELLED: "Annulé",
 }
@@ -372,7 +376,7 @@ export default function PayrollPeriodDetailPage() {
   // Bulletins sélectionnés imprimables (VALIDATED ou APPROVED ou PAID)
   const printableSelected = Array.from(selectedPayrolls).filter(id => {
     const payroll = period?.payrolls.find(p => p.id === id)
-    return payroll && ["VALIDATED", "APPROVED", "PAID"].includes(payroll.status)
+    return payroll && ["VALIDATED", "APPROVED", "PARTIALLY_PAID", "PAID"].includes(payroll.status)
   })
 
   // Actions groupées
@@ -445,11 +449,11 @@ export default function PayrollPeriodDetailPage() {
   const handleBulkPay = async () => {
     const toPay = Array.from(selectedPayrolls).filter(id => {
       const payroll = period?.payrolls.find(p => p.id === id)
-      return payroll && payroll.status === "APPROVED"
+      return payroll && (payroll.status === "APPROVED" || payroll.status === "PARTIALLY_PAID")
     })
 
     if (toPay.length === 0) {
-      toast.error("Aucun bulletin à marquer payé dans la sélection")
+      toast.error("Aucun bulletin approuvé ou partiellement payé dans la sélection")
       return
     }
 
@@ -634,7 +638,7 @@ export default function PayrollPeriodDetailPage() {
         </div>
 
         {/* Status breakdown */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
           {Object.entries(statusLabels).map(([status, label]) => (
             <div
               key={status}
@@ -841,8 +845,15 @@ export default function PayrollPeriodDetailPage() {
                       <TableCell className="text-right text-red-600">
                         -{formatCurrency(payroll.totalDeductions)}
                       </TableCell>
-                      <TableCell className="text-right font-bold">
-                        {formatCurrency(payroll.netSalary)}
+                      <TableCell className="text-right">
+                        <span className="font-bold">{formatCurrency(payroll.netSalary)}</span>
+                        {payroll.status === "PARTIALLY_PAID" && (
+                          <div className="text-xs mt-0.5">
+                            <span className="text-green-600">{formatCurrency(payroll.paidAmount)}</span>
+                            <span className="text-gray-400"> / </span>
+                            <span className="text-orange-600">{formatCurrency(payroll.remainingAmount)} restant</span>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge className={statusColors[payroll.status]}>
@@ -876,7 +887,7 @@ export default function PayrollPeriodDetailPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => window.open(`/api/payroll/print?ids=${payroll.id}`, "_blank")}
-                              disabled={!["VALIDATED", "APPROVED", "PAID"].includes(payroll.status)}
+                              disabled={!["VALIDATED", "APPROVED", "PARTIALLY_PAID", "PAID"].includes(payroll.status)}
                             >
                               <Printer className="h-4 w-4 mr-2" />
                               Imprimer
@@ -899,12 +910,15 @@ export default function PayrollPeriodDetailPage() {
                                 Approuver (Direction)
                               </DropdownMenuItem>
                             )}
-                            {payroll.status === "APPROVED" && (
+                            {(payroll.status === "APPROVED" || payroll.status === "PARTIALLY_PAID") && (
                               <DropdownMenuItem
-                                onClick={() => handlePay(payroll.id)}
+                                onClick={() => {
+                                  setSelectedPayrollId(payroll.id)
+                                  setShowEditSheet(true)
+                                }}
                               >
                                 <CreditCard className="h-4 w-4 mr-2" />
-                                Marquer payé
+                                {payroll.status === "PARTIALLY_PAID" ? "Enregistrer un versement" : "Payer / Acompte"}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>

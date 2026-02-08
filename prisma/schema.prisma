@@ -424,12 +424,13 @@ enum ContractType {
 }
 
 enum PayrollStatus {
-  DRAFT         // Brouillon (en cours de calcul)
-  PENDING       // En attente de validation RH
-  VALIDATED     // Validé par RH
-  APPROVED      // Approuvé par direction
-  PAID          // Payé
-  CANCELLED     // Annulé
+  DRAFT           // Brouillon (en cours de calcul)
+  PENDING         // En attente de validation RH
+  VALIDATED       // Validé par RH
+  APPROVED        // Approuvé par direction
+  PARTIALLY_PAID  // Partiellement payé (acomptes en cours)
+  PAID            // Payé intégralement
+  CANCELLED       // Annulé
 }
 
 enum AdjustmentType {
@@ -974,6 +975,7 @@ model User {
   moduleAccessConfigs       ModuleAccessConfig[] @relation("ModuleAccessConfigUpdatedBy")
   createdEmployeeRubrics    EmployeeRubric[] @relation("EmployeeRubricCreatedBy")
   payrollCompanySettings    PayrollCompanySettings[] @relation("PayrollCompanySettingsUpdatedBy")
+  payrollPayments           PayrollPayment[] @relation("PayrollPaymentPaidBy")
   
   // GED - Relations
   gedFolders                GedFolder[] @relation("GedFolderOwner")
@@ -2377,6 +2379,8 @@ model Payroll {
   // Paiement
   paidAt            DateTime?     @map("paid_at")
   paymentReference  String?       @map("payment_reference")
+  paidAmount        Float         @default(0) @map("paid_amount")
+  remainingAmount   Float         @default(0) @map("remaining_amount")
   
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
@@ -2390,11 +2394,38 @@ model Payroll {
   adjustments       PayrollAdjustment[]
   auditLogs         PayrollAuditLog[]
   rubricLines       PayrollRubricLine[]
+  payments          PayrollPayment[]
 
   @@index([employeeProfileId])
   @@index([periodId])
   @@index([status])
   @@map("payrolls")
+}
+
+// Versements (acomptes) sur un bulletin de paie
+model PayrollPayment {
+  id                String   @id @default(cuid())
+  
+  payrollId         String   @map("payroll_id")
+  amount            Float
+  paymentDate       DateTime @map("payment_date")
+  paymentMode       String   @default("BANK") @map("payment_mode") // BANK, CASH, MOBILE_MONEY
+  reference         String?
+  notes             String?
+  
+  // Lien vers la dépense comptable créée
+  expensePaymentId  String?  @map("expense_payment_id")
+  
+  // Traçabilité
+  paidById          String   @map("paid_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  payroll           Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  paidBy            User     @relation("PayrollPaymentPaidBy", fields: [paidById], references: [id])
+
+  @@index([payrollId])
+  @@index([paymentDate])
+  @@map("payroll_payments")
 }
 
 // Lignes de cotisations sur un bulletin

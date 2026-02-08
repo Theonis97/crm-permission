@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const payrolls = await prisma.payroll.findMany({
       where: {
         id: { in: ids },
-        status: { in: ["VALIDATED", "APPROVED", "PAID"] },
+        status: { in: ["VALIDATED", "APPROVED", "PARTIALLY_PAID", "PAID"] },
       },
       include: {
         employeeProfile: {
@@ -66,6 +66,17 @@ export async function GET(request: NextRequest) {
           ],
         },
         adjustments: true,
+        payments: {
+          include: {
+            paidBy: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+          orderBy: { paymentDate: "asc" },
+        },
       },
       orderBy: {
         number: "asc",
@@ -84,7 +95,7 @@ export async function GET(request: NextRequest) {
         </head>
         <body>
           <h1>Aucun bulletin imprimable</h1>
-          <p>Seuls les bulletins validés, approuvés ou payés peuvent être imprimés.</p>
+          <p>Seuls les bulletins validés, approuvés, partiellement payés ou payés peuvent être imprimés.</p>
           <button onclick="window.close()">Fermer</button>
         </body>
         </html>`,
@@ -114,6 +125,7 @@ export async function GET(request: NextRequest) {
     const statusLabels: Record<string, string> = {
       VALIDATED: "Validé",
       APPROVED: "Approuvé",
+      PARTIALLY_PAID: "Partiellement payé",
       PAID: "Payé",
     }
 
@@ -335,6 +347,45 @@ export async function GET(request: NextRequest) {
           <p><strong>Net à payer :</strong> ${formatCurrency(payroll.netSalary)}</p>
         </div>
 
+        <!-- Section Paiement Partiel -->
+        ${payroll.status === 'PARTIALLY_PAID' || (payroll.status === 'PAID' && payroll.payments && payroll.payments.length > 1) ? `
+        <div class="payment-status-section">
+          <h3 class="payment-status-title">
+            ${payroll.status === 'PARTIALLY_PAID' ? 'PAIEMENT PARTIEL' : 'PAIEMENT EN PLUSIEURS VERSEMENTS'}
+          </h3>
+          <div class="payment-summary">
+            <p><strong>Montant total :</strong> ${formatCurrency(payroll.netSalary)}</p>
+            <p><strong>Montant payé :</strong> ${formatCurrency(payroll.paidAmount)}</p>
+            ${payroll.status === 'PARTIALLY_PAID' ? `<p><strong>Reste à payer :</strong> ${formatCurrency(payroll.remainingAmount)}</p>` : ''}
+          </div>
+
+          ${payroll.payments && payroll.payments.length > 0 ? `
+          <table class="payments-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Montant</th>
+                <th>Mode</th>
+                <th>Référence</th>
+                <th>Par</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payroll.payments.map((p: any) => `
+              <tr>
+                <td>${formatDate(p.paymentDate)}</td>
+                <td class="right">${formatCurrency(p.amount)}</td>
+                <td>${p.paymentMode === 'BANK' ? 'Virement' : p.paymentMode === 'CASH' ? 'Espèces' : p.paymentMode === 'MOBILE_MONEY' ? 'Mobile Money' : p.paymentMode === 'CHECK' ? 'Chèque' : p.paymentMode}</td>
+                <td>${p.reference || '-'}</td>
+                <td>${(p.paidBy?.firstName || '') + ' ' + (p.paidBy?.lastName || '')}</td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ` : ''}
+        </div>
+        ` : ''}
+
         <!-- Charges patronales (info) -->
         ${payroll.employerCharges > 0 ? `
         <div class="employer-charges">
@@ -345,8 +396,9 @@ export async function GET(request: NextRequest) {
         <!-- Pied de page -->
         <div class="footer-section">
           <div class="payment-info">
-            <p><strong>Mode de paiement :</strong> Virement bancaire</p>
-            <p><strong>Date de paiement :</strong> ${payroll.paidAt ? formatDate(payroll.paidAt) : 'En attente'}</p>
+            <p><strong>Mode de paiement :</strong> ${payroll.payments && payroll.payments.length > 0 ? 'Paiements multiples (voir détail ci-dessus)' : 'Virement bancaire'}</p>
+            <p><strong>Statut :</strong> ${statusLabels[payroll.status] || payroll.status}${payroll.status === 'PARTIALLY_PAID' ? ` — Payé: ${formatCurrency(payroll.paidAmount)} | Reste: ${formatCurrency(payroll.remainingAmount)}` : ''}</p>
+            <p><strong>Date ${payroll.status === 'PARTIALLY_PAID' ? 'dernier versement' : 'de paiement'} :</strong> ${payroll.paidAt ? formatDate(payroll.paidAt) : payroll.payments && payroll.payments.length > 0 ? formatDate(payroll.payments[payroll.payments.length - 1].paymentDate) : 'En attente'}</p>
           </div>
           <div class="signatures">
             <div class="signature-box">
@@ -629,6 +681,57 @@ export async function GET(request: NextRequest) {
 
         .legal-notice p {
           margin: 2px 0;
+        }
+
+        /* Section Paiement Partiel */
+        .payment-status-section {
+          margin: 15px 0;
+          border: 1px solid #333;
+          border-top: 2px solid #333;
+        }
+
+        .payment-status-title {
+          background: #333;
+          color: white;
+          padding: 8px 15px;
+          font-size: 12px;
+          font-weight: bold;
+          margin: 0;
+        }
+
+        .payment-summary {
+          padding: 10px 15px;
+          background: #f9f9f9;
+        }
+
+        .payment-summary p {
+          margin: 3px 0;
+          font-size: 10px;
+        }
+
+        .payments-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 9px;
+        }
+
+        .payments-table th {
+          background: #333;
+          color: white;
+          padding: 6px 8px;
+          text-align: left;
+          font-weight: 600;
+        }
+
+        .payments-table td {
+          padding: 5px 8px;
+          border-bottom: 1px solid #ddd;
+        }
+
+        .payments-table .right { text-align: right; }
+
+        .payments-table tbody tr:nth-child(even) {
+          background: #f9f9f9;
         }
 
         /* Bouton d'impression */

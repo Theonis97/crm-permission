@@ -36,6 +36,7 @@ interface PayrollStats {
       PENDING: number
       VALIDATED: number
       APPROVED: number
+      PARTIALLY_PAID: number
       PAID: number
     }
   } | null
@@ -348,7 +349,7 @@ export default function PayrollDashboardPage() {
               {stats?.currentPeriod ? (
                 <div className="space-y-4">
                   {/* Status breakdown */}
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     <div className="bg-gray-50 rounded-lg p-3 text-center">
                       <p className="text-2xl font-bold text-gray-600">
                         {stats.currentPeriod.byStatus?.DRAFT || 0}
@@ -372,6 +373,12 @@ export default function PayrollDashboardPage() {
                         {stats.currentPeriod.byStatus?.APPROVED || 0}
                       </p>
                       <p className="text-xs text-purple-600">Approuvés</p>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg p-3 text-center">
+                      <p className="text-2xl font-bold text-orange-600">
+                        {stats.currentPeriod.byStatus?.PARTIALLY_PAID || 0}
+                      </p>
+                      <p className="text-xs text-orange-600">Partiellement payés</p>
                     </div>
                     <div className="bg-green-50 rounded-lg p-3 text-center">
                       <p className="text-2xl font-bold text-green-600">

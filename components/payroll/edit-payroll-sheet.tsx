@@ -40,6 +40,9 @@ import {
   Plus,
   Trash2,
   Gift,
+  Banknote,
+  Wallet,
+  History,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -59,6 +62,8 @@ interface PayrollDetail {
   totalDeductions: number
   totalBonuses: number
   netSalary: number
+  paidAmount: number
+  remainingAmount: number
   employerCharges: number
   employeeProfile: {
     id: string
@@ -394,6 +399,129 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
       return `${firstName[0]}${lastName[0]}`.toUpperCase()
     }
     return email.substring(0, 2).toUpperCase()
+  }
+
+  // État pour les paiements
+  const [paymentHistory, setPaymentHistory] = useState<Array<{
+    id: string
+    amount: number
+    paymentDate: string
+    paymentMode: string
+    reference: string | null
+    notes: string | null
+    paidBy: { id: string; name: string }
+    createdAt: string
+  }>>([])
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false)
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    paymentMode: "BANK",
+    reference: "",
+    notes: "",
+  })
+
+  const canPay = payroll?.status === "APPROVED" || payroll?.status === "PARTIALLY_PAID"
+
+  const fetchPayments = async () => {
+    if (!payrollId) return
+    try {
+      setIsLoadingPayments(true)
+      const res = await fetch(`/api/payroll/${payrollId}/payments`)
+      if (!res.ok) throw new Error("Erreur")
+      const data = await res.json()
+      setPaymentHistory(data.payments || [])
+    } catch (error) {
+      console.error("Error fetching payments:", error)
+    } finally {
+      setIsLoadingPayments(false)
+    }
+  }
+
+  useEffect(() => {
+    if (open && payrollId && (payroll?.status === "PARTIALLY_PAID" || payroll?.status === "PAID")) {
+      fetchPayments()
+    }
+  }, [open, payrollId, payroll?.status])
+
+  const handleSubmitPayment = async () => {
+    if (!payroll) return
+    const amount = parseFloat(paymentForm.amount)
+    const remaining = payroll.status === "APPROVED" ? payroll.netSalary : payroll.remainingAmount
+
+    if (!paymentForm.amount || isNaN(amount) || amount <= 0) {
+      toast.error("Veuillez saisir un montant valide")
+      return
+    }
+    if (amount > remaining) {
+      toast.error(`Le montant ne peut pas dépasser le reste à payer (${formatCurrency(remaining)})`)
+      return
+    }
+
+    try {
+      setIsSubmittingPayment(true)
+      const res = await fetch(`/api/payroll/${payroll.id}/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amount,
+          paymentMode: paymentForm.paymentMode,
+          reference: paymentForm.reference || undefined,
+          notes: paymentForm.notes || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Erreur lors du paiement")
+      }
+      const data = await res.json()
+      toast.success(data.message)
+      setPaymentForm({ amount: "", paymentMode: "BANK", reference: "", notes: "" })
+      fetchPayroll()
+      fetchPayments()
+      onSuccess?.()
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsSubmittingPayment(false)
+    }
+  }
+
+  const handlePayFullBalance = async () => {
+    if (!payroll) return
+    try {
+      setIsSubmittingPayment(true)
+      const res = await fetch(`/api/payroll/${payroll.id}/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentMode: paymentForm.paymentMode || "BANK",
+          reference: paymentForm.reference || undefined,
+          notes: paymentForm.notes || "Paiement du solde",
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Erreur lors du paiement")
+      }
+      const data = await res.json()
+      toast.success(data.message)
+      setPaymentForm({ amount: "", paymentMode: "BANK", reference: "", notes: "" })
+      fetchPayroll()
+      fetchPayments()
+      onSuccess?.()
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsSubmittingPayment(false)
+    }
+  }
+
+  const paymentModeLabels: Record<string, string> = {
+    BANK: "Virement bancaire",
+    CASH: "Espèces",
+    MOBILE_MONEY: "Mobile Money",
+    CHECK: "Chèque",
   }
 
   const canEdit = payroll?.status === "DRAFT" || payroll?.status === "PENDING"
@@ -771,6 +899,121 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                     </div>
                   </div>
                 </div>
+
+                {/* Section Paiements / Acomptes */}
+                {(canPay || payroll.status === "PAID" || payroll.status === "PARTIALLY_PAID") && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-indigo-600" />
+                        Paiements
+                      </h3>
+
+                      {/* Barre de progression */}
+                      {(() => {
+                        const paid = payroll.paidAmount || 0
+                        const total = payroll.netSalary
+                        const remaining = payroll.status === "APPROVED" ? total : (payroll.remainingAmount || 0)
+                        const pct = total > 0 ? Math.round((paid / total) * 100) : 0
+                        return (
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between text-sm mb-1.5">
+                              <span className="text-gray-600">Payé: <span className="font-semibold text-gray-900">{formatCurrency(paid)}</span></span>
+                              <span className="text-gray-600">Reste: <span className="font-semibold text-orange-600">{formatCurrency(remaining)}</span></span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-green-500" : pct > 0 ? "bg-indigo-500" : "bg-gray-300"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1 text-right">{pct}% payé</p>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Formulaire de paiement */}
+                      {canPay && (
+                        <div className="p-4 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 mb-4">
+                          <p className="text-sm font-medium text-indigo-800 mb-3 flex items-center gap-2">
+                            <Wallet className="h-4 w-4" />
+                            Enregistrer un versement
+                          </p>
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Montant (FCFA)</Label>
+                                <Input type="number" placeholder="Montant..." min={1} value={paymentForm.amount} onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))} className="h-9" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Mode de paiement</Label>
+                                <Select value={paymentForm.paymentMode} onValueChange={(v) => setPaymentForm(prev => ({ ...prev, paymentMode: v }))}>
+                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                  <SelectContent className="z-[9999]">
+                                    <SelectItem value="BANK">Virement bancaire</SelectItem>
+                                    <SelectItem value="CASH">Espèces</SelectItem>
+                                    <SelectItem value="MOBILE_MONEY">Mobile Money</SelectItem>
+                                    <SelectItem value="CHECK">Chèque</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Référence (optionnel)</Label>
+                                <Input placeholder="N° transaction..." value={paymentForm.reference} onChange={(e) => setPaymentForm(prev => ({ ...prev, reference: e.target.value }))} className="h-9" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Notes (optionnel)</Label>
+                                <Input placeholder="Commentaire..." value={paymentForm.notes} onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))} className="h-9" />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" size="sm" onClick={handleSubmitPayment} disabled={isSubmittingPayment || !paymentForm.amount} className="flex-1 bg-indigo-600 hover:bg-indigo-700">
+                                {isSubmittingPayment ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Banknote className="h-4 w-4 mr-1" />}
+                                Enregistrer l'acompte
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={handlePayFullBalance} disabled={isSubmittingPayment} className="text-green-700 border-green-300 hover:bg-green-50">
+                                Payer le solde
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Historique des versements */}
+                      {paymentHistory.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                            <History className="h-3.5 w-3.5" />
+                            Historique des versements ({paymentHistory.length})
+                          </p>
+                          <div className="space-y-2">
+                            {paymentHistory.map((p) => (
+                              <div key={p.id} className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border text-sm">
+                                <div>
+                                  <p className="font-medium text-gray-900">{formatCurrency(p.amount)}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {new Date(p.paymentDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    {" • "}{paymentModeLabels[p.paymentMode] || p.paymentMode}
+                                  </p>
+                                  {p.reference && <p className="text-xs text-gray-400">Réf: {p.reference}</p>}
+                                </div>
+                                <div className="text-right text-xs text-gray-500">
+                                  <p>{p.paidBy.name}</p>
+                                  {p.notes && <p className="italic">{p.notes}</p>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {isLoadingPayments && (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
