@@ -84,25 +84,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier qu'il n'y a pas de chevauchement avec une période existante
-    const overlapping = await prisma.payrollPeriod.findFirst({
-      where: {
-        OR: [
-          {
-            startDate: { lte: end },
-            endDate: { gte: start },
-          },
-        ],
-      },
-    })
-
-    if (overlapping) {
-      return NextResponse.json(
-        { error: `Cette période chevauche une période existante: ${overlapping.name}` },
-        { status: 409 }
-      )
-    }
-
     // Calculer les jours ouvrés si non fournis (approximation)
     let calculatedWorkingDays = workingDays
     if (!calculatedWorkingDays) {
