@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Loader2, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 interface User {
   id: string
@@ -38,11 +39,17 @@ export function DeleteUserDialog({ user, open, onOpenChange, onUserDeleted }: De
         method: "DELETE",
       })
 
+      const data = await response.json()
+
       if (response.ok) {
+        toast.success(data.message || "Utilisateur supprimé avec succès")
         onUserDeleted()
+      } else {
+        toast.error(data.error || "Erreur lors de la suppression")
       }
     } catch (error) {
       console.error("Error deleting user:", error)
+      toast.error("Erreur lors de la suppression de l'utilisateur")
     } finally {
       setDeleting(false)
     }
