@@ -152,13 +152,23 @@ export function AddPayrollsSheet({
           body: JSON.stringify({ employeeProfileIds: batch }),
         })
 
+        const data = await res.json()
+        console.log(`📊 Lot ${Math.floor(i / batchSize) + 1} réponse (status ${res.status}):`, JSON.stringify(data))
+        
         if (res.ok) {
-          const data = await res.json()
-          console.log(`📊 Lot ${Math.floor(i / batchSize) + 1} réussi:`, data)
-          successCount += data.created || batch.length
+          const created = Array.isArray(data.created) ? data.created.length : 0
+          successCount += created
+          console.log(`✅ Lot réussi: ${created} bulletin(s) créé(s)`)
+          
+          // Vérifier les erreurs individuelles retournées par l'API
+          if (data.errors && data.errors.length > 0) {
+            data.errors.forEach((err: any) => {
+              console.error(`⚠️ Erreur pour ${err.employee}: ${err.error}`)
+              errors.push(`${err.employee}: ${err.error}`)
+            })
+          }
         } else {
-          const data = await res.json()
-          console.log(`❌ Lot ${Math.floor(i / batchSize) + 1} échoué:`, data)
+          console.error(`❌ Lot ${Math.floor(i / batchSize) + 1} échoué:`, data)
           errors.push(data.error || `Erreur pour le lot ${Math.floor(i / batchSize) + 1}`)
         }
 
@@ -171,19 +181,21 @@ export function AddPayrollsSheet({
 
       console.log(`📈 Total final: ${successCount} bulletins créés, ${errors.length} erreurs`)
       
+      if (errors.length > 0) {
+        const errorMsg = errors.slice(0, 3).join('\n')
+        toast.error(`Erreurs lors de la génération:\n${errorMsg}`, { duration: 8000 })
+      }
+      
       if (successCount > 0) {
-        console.log(`✅ ${successCount} bulletins générés, appel de onSuccess`)
         toast.success(`${successCount} bulletin(s) généré(s) avec succès`)
-        
-        // Attendre un court instant pour s'assurer que la base de données est mise à jour
-        console.log("⏳ Attente de 500ms avant de fermer...")
+        // Appeler onSuccess et fermer le sheet
+        onOpenChange(false)
+        // Petit délai pour laisser le sheet se fermer avant le refresh
         setTimeout(() => {
           onSuccess?.()
-          console.log(`🔄 onSuccess appelé, fermeture du sheet`)
-          onOpenChange(false)
-        }, 500)
-      } else if (errors.length > 0) {
-        toast.error(errors[0])
+        }, 300)
+      } else if (errors.length === 0) {
+        toast.warning("Aucun bulletin n'a été généré")
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur lors de la génération"
@@ -251,7 +263,7 @@ export function AddPayrollsSheet({
           )}
 
           {/* Liste des employés */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 h-[400px]">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

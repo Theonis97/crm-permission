@@ -22,6 +22,7 @@ import {
   Printer,
   Users,
   X,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -253,6 +254,27 @@ export default function PayrollPeriodDetailPage() {
     } finally {
       setActionLoading(null)
       setIsGeneratingPayrolls(false)
+    }
+  }
+
+  const handleDeletePayroll = async (payrollId: string, payrollNumber: string) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer le bulletin ${payrollNumber} ? Cette action est irréversible.`)) return
+
+    try {
+      setActionLoading(payrollId)
+      const res = await fetch(`/api/payroll/${payrollId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Erreur lors de la suppression")
+      }
+      const data = await res.json()
+      toast.success(data.message || "Bulletin supprimé")
+      fetchPeriod()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erreur lors de la suppression"
+      toast.error(errorMessage)
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -920,6 +942,18 @@ export default function PayrollPeriodDetailPage() {
                                 <CreditCard className="h-4 w-4 mr-2" />
                                 {payroll.status === "PARTIALLY_PAID" ? "Enregistrer un versement" : "Payer / Acompte"}
                               </DropdownMenuItem>
+                            )}
+                            {payroll.status !== "PAID" && payroll.status !== "PARTIALLY_PAID" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleDeletePayroll(payroll.id, payroll.number)}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Supprimer
+                                </DropdownMenuItem>
+                              </>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>

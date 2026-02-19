@@ -395,3 +395,65 @@ export async function PUT(
     )
   }
 }
+
+// DELETE - Supprimer un bulletin de paie
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { session, error } = await getAuthenticatedSession()
+    if (error) return error
+
+    const { id } = await params
+
+    const existing = await prisma.payroll.findUnique({
+      where: { id },
+      include: {
+        employeeProfile: {
+          include: {
+            user: {
+              select: { firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Bulletin non trouvé" },
+        { status: 404 }
+      )
+    }
+
+    if (existing.status === "PAID" || existing.status === "PARTIALLY_PAID") {
+      return NextResponse.json(
+        { error: "Impossible de supprimer un bulletin déjà payé ou partiellement payé" },
+        { status: 400 }
+      )
+    }
+
+    // Supprimer les dépendances
+    await prisma.payrollRubricLine.deleteMany({ where: { payrollId: id } })
+    await prisma.payrollContributionLine.deleteMany({ where: { payrollId: id } })
+    await prisma.payrollAdjustment.deleteMany({ where: { payrollId: id } })
+    await prisma.payrollAuditLog.deleteMany({ where: { payrollId: id } })
+
+    // Supprimer le bulletin
+    await prisma.payroll.delete({ where: { id } })
+
+    const employeeName = `${existing.employeeProfile.user.firstName || ""} ${existing.employeeProfile.user.lastName || ""}`.trim()
+
+    return NextResponse.json({
+      success: true,
+      message: `Bulletin ${existing.number} de ${employeeName} supprimé`,
+    })
+  } catch (error) {
+    console.error("Error deleting payroll:", error)
+    return NextResponse.json(
+      { error: "Erreur lors de la suppression du bulletin" },
+      { status: 500 }
+    )
+  }
+}

@@ -637,11 +637,29 @@ export async function calculatePayroll(
 /**
  * Génère un numéro de bulletin unique
  */
-export function generatePayrollNumber(periodName: string, index: number): string {
+export async function generatePayrollNumber(periodName: string, index: number): Promise<string> {
   const year = new Date().getFullYear()
   const month = String(new Date().getMonth() + 1).padStart(2, "0")
-  const seq = String(index).padStart(3, "0")
-  return `BP-${year}-${month}-${seq}`
+  const prefix = `BP-${year}-${month}-`
+  
+  // Trouver le numéro le plus élevé existant pour ce préfixe
+  const lastPayroll = await prisma.payroll.findFirst({
+    where: {
+      number: { startsWith: prefix },
+    },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  })
+  
+  let nextSeq = index
+  if (lastPayroll) {
+    const lastSeq = parseInt(lastPayroll.number.replace(prefix, ""), 10)
+    if (!isNaN(lastSeq)) {
+      nextSeq = lastSeq + index
+    }
+  }
+  
+  return `${prefix}${String(nextSeq).padStart(3, "0")}`
 }
 
 /**

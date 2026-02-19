@@ -102,22 +102,27 @@ export async function POST(
 
     for (const profile of profilesToProcess) {
       try {
+        console.log(`\n📋 Génération bulletin pour: ${profile.user.firstName} ${profile.user.lastName} (profileId: ${profile.id}, userId: ${profile.userId})`)
+        
         // Récupérer les données de pointage
         const attendanceData = await getAttendanceData(
           profile.userId,
           period.startDate,
           period.endDate
         )
+        console.log(`  📊 Pointage: ${attendanceData.daysWorked} jours, ${attendanceData.totalHours}h`)
 
         // Calculer le bulletin
+        console.log(`  🧮 Calcul du bulletin...`)
         const calculation = await calculatePayroll({
           employeeProfileId: profile.id,
           periodId: id,
           attendanceData,
         })
+        console.log(`  💰 Résultat: brut=${calculation.grossSalary}, net=${calculation.netSalary}, jours=${calculation.daysWorked}`)
 
         // Générer le numéro de bulletin
-        const number = generatePayrollNumber(period.name, index)
+        const number = await generatePayrollNumber(period.name, index)
 
         // Créer le bulletin
         const payroll = await prisma.payroll.create({
@@ -193,6 +198,8 @@ export async function POST(
 
         index++
       } catch (err: any) {
+        console.error(`  ❌ ERREUR pour ${profile.user.firstName} ${profile.user.lastName}:`, err.message)
+        console.error(`  Stack:`, err.stack)
         errors.push({
           employeeId: profile.userId,
           employee: `${profile.user.firstName} ${profile.user.lastName}`,
