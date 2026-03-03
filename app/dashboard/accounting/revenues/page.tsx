@@ -32,11 +32,21 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Clock,
+  Download,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react"
 import { format, isToday, isYesterday, parseISO } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { exportToExcel, exportToPdf } from "@/lib/export-utils"
 
 interface DailyRevenue {
   id: string
@@ -317,6 +327,71 @@ export default function RevenuesPage() {
     return (dr.countedRevenue || dr.totalDayCloses) - dr.totalExpenses
   }
 
+  const getActiveFiltersLabel = () => {
+    if (selectedStoreId !== "all") {
+      const store = stores.find((s) => s.id === selectedStoreId)
+      return store ? `Magasin: ${store.name}` : "Filtre magasin"
+    }
+    return "Tous les magasins"
+  }
+
+  const getRevenueExportData = () => {
+    if (!revenueData?.dailyRevenues) return []
+    return revenueData.dailyRevenues.map((dr) => ({
+      date: dr.date,
+      store: dr.store?.name || "",
+      totalDayCloses: dr.totalDayCloses,
+      totalExpenses: dr.totalExpenses,
+      countedRevenue: dr.countedRevenue || 0,
+      netRevenue: getNetRevenue(dr),
+    }))
+  }
+
+  const revenueExportColumns = [
+    { header: "Date", key: "date", format: "date" as const, align: "left" as const },
+    { header: "Magasin", key: "store", format: "text" as const, align: "left" as const },
+    { header: "Clôtures caisse", key: "totalDayCloses", format: "currency" as const, align: "right" as const },
+    { header: "Dépenses", key: "totalExpenses", format: "currency" as const, align: "right" as const },
+    { header: "Recette comptée", key: "countedRevenue", format: "currency" as const, align: "right" as const },
+    { header: "Résultat net", key: "netRevenue", format: "currency" as const, align: "right" as const },
+  ]
+
+  const handleExportPdf = () => {
+    const data = getRevenueExportData()
+    exportToPdf({
+      filename: `recettes-${format(startDate, "yyyy-MM-dd")}-${format(endDate, "yyyy-MM-dd")}`,
+      title: "Rapport des Recettes",
+      subtitle: `${data.length} recette(s) journalière(s)`,
+      period: `${format(startDate, "dd/MM/yyyy")} — ${format(endDate, "dd/MM/yyyy")}`,
+      filters: getActiveFiltersLabel(),
+      columns: revenueExportColumns,
+      data,
+      totals: {
+        totalDayCloses: revenueData?.totals?.totalDayCloses || 0,
+        totalExpenses: revenueData?.totals?.totalExpenses || 0,
+        countedRevenue: revenueData?.totals?.totalCountedRevenue || 0,
+        netRevenue: revenueData?.totals?.totalNetRevenue || 0,
+      },
+    })
+  }
+
+  const handleExportExcel = () => {
+    const data = getRevenueExportData()
+    exportToExcel({
+      filename: `recettes-${format(startDate, "yyyy-MM-dd")}-${format(endDate, "yyyy-MM-dd")}`,
+      title: "Rapport des Recettes",
+      subtitle: `Période: ${format(startDate, "dd/MM/yyyy")} — ${format(endDate, "dd/MM/yyyy")} | ${getActiveFiltersLabel()}`,
+      columns: revenueExportColumns,
+      data,
+      totals: {
+        totalDayCloses: revenueData?.totals?.totalDayCloses || 0,
+        totalExpenses: revenueData?.totals?.totalExpenses || 0,
+        countedRevenue: revenueData?.totals?.totalCountedRevenue || 0,
+        netRevenue: revenueData?.totals?.totalNetRevenue || 0,
+      },
+    })
+  }
+
   const getDateLabel = (dateStr: string) => {
     const date = new Date(dateStr)
     if (isToday(date)) return "Aujourd'hui"
@@ -433,6 +508,28 @@ export default function RevenuesPage() {
           <Button variant="outline" size="icon" onClick={fetchRevenues} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
+
+          {/* Export */}
+          {revenueData?.dailyRevenues && revenueData.dailyRevenues.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Exporter
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="z-[100]">
+                <DropdownMenuItem onClick={() => handleExportPdf()}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Exporter en PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel()}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Exporter en Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 

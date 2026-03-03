@@ -33,6 +33,8 @@ import {
   Trash2,
   CreditCard,
   Printer,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -53,6 +55,7 @@ import { ExpenseForm } from "@/components/accounting/expense-form"
 import { ExpensePaymentForm } from "@/components/accounting/expense-payment-form"
 import { ExpensePrintSheet } from "@/components/accounting/expense-print-sheet"
 import { toast } from "sonner"
+import { exportToExcel, exportToPdf } from "@/lib/export-utils"
 
 interface Expense {
   id: string
@@ -369,6 +372,76 @@ export default function ExpensesPage() {
     setSelectedStatus("all")
   }
 
+  const getActiveFiltersLabel = () => {
+    const parts: string[] = []
+    if (selectedStoreId !== "all") {
+      const store = stores.find((s) => s.id === selectedStoreId)
+      if (store) parts.push(`Magasin: ${store.name}`)
+    }
+    if (selectedCategoryId !== "all") {
+      const cat = categories.find((c) => c.id === selectedCategoryId)
+      if (cat) parts.push(`Catégorie: ${cat.name}`)
+    }
+    if (selectedStatus !== "all") {
+      const labels: Record<string, string> = { PENDING: "En attente", PARTIALLY_PAID: "Partiel", PAID: "Payé" }
+      parts.push(`Statut: ${labels[selectedStatus] || selectedStatus}`)
+    }
+    return parts.length > 0 ? parts.join(" • ") : "Aucun filtre"
+  }
+
+  const getExportData = () => {
+    return expenses.map((e) => ({
+      date: e.dueDate,
+      title: e.title,
+      category: e.category?.name || "",
+      store: e.store?.name || "Général",
+      amount: e.amount,
+      paidAmount: e.paidAmount,
+      remainingAmount: e.remainingAmount,
+      status: e.status === "PAID" ? "Payée" : e.status === "PARTIALLY_PAID" ? "Partiel" : "En attente",
+      supplier: e.supplierName || "",
+      createdBy: e.createdBy?.firstName || e.createdBy?.name || "",
+    }))
+  }
+
+  const exportColumns = [
+    { header: "Date", key: "date", format: "date" as const, align: "left" as const },
+    { header: "Titre", key: "title", format: "text" as const, align: "left" as const },
+    { header: "Catégorie", key: "category", format: "text" as const, align: "left" as const },
+    { header: "Magasin", key: "store", format: "text" as const, align: "left" as const },
+    { header: "Montant", key: "amount", format: "currency" as const, align: "right" as const },
+    { header: "Payé", key: "paidAmount", format: "currency" as const, align: "right" as const },
+    { header: "Restant", key: "remainingAmount", format: "currency" as const, align: "right" as const },
+    { header: "Statut", key: "status", format: "text" as const, align: "center" as const },
+    { header: "Fournisseur", key: "supplier", format: "text" as const, align: "left" as const },
+    { header: "Créé par", key: "createdBy", format: "text" as const, align: "left" as const },
+  ]
+
+  const handleExportPdf = () => {
+    exportToPdf({
+      filename: `depenses-${format(startDate, "yyyy-MM-dd")}-${format(endDate, "yyyy-MM-dd")}`,
+      title: "Rapport des Dépenses",
+      subtitle: `${expenses.length} dépense(s)`,
+      period: `${format(startDate, "dd/MM/yyyy")} — ${format(endDate, "dd/MM/yyyy")}`,
+      filters: getActiveFiltersLabel(),
+      columns: exportColumns,
+      data: getExportData(),
+      totals: { amount: totalExpenses, paidAmount: totalPaid, remainingAmount: totalRemaining },
+      orientation: "landscape",
+    })
+  }
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      filename: `depenses-${format(startDate, "yyyy-MM-dd")}-${format(endDate, "yyyy-MM-dd")}`,
+      title: "Rapport des Dépenses",
+      subtitle: `Période: ${format(startDate, "dd/MM/yyyy")} — ${format(endDate, "dd/MM/yyyy")} | Filtres: ${getActiveFiltersLabel()}`,
+      columns: exportColumns,
+      data: getExportData(),
+      totals: { amount: totalExpenses, paidAmount: totalPaid, remainingAmount: totalRemaining },
+    })
+  }
+
   // Calculer le total des dépenses filtrées
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const totalPaid = expenses.reduce((sum, expense) => sum + expense.paidAmount, 0)
@@ -530,6 +603,28 @@ export default function ExpensesPage() {
           <Button variant="outline" size="icon" onClick={fetchExpenses} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
+
+          {/* Export */}
+          {expenses.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Exporter
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="z-[100]">
+                <DropdownMenuItem onClick={() => handleExportPdf()}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Exporter en PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportExcel()}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Exporter en Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {hasPermission("accounting.expenses.create") && (
             <Button onClick={() => setShowCreateSheet(true)}>

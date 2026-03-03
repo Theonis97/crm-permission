@@ -43,11 +43,39 @@ export async function GET(request: NextRequest) {
             payrolls: true,
           },
         },
+        payrolls: {
+          where: {
+            status: { in: ["VALIDATED", "APPROVED", "PARTIALLY_PAID", "PAID"] },
+          },
+          select: {
+            totalDeductions: true,
+            employerCharges: true,
+          },
+        },
       },
       orderBy: { startDate: "desc" },
     })
 
-    return NextResponse.json(periods)
+    // Transformer pour ajouter les totaux de charges et retirer les payrolls bruts
+    const periodsWithCharges = periods.map((period) => {
+      const totalEmployeeCharges = period.payrolls.reduce(
+        (sum, p) => sum + (p.totalDeductions || 0),
+        0
+      )
+      const totalEmployerCharges = period.payrolls.reduce(
+        (sum, p) => sum + (p.employerCharges || 0),
+        0
+      )
+
+      const { payrolls, ...rest } = period
+      return {
+        ...rest,
+        totalEmployeeCharges: Math.round(totalEmployeeCharges * 100) / 100,
+        totalEmployerCharges: Math.round(totalEmployerCharges * 100) / 100,
+      }
+    })
+
+    return NextResponse.json(periodsWithCharges)
   } catch (error) {
     console.error("Error fetching payroll periods:", error)
     return NextResponse.json(

@@ -14,6 +14,8 @@ import {
   CheckCircle,
   Clock,
   Trash2,
+  Building2,
+  User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -62,6 +64,8 @@ interface PayrollPeriod {
   _count: {
     payrolls: number
   }
+  totalEmployeeCharges: number
+  totalEmployerCharges: number
 }
 
 const periodTypeLabels: Record<string, string> = {
@@ -159,6 +163,10 @@ export default function PayrollPeriodsPage() {
     })
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("fr-FR").format(Math.round(amount)) + " FCFA"
+  }
+
   const filteredPeriods = periods.filter((period) => {
     if (filterStatus === "open") return !period.isClosed
     if (filterStatus === "closed") return period.isClosed
@@ -222,7 +230,7 @@ export default function PayrollPeriodsPage() {
         </Card>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-4">
               <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -260,6 +268,32 @@ export default function PayrollPeriodsPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="h-10 w-10 bg-orange-100 rounded-full flex items-center justify-center">
+                <User className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-orange-700">
+                  {formatCurrency(filteredPeriods.reduce((sum, p) => sum + (p.totalEmployeeCharges || 0), 0))}
+                </p>
+                <p className="text-sm text-gray-500">Charges salariales</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center">
+                <Building2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-red-700">
+                  {formatCurrency(filteredPeriods.reduce((sum, p) => sum + (p.totalEmployerCharges || 0), 0))}
+                </p>
+                <p className="text-sm text-gray-500">Charges patronales</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Table */}
@@ -289,6 +323,8 @@ export default function PayrollPeriodsPage() {
                     <TableHead>Dates</TableHead>
                     <TableHead className="text-center">Jours ouvrés</TableHead>
                     <TableHead className="text-center">Bulletins</TableHead>
+                    <TableHead className="text-right">Charges salariales</TableHead>
+                    <TableHead className="text-right">Charges patronales</TableHead>
                     <TableHead className="text-center">Statut</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
@@ -314,6 +350,24 @@ export default function PayrollPeriodsPage() {
                         <Badge variant="secondary">
                           {period._count.payrolls}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {period.totalEmployeeCharges > 0 ? (
+                          <span className="text-sm font-medium text-orange-700">
+                            {formatCurrency(period.totalEmployeeCharges)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {period.totalEmployerCharges > 0 ? (
+                          <span className="text-sm font-medium text-red-700">
+                            {formatCurrency(period.totalEmployerCharges)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         {period.isClosed ? (

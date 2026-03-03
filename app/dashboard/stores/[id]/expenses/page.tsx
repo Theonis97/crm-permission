@@ -109,7 +109,10 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
       const response = await fetch("/api/accounting/categories")
       if (response.ok) {
         const data = await response.json()
-        setCategories(data.categories || [])
+        const filtered = (data.categories || []).filter(
+          (c: Category) => c.name !== "Salaire"
+        )
+        setCategories(filtered)
       }
     } catch (err) {
       console.error("Error fetching categories:", err)
@@ -136,7 +139,10 @@ export default function StoreExpensesPage({ params }: { params: Promise<{ id: st
         throw new Error("Erreur lors du chargement des dépenses")
       }
       const data = await response.json()
-      setExpenses(data.expenses || [])
+      const filtered = (data.expenses || []).filter(
+        (e: Expense) => e.category?.name !== "Salaire"
+      )
+      setExpenses(filtered)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue")
     } finally {
