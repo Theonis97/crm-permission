@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Plus,
   Search,
   MoreVertical,
@@ -16,6 +16,7 @@ import {
   Trash2,
   Building2,
   User,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +43,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
+import { cn } from "@/lib/utils"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { CreatePeriodSheet } from "@/components/payroll/create-period-sheet"
 import { toast } from "sonner"
@@ -78,29 +84,24 @@ export default function PayrollPeriodsPage() {
   const router = useRouter()
   const [periods, setPeriods] = useState<PayrollPeriod[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [filterYear, setFilterYear] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [showCreateSheet, setShowCreateSheet] = useState(false)
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  // Filtre par plage de dates (défaut: 1er janvier de l'année en cours → aujourd'hui)
+  const [startDate, setStartDate] = useState<Date>(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), 0, 1)
+  })
+  const [endDate, setEndDate] = useState<Date>(new Date())
 
   useEffect(() => {
     fetchPeriods()
-  }, [filterYear])
+  }, [])
 
   const fetchPeriods = async () => {
     try {
       setIsLoading(true)
-      let url = "/api/payroll/periods"
-      const params = new URLSearchParams()
-      if (filterYear !== "all") {
-        params.append("year", filterYear)
-      }
-      if (params.toString()) {
-        url += `?${params.toString()}`
-      }
-      const res = await fetch(url)
+      const res = await fetch("/api/payroll/periods")
       if (!res.ok) throw new Error("Erreur lors du chargement")
       const data = await res.json()
       setPeriods(data)
@@ -167,10 +168,20 @@ export default function PayrollPeriodsPage() {
     return new Intl.NumberFormat("fr-FR").format(Math.round(amount)) + " FCFA"
   }
 
+  // Filtrer par plage de dates : on garde les périodes qui chevauchent la plage sélectionnée
   const filteredPeriods = periods.filter((period) => {
-    if (filterStatus === "open") return !period.isClosed
-    if (filterStatus === "closed") return period.isClosed
-    return true
+    // Filtre statut
+    if (filterStatus === "open" && period.isClosed) return false
+    if (filterStatus === "closed" && !period.isClosed) return false
+
+    // Filtre plage de dates (chevauchement)
+    const periodStart = new Date(period.startDate)
+    const periodEnd = new Date(period.endDate)
+    const filterStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+    const filterEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59)
+
+    // Une période chevauche la plage si elle ne finit pas avant le début ET ne commence pas après la fin
+    return periodEnd >= filterStart && periodStart <= filterEnd
   })
 
   return (
@@ -201,20 +212,48 @@ export default function PayrollPeriodsPage() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <Select value={filterYear} onValueChange={setFilterYear}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Année" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les années</SelectItem>
-                  {years.map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              {/* Date début */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("justify-start text-left font-normal w-[160px]")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(startDate, "dd/MM/yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[100]" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(date: Date | undefined) => date && setStartDate(date)}
+                    initialFocus
+                    locale={fr}
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <span className="text-gray-400">→</span>
+
+              {/* Date fin */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("justify-start text-left font-normal w-[160px]")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(endDate, "dd/MM/yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[100]" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={(date: Date | undefined) => date && setEndDate(date)}
+                    initialFocus
+                    locale={fr}
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* Statut */}
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Statut" />
@@ -225,6 +264,11 @@ export default function PayrollPeriodsPage() {
                   <SelectItem value="closed">Clôturées</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Actualiser */}
+              <Button variant="outline" size="icon" onClick={fetchPeriods} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -234,10 +278,10 @@ export default function PayrollPeriodsPage() {
           <Card>
             <CardContent className="p-4 flex items-center gap-4">
               <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <Calendar className="h-5 w-5 text-blue-600" />
+                <CalendarIcon className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{periods.length}</p>
+                <p className="text-2xl font-bold">{filteredPeriods.length}</p>
                 <p className="text-sm text-gray-500">Total périodes</p>
               </div>
             </CardContent>
@@ -249,7 +293,7 @@ export default function PayrollPeriodsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {periods.filter((p) => !p.isClosed).length}
+                  {filteredPeriods.filter((p) => !p.isClosed).length}
                 </p>
                 <p className="text-sm text-gray-500">En cours</p>
               </div>
@@ -262,7 +306,7 @@ export default function PayrollPeriodsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {periods.reduce((sum, p) => sum + p._count.payrolls, 0)}
+                  {filteredPeriods.reduce((sum, p) => sum + p._count.payrolls, 0)}
                 </p>
                 <p className="text-sm text-gray-500">Total bulletins</p>
               </div>
@@ -305,7 +349,7 @@ export default function PayrollPeriodsPage() {
               </div>
             ) : filteredPeriods.length === 0 ? (
               <div className="text-center py-12">
-                <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500">Aucune période trouvée</p>
                 <Button
                   variant="link"
