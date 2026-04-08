@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Shield, Lock, Settings, Search, Filter, MoreHorizontal, Edit, Trash2, Users, Eye, Plus } from "lucide-react"
+import { Shield, Lock, Settings, Search, Filter, MoreHorizontal, Edit, Trash2, Users, Eye, Plus, Truck } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,7 @@ import { EditRoleSheet } from "@/components/roles/edit-role-sheet"
 import { DeleteRoleDialog } from "@/components/roles/delete-role-dialog"
 import { usePermissions } from "@/hooks/use-permissions"
 import { CreateRoleSheet } from "@/components/roles/create-role-sheet"
+import { toast } from "sonner"
 
 interface RoleWithCount extends RoleWithPermissions {
   _count: {
@@ -38,6 +39,7 @@ export default function RolesPage() {
 
   // États pour les modales/sheets
   const [showCreateRole, setShowCreateRole] = useState(false)
+  const [ensuringLivreur, setEnsuringLivreur] = useState(false)
   const [viewingRoleUsers, setViewingRoleUsers] = useState<RoleWithCount | null>(null)
   const [managingRolePermissions, setManagingRolePermissions] = useState<RoleWithCount | null>(null)
   const [editingRole, setEditingRole] = useState<RoleWithCount | null>(null)
@@ -80,6 +82,30 @@ export default function RolesPage() {
 
   const handleCreateRole = () => {
     setShowCreateRole(true)
+  }
+
+  const handleEnsureLivreurRole = async () => {
+    setEnsuringLivreur(true)
+    try {
+      const res = await fetch("/api/roles/ensure-livreur", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(typeof data.error === "string" ? data.error : "Impossible de créer le rôle Livreur")
+        return
+      }
+      if (data.roleCreated) {
+        toast.success("Rôle Livreur créé avec la permission réapprovisionnement")
+      } else if (data.permissionLinked) {
+        toast.success("Permission réapprovisionnement associée au rôle Livreur")
+      } else {
+        toast.message("Rôle Livreur déjà configuré")
+      }
+      await loadRoles()
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setEnsuringLivreur(false)
+    }
   }
 
   const handleViewRoleUsers = (role: RoleWithCount) => {
@@ -133,6 +159,20 @@ export default function RolesPage() {
           title="Rôles & Permissions"
           description="Contrôle d'accès et sécurité"
           icon={Shield}
+          secondaryActions={
+            hasPermission("roles.create") ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={handleEnsureLivreurRole}
+                disabled={ensuringLivreur}
+              >
+                <Truck className="mr-2 h-4 w-4" />
+                {ensuringLivreur ? "Création…" : "Rôle Livreur"}
+              </Button>
+            ) : undefined
+          }
           primaryAction={
             hasPermission("roles.create")
               ? {

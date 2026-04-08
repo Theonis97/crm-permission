@@ -2,6 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { isPrismaDatabaseConnectionError } from "@/lib/prisma-errors"
+import { getActiveDeliveryPersonByUserEmail } from "@/lib/driver-session"
+import { userHasDriverRestockStaffAccess, userHasLivreurRoleAccess, DRIVER_PERM_NAMES } from "@/lib/driver-restock-access"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -95,6 +98,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Combine all permissions
     const allPermissions = new Set([...permissions, ...storePermissions])
 
+    const deliveryProfile = await getActiveDeliveryPersonByUserEmail(user.email)
+    const staffDriverRestock = await userHasDriverRestockStaffAccess(user.id)
+    // Rôle Livreur direct (driver.restock ou livreur.access dans les rôles globaux)
+    const hasLivreurRole = [...DRIVER_PERM_NAMES].some((p) => allPermissions.has(p))
+      || await userHasLivreurRoleAccess(user.id)
+    if (deliveryProfile || staffDriverRestock || hasLivreurRole) {
+      allPermissions.add("driver.restock")
+    }
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -105,9 +117,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       permissions: Array.from(allPermissions),
       stores: userStores,
+      deliveryProfile: deliveryProfile
+        ? {
+            id: deliveryProfile.id,
+            name: deliveryProfile.name,
+            phone: deliveryProfile.phone,
+            defaultStoreId: deliveryProfile.storeId,
+          }
+        : null,
     })
   } catch (error) {
     console.error("Error fetching user permissions:", error)
+    if (isPrismaDatabaseConnectionError(error)) {
+      return NextResponse.json(
+        {
+          error: "Database unavailable",
+          code: "DATABASE_UNAVAILABLE",
+        },
+        { status: 503 },
+      )
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

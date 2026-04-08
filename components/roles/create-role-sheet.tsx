@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Save, Loader2, ShieldCheck, X } from "lucide-react"
+import { Save, Loader2, ShieldCheck, X, Truck } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
+import { toast } from "sonner"
 
 interface Permission {
   id: string
@@ -148,6 +149,7 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       reports: "📊",
       warehouses: "🏭",
       stores: "🏪",
+      driver: "🚚",
     }
     return icons[module] || "⚙️"
   }
@@ -165,6 +167,7 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       reports: "Rapports",
       warehouses: "Entrepôts",
       stores: "Magasins",
+      driver: "Livreur",
     }
     return names[module] || module
   }
@@ -184,8 +187,28 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
       assign_manager: "Assigner gestionnaire",
       manage_inventory: "Gérer inventaire",
       view_sales: "Voir ventes",
+      restock: "Réapprovisionnement",
     }
     return names[action] || action
+  }
+
+  const applyLivreurTemplate = () => {
+    setName("Livreur")
+    setDescription("Accès au portail de demande de réapprovisionnement magasin")
+    const ids = new Set<string>()
+    Object.values(allPermissions)
+      .flat()
+      .forEach((p) => {
+        if (p.name === "driver.restock") ids.add(p.id)
+      })
+    setSelectedPermissions(ids)
+    if (ids.size === 0) {
+      toast.error(
+        "La permission driver.restock est absente. Utilisez le bouton « Rôle Livreur » dans la barre du module Rôles ou exécutez le seed.",
+      )
+    } else {
+      toast.success("Modèle Livreur appliqué (permission réapprovisionnement)")
+    }
   }
 
   const isFormValid = name.trim() && selectedPermissions.size > 0
@@ -248,6 +271,11 @@ export function CreateRoleSheet({ open, onOpenChange, onRoleCreated }: CreateRol
                     className="resize-none"
                   />
                 </div>
+
+                <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={applyLivreurTemplate} disabled={loading}>
+                  <Truck className="mr-2 h-4 w-4" />
+                  Appliquer le modèle Livreur
+                </Button>
               </div>
             </div>
 
