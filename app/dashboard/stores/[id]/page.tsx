@@ -18,6 +18,7 @@ import {
   Users,
   Lock,
   ArrowRight,
+  Pencil,
 } from "lucide-react"
 import {
   LineChart,
@@ -34,8 +35,10 @@ import {
 } from "recharts"
 import { toast } from "sonner"
 import { usePermissions } from "@/hooks/use-permissions"
+import { useStorePermissions } from "@/hooks/use-store-permissions"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
 import { StoreDayCloses } from "@/components/stores/store-day-closes"
+import { EditStoreSheet } from "@/components/stores/edit-store-sheet"
 import { TopProductsModal } from "@/components/stores/top-products-modal"
 
 interface StorePageProps {
@@ -128,10 +131,15 @@ export default function StorePage({ params }: StorePageProps) {
   const { id } = use(params)
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const { hasStorePermission, loading: storePermsLoading } = useStorePermissions(id)
   const [selectedPeriod, setSelectedPeriod] = useState("Ce Mois")
   const [storeData, setStoreData] = useState<StoreStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [showTopProductsModal, setShowTopProductsModal] = useState(false)
+  const [showEditStoreSheet, setShowEditStoreSheet] = useState(false)
+
+  const canEditStore =
+    hasPermission("stores.update") || hasStorePermission(STORE_PERMISSIONS.SETTINGS_EDIT)
 
   useEffect(() => {
     loadStoreStats()
@@ -142,18 +150,33 @@ export default function StorePage({ params }: StorePageProps) {
     try {
       setLoading(true)
       const response = await fetch(`/api/stores/${id}/stats`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const data = await response.json()
-      setStoreData(data)
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        const body = data && typeof data === "object" ? (data as { message?: string; error?: string }) : {}
+        const msg =
+          body.error ||
+          body.message ||
+          (response.status === 401
+            ? "Non authentifié — reconnectez-vous."
+            : response.status === 403
+              ? "Vous n'avez pas la permission d'accéder aux statistiques de ce magasin."
+              : `Erreur ${response.status} lors du chargement`)
+        throw new Error(msg)
+      }
+
+      setStoreData(data as StoreStats)
     } catch (error) {
       console.error("Error loading store stats:", error)
-      toast.error("Erreur lors du chargement des statistiques")
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors du chargement des statistiques"
+      )
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading || permissionsLoading) {
+  if (loading || permissionsLoading || storePermsLoading) {
     return (
       <>
         <StorePageHeader
@@ -308,6 +331,25 @@ export default function StorePage({ params }: StorePageProps) {
       <StorePageHeader
         title="Vue d'ensemble"
         description={`Tableau de bord du ${store.name}`}
+        actions={
+          canEditStore ? (
+            <Button variant="outline" size="sm" onClick={() => setShowEditStoreSheet(true)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Modifier le magasin
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <EditStoreSheet
+        storeId={id}
+        open={showEditStoreSheet}
+        onClose={() => setShowEditStoreSheet(false)}
+        onSuccess={() => {
+          setShowEditStoreSheet(false)
+          loadStoreStats()
+          router.refresh()
+        }}
       />
 
       <div className="p-8 space-y-6 bg-gray-50 min-h-screen">

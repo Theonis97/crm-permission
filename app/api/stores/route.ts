@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { parseStoreDateInput } from "@/lib/store-legal"
+import { findManyStoresOrdered } from "@/lib/store-queries"
 
 // Fonction pour initialiser les permissions et rôles d'un magasin
 async function initializeStorePermissions(tx: any, storeId: string, creatorUserId: string) {
@@ -117,22 +119,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Non authentifié" }, { status: 401 })
     }
 
-    const stores = await prisma.store.findMany({
-      include: {
-        manager: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    })
+    const stores = await findManyStoresOrdered()
 
     return NextResponse.json(stores)
   } catch (error) {
@@ -151,7 +138,23 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { name, logo, coverImage, address, phone, email, whatsapp, managerId } = body
+    const {
+      name,
+      logo,
+      coverImage,
+      address,
+      phone,
+      email,
+      whatsapp,
+      managerId,
+      formeJuridique,
+      rccm,
+      nif,
+      cnssEmployeur,
+      cnssPatronale,
+      siegeSocial,
+      dateCreation,
+    } = body
 
     // Validation
     if (!name || name.trim() === "") {
@@ -161,6 +164,7 @@ export async function POST(req: NextRequest) {
     // Créer le magasin dans une transaction pour assurer la cohérence
     const result = await prisma.$transaction(async (tx) => {
       // 1. Créer le magasin
+      const parsedCreation = parseStoreDateInput(dateCreation)
       const store = await tx.store.create({
         data: {
           name: name.trim(),
@@ -171,6 +175,13 @@ export async function POST(req: NextRequest) {
           email: email?.trim() || null,
           whatsapp: whatsapp?.trim() || null,
           managerId: managerId || null,
+          formeJuridique: formeJuridique?.trim() || null,
+          rccm: rccm?.trim() || null,
+          nif: nif?.trim() || null,
+          cnssEmployeur: cnssEmployeur?.trim() || null,
+          cnssPatronale: cnssPatronale?.trim() || null,
+          siegeSocial: siegeSocial?.trim() || null,
+          dateCreation: parsedCreation === undefined ? null : parsedCreation,
         },
         include: {
           manager: {

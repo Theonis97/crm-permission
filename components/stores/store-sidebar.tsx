@@ -129,6 +129,12 @@ const dayClosesItems: MenuItem[] = [
     href: "/driver-closes",
     permission: STORE_PERMISSIONS.DRIVERS_VIEW
   },
+  {
+    icon: ShoppingBag,
+    label: "Ventes livreurs",
+    href: "/driver-sales",
+    permission: STORE_PERMISSIONS.DRIVERS_VIEW
+  },
 ]
 
 const menuItems: MenuItem[] = [
@@ -218,8 +224,6 @@ export function StoreSidebar({
         const response = await fetch(`/api/users/${session.user.id}/permissions`)
         if (response.ok) {
           const data = await response.json()
-          console.log("🔐 Permissions reçues:", data.permissions)
-          console.log("🔐 Permissions SAV:", data.permissions?.filter((p: string) => p.includes('sav')))
           setUserPermissions(data.permissions || [])
         } else {
           console.error("❌ Erreur API permissions:", response.status)
@@ -234,9 +238,18 @@ export function StoreSidebar({
     fetchUserPermissions()
   }, [session?.user?.id, storeId])
 
-  // Vérifier si l'utilisateur a une permission
+  // Un admin global peut tout voir dans le magasin
+  const isGlobalAdmin = [
+    "stores.manage",
+    "roles.view",
+    "users.view",
+    "orders.view",
+  ].some((p) => userPermissions.includes(p))
+
+  // Vérifier si l'utilisateur a une permission (store-level ou bypass admin global)
   const hasPermission = (permission?: string) => {
     if (!permission) return true
+    if (isGlobalAdmin) return true
     return userPermissions.includes(permission)
   }
 

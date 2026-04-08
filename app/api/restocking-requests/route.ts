@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import type { Prisma } from "@prisma/client"
 
 /**
  * GET /api/restocking-requests
@@ -16,21 +17,54 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const storeId = searchParams.get("storeId")
-    const deliveryPersonId = searchParams.get("deliveryPersonId")
+    const storeIdRaw = searchParams.get("storeId")
+    const deliveryPersonIdRaw = searchParams.get("deliveryPersonId")
     const status = searchParams.get("status")
 
-    // Construire les filtres
-    const where: any = {}
-    
-    if (storeId) {
-      where.storeId = storeId
+    const storeId =
+      storeIdRaw && storeIdRaw !== "undefined" && storeIdRaw.trim() !== "" ? storeIdRaw.trim() : null
+    const deliveryPersonId =
+      deliveryPersonIdRaw &&
+      deliveryPersonIdRaw !== "undefined" &&
+      deliveryPersonIdRaw.trim() !== ""
+        ? deliveryPersonIdRaw.trim()
+        : null
+
+    if (!storeId && !deliveryPersonId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Indiquez storeId (magasin) ou deliveryPersonId (livreur).",
+        },
+        { status: 400 },
+      )
     }
-    
+
+    // Construire les filtres
+    const where: Prisma.RestockingRequestWhereInput = {}
+
+    if (storeId) {
+      /* Stratégie robuste :
+       * 1. Chercher le nom du magasin par son ID.
+       * 2. Filtrer les demandes par ce NOM (relation store.name) plutôt que par l'ID seul.
+       *    → Capture les demandes créées sous un ID différent mais le même magasin (doublons / réimportation).
+       * 3. Si le magasin n'est pas trouvé, filtrer quand même par ID brut. */
+      const current = await prisma.store.findFirst({
+        where: { id: storeId },
+        select: { name: true },
+      })
+      if (current?.name) {
+        // Filtre par nom via la relation — inclut tous les enregistrements, actifs ou non
+        where.store = { name: current.name }
+      } else {
+        where.storeId = storeId
+      }
+    }
+
     if (deliveryPersonId) {
       where.deliveryPersonId = deliveryPersonId
     }
-    
+
     if (status) {
       where.status = status
     }
