@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LogOut, Settings, User, Bell, Search, Map } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertTriangle } from "lucide-react"
 
 export default function HomeLayout({
   children,
@@ -24,7 +26,7 @@ export default function HomeLayout({
   children: React.ReactNode
 }) {
   const { session, isAuthenticated, isLoading, isInitialized } = useAuth()
-  const { user, loading: permissionsLoading } = usePermissions()
+  const { user, loading: permissionsLoading, permissionsError } = usePermissions()
   const router = useRouter()
 
   useEffect(() => {
@@ -159,6 +161,16 @@ export default function HomeLayout({
           </div>
         </div>
       </header>
+
+      {permissionsError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <Alert className="border-amber-200 bg-amber-50 text-amber-950 [&>svg]:text-amber-800">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="text-amber-950">Base de données</AlertTitle>
+            <AlertDescription className="text-amber-900">{permissionsError}</AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       {/* Contenu principal */}
       <main>{children}</main>

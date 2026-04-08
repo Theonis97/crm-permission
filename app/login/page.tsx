@@ -37,10 +37,11 @@ export default function LoginPage() {
     setError("")
 
     try {
-      console.log("Attempting login with:", email)
+      const emailNorm = email.trim().toLowerCase()
+      console.log("Attempting login with:", emailNorm)
 
       const result = await signIn("credentials", {
-        email,
+        email: emailNorm,
         password,
         redirect: false,
       })
@@ -49,7 +50,22 @@ export default function LoginPage() {
 
       if (result?.error) {
         console.error("Login error:", result.error)
-        setError("Email ou mot de passe incorrect")
+        let message = "Email ou mot de passe incorrect"
+        if (result.error === "CredentialsSignin") {
+          try {
+            const health = await fetch("/api/health/database")
+            const data = (await health.json()) as { ok?: boolean; code?: string }
+            if (!data.ok) {
+              message =
+                data.code === "DB_AUTH"
+                  ? "La base de données refuse la connexion (identifiants PostgreSQL ou DATABASE_URL dans .env incorrects)."
+                  : "Impossible de joindre la base de données. Vérifiez que PostgreSQL est démarré et que DATABASE_URL est correcte."
+            }
+          } catch {
+            /* garder le message par défaut */
+          }
+        }
+        setError(message)
       } else if (result?.ok) {
         console.log("Login successful!")
 
