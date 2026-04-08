@@ -125,6 +125,7 @@ export default function DriversPage() {
   const storeId = params.id as string
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [storeFilter, setStoreFilter] = useState("all")
   
   // États pour les données
   const [drivers, setDrivers] = useState<DeliveryPerson[]>([])
@@ -168,7 +169,8 @@ export default function DriversPage() {
   const loadDrivers = async () => {
     setIsLoadingDrivers(true)
     try {
-      const response = await fetch(`/api/delivery-persons?storeId=${storeId}`)
+      // Tous les livreurs, tous magasins confondus
+      const response = await fetch(`/api/delivery-persons`)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const data = await response.json()
       setDrivers(data)
@@ -374,12 +376,17 @@ export default function DriversPage() {
     setSelectedDriver(null)
   }
 
+  const allStores = Array.from(
+    new Map(drivers.filter(d => d.store).map(d => [d.store!.id, d.store!])).values()
+  )
+
   const filteredDrivers = drivers.filter(driver => {
     const matchesSearch = driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (driver.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
                          driver.phone.includes(searchTerm)
     const matchesStatus = statusFilter === "all" || driver.status === statusFilter
-    return matchesSearch && matchesStatus
+    const matchesStore = storeFilter === "all" || driver.store?.id === storeFilter
+    return matchesSearch && matchesStatus && matchesStore
   })
 
   const getDriverInitials = (name: string) => {
@@ -405,7 +412,7 @@ export default function DriversPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Livreurs</h1>
-            <p className="text-gray-600">Gestion de l'équipe de livraison</p>
+            <p className="text-gray-600">Tous les livreurs — tous magasins confondus</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -417,6 +424,19 @@ export default function DriversPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <Select value={storeFilter} onValueChange={setStoreFilter}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Tous les magasins" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les magasins</SelectItem>
+                {allStores.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}{s.id === storeId ? " (ce magasin)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button 
               className="bg-blue-900 hover:bg-blue-800"
               onClick={() => setIsCreateDialogOpen(true)}
@@ -469,6 +489,24 @@ export default function DriversPage() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Magasin d'attache */}
+                      {driver.store && (
+                        <div className="mb-2">
+                          <Badge
+                            variant="outline"
+                            className={
+                              driver.store.id === storeId
+                                ? "border-blue-300 bg-blue-50 text-blue-700 text-xs"
+                                : "border-orange-300 bg-orange-50 text-orange-700 text-xs"
+                            }
+                          >
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {driver.store.name}
+                            {driver.store.id !== storeId && " ↗"}
+                          </Badge>
+                        </div>
+                      )}
 
                       {/* Informations supplémentaires */}
                       <div className="space-y-2 mb-3">
