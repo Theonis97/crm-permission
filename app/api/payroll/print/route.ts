@@ -151,13 +151,16 @@ export async function GET(request: NextRequest) {
       const period = payroll.period
       const hourlyRate = profile.baseSalary / (payroll.expectedWorkingDays * profile.workingHoursPerDay)
 
-      const paidTotal = Number(payroll.paidAmount) || 0
-      const netSalary = Number(payroll.netSalary) || 0
+      const paidTotal      = Number(payroll.paidAmount)     || 0
+      const cnssDeduction  = Number(payroll.totalDeductions) || 0
+      // netSalary = net après toutes les retenues (CNSS déjà déduite)
+      // NET À PAYER = netSalary − cnss − déjà versé
+      const netSalaryBrut  = Number(payroll.netSalary)       || 0
       const remainingFromDb = Number(payroll.remainingAmount)
       const netAPayerRestant =
         Number.isFinite(remainingFromDb) && payroll.status === "PARTIALLY_PAID"
           ? Math.max(0, remainingFromDb)
-          : Math.max(0, netSalary - paidTotal)
+          : Math.max(0, netSalaryBrut - cnssDeduction - paidTotal)
       
       // Utiliser les paramètres entreprise s'ils existent, sinon fallback sur la boutique
       const storeRole = user.storeUserRoles?.[0]
@@ -232,7 +235,21 @@ export async function GET(request: NextRequest) {
               <td class="right gain">${formatCurrency(payroll.grossSalary)}</td>
               <td></td>
             </tr>
-            
+
+            ${payroll.overtimeHours > 0 ? `
+            <!-- Section Heures supplémentaires -->
+            <tr class="section-header">
+              <td colspan="5">HEURES SUPPLÉMENTAIRES</td>
+            </tr>
+            <tr>
+              <td>Heures supplémentaires (taux × 1,5)</td>
+              <td class="center">${payroll.overtimeHours} h</td>
+              <td class="right">${formatCurrency(Math.round(hourlyRate * 1.5))}/h</td>
+              <td class="right gain">${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+              <td></td>
+            </tr>
+            ` : ''}
+
             ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
             <!-- Section Primes -->
             <tr class="section-header">
@@ -267,10 +284,14 @@ export async function GET(request: NextRequest) {
             
             <!-- Ligne Total Brut (mise en évidence verte) -->
             <tr class="subtotal-row subtotal-row-brut-gains">
-              <td><strong>SALAIRE BRUT + PRIMES + INDEMNITÉS</strong></td>
+              <td><strong>TOTAL BRUT + HEURES SUP + PRIMES + INDEMNITÉS</strong></td>
               <td></td>
               <td></td>
-              <td class="right"><strong>${formatCurrency(payroll.grossSalary + (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0))}</strong></td>
+              <td class="right"><strong>${formatCurrency(
+                payroll.grossSalary +
+                (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
+                (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
+              )}</strong></td>
               <td></td>
             </tr>
 
@@ -331,6 +352,12 @@ export async function GET(request: NextRequest) {
                 <td>Salaire brut</td>
                 <td class="right">${formatCurrency(payroll.grossSalary)}</td>
               </tr>
+              ${payroll.overtimeHours > 0 ? `
+              <tr>
+                <td>Heures supplémentaires</td>
+                <td class="right">+ ${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+              </tr>
+              ` : ''}
               ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
               <tr>
                 <td>Primes</td>
@@ -344,19 +371,19 @@ export async function GET(request: NextRequest) {
               </tr>
               ` : ''}
               <tr class="summary-gains-total-row">
-                <td><strong>Total brut + primes + indemnités</strong></td>
-                <td class="right"><strong>${formatCurrency(payroll.grossSalary + (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0))}</strong></td>
+                <td><strong>Total brut</strong></td>
+                <td class="right"><strong>${formatCurrency(
+                  payroll.grossSalary +
+                  (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
+                  (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
+                )}</strong></td>
               </tr>
             </table>
             <div class="cnss-cotisations-box">
-              <p class="cnss-cotisations-title">Cotisations salariales (CNSS)</p>
+              <p class="cnss-cotisations-title">Cotisations CNSS</p>
               <table class="cnss-cotisations-table">
                 <tr>
-                  <td>CNSS employeur</td>
-                  <td class="right">${formatCurrency(payroll.employerCharges || 0)}</td>
-                </tr>
-                <tr>
-                  <td>CNSS patronal</td>
+                  <td>CNSS Employé</td>
                   <td class="right">${formatCurrency(payroll.totalDeductions || 0)}</td>
                 </tr>
               </table>
@@ -368,22 +395,18 @@ export async function GET(request: NextRequest) {
         <div class="payment-status-section">
           <h3 class="payment-status-title">ACCOMPTE</h3>
           <div class="payment-summary">
-            <p><strong>Montant total (net du bulletin) :</strong> ${formatCurrency(netSalary)}</p>
-            <p><strong>Montant déjà versé :</strong> ${formatCurrency(paidTotal)}</p>
+            <p><strong>Net du bulletin :</strong> ${formatCurrency(netSalaryBrut)}</p>
+            ${cnssDeduction > 0 ? `<p><strong>CNSS Employé :</strong> &minus; ${formatCurrency(cnssDeduction)}</p>` : ''}
+            ${paidTotal > 0 ? `<p><strong>Montant déjà versé :</strong> &minus; ${formatCurrency(paidTotal)}</p>` : ''}
           </div>
           <div class="net-restant-box">
             <p class="net-restant-label">NET À PAYER</p>
-            <p class="net-restant-sublabel">Montant restant dû au salarié après déduction des versements (acomptes) déjà effectués</p>
+            <p class="net-restant-sublabel">Net du bulletin moins CNSS et versements déjà effectués</p>
             <p class="net-restant-amount">${formatCurrency(netAPayerRestant)}</p>
           </div>
         </div>
 
-        <!-- Charges patronales (info) -->
-        ${payroll.employerCharges > 0 ? `
-        <div class="employer-charges">
-          <p><em>Charges patronales : ${formatCurrency(payroll.employerCharges)}</em></p>
-        </div>
-        ` : ''}
+        <!-- CNSS Employeur supprimé de l'affichage du bulletin -->
 
         <!-- Pied de page -->
         <div class="footer-section">
