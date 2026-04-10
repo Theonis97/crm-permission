@@ -19,6 +19,7 @@ import {
   Calculator,
   Banknote,
   FolderOpen,
+  Truck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HomeLayout from "./home-layout"
@@ -134,6 +135,18 @@ const modules = [
     stats: "Mes fichiers",
     clickable: true,
   },
+  {
+    id: "livreur",
+    name: "Livreur Stock",
+    description: "Demander des produits à une boutique (livreur)",
+    icon: Truck,
+    color: "from-sky-500 to-sky-600",
+    permission: "driver.restock",
+    href: "/dashboard/livreur/reapprovisionnement",
+    stats: "Mobile",
+    clickable: true,
+  },
+  
 ]
 
 const quickActions = [
@@ -198,7 +211,7 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {availableModules.map((module) => {
-              const Icon = module.icon
+              const Icon = module.icon ?? Store
 
               return (
                 <Card
@@ -289,7 +302,7 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {restrictedModules.map((module) => {
-                const Icon = module.icon
+                const Icon = module.icon ?? Store
 
                 return (
                   <Card key={module.id} className="opacity-50 py-0 cursor-not-allowed border-gray-200 overflow-hidden">

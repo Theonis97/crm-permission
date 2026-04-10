@@ -2,9 +2,20 @@
 
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -17,12 +28,13 @@ import {
   Package, 
   Loader2, 
   Search,
-  AlertTriangle,
   Box,
   DollarSign,
   AlertCircle,
-  ImageIcon
+  ImageIcon,
+  MinusCircle,
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface StockItem {
   id: string
@@ -67,6 +79,14 @@ export function DriverStock({ driverId }: DriverStockProps) {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
 
+  // États pour le dialog de retrait
+  const [removeDialog, setRemoveDialog] = useState(false)
+  const [removeItem, setRemoveItem] = useState<StockItem | null>(null)
+  const [removeQty, setRemoveQty] = useState(1)
+  const [returnToStore, setReturnToStore] = useState(true)
+  const [removeNotes, setRemoveNotes] = useState("")
+  const [removing, setRemoving] = useState(false)
+
   useEffect(() => {
     loadStock()
   }, [driverId])
@@ -86,6 +106,43 @@ export function DriverStock({ driverId }: DriverStockProps) {
       setError(err.message || "Erreur lors du chargement")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const openRemove = (item: StockItem) => {
+    setRemoveItem(item)
+    setRemoveQty(1)
+    setReturnToStore(true)
+    setRemoveNotes("")
+    setRemoveDialog(true)
+  }
+
+  const handleRemove = async () => {
+    if (!removeItem) return
+    setRemoving(true)
+    try {
+      const res = await fetch(`/api/delivery-persons/${driverId}/stock`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stockItemId: removeItem.id,
+          quantity: removeQty,
+          returnToStore,
+          notes: removeNotes || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || "Erreur lors du retrait")
+        return
+      }
+      toast.success(data.message || "Stock mis à jour")
+      setRemoveDialog(false)
+      loadStock()
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -138,9 +195,10 @@ export function DriverStock({ driverId }: DriverStockProps) {
   }
 
   return (
+    <>
     <div className="space-y-6">
       {/* Statistiques du stock */}
-      <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br py-0 from-blue-50 to-blue-100 border-blue-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -182,7 +240,6 @@ export function DriverStock({ driverId }: DriverStockProps) {
             </div>
           </CardContent>
         </Card>
-
       </div>
 
       {/* Recherche */}
@@ -197,69 +254,185 @@ export function DriverStock({ driverId }: DriverStockProps) {
       </div>
 
       {/* Tableau du stock */}
-     
-        <div>
-          {filteredItems.length > 0 ? (
-            <ScrollArea className="h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">Image</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-center">Quantité</TableHead>
-                    <TableHead className="text-center">Réservé</TableHead>
-                    <TableHead className="text-right">Prix unitaire</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredItems.map((item) => {
-                    const available = item.quantity - item.reserved
-                    const price = item.variant?.prixVente || item.product.prixVente
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div className="w-12 h-12 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
-                            {item.product.photos && item.product.photos.length > 0 ? (
-                              <img
-                                src={item.product.photos[0]}
-                                alt={item.product.name}
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <ImageIcon className="h-6 w-6 text-gray-400" />
-                            )}
-                          </div>
-                        </TableCell>
-                    
-                        <TableCell className="text-gray-600 font-mono text-sm">
-                          {item.variant?.sku || item.product.sku || "-"}
-                        </TableCell>
-                        <TableCell className="text-center font-medium">
-                          {item.quantity}
-                        </TableCell>
-                        <TableCell className="text-center text-amber-600">
-                          {item.reserved}
-                        </TableCell>
-                        
-                       
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(price)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Package className="h-12 w-12 text-gray-300 mb-4" />
-              <p className="text-gray-500">
-                {searchTerm ? "Aucun produit trouvé" : "Aucun stock disponible"}
+      <div>
+        {filteredItems.length > 0 ? (
+          <ScrollArea className="h-[400px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-14">Image</TableHead>
+                  <TableHead>Produit</TableHead>
+                  <TableHead className="text-center">Qté</TableHead>
+                  <TableHead className="text-center">Rés.</TableHead>
+                  <TableHead className="text-right">Prix</TableHead>
+                  <TableHead className="w-24 text-center">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredItems.map((item) => {
+                  const price = item.variant?.prixVente || item.product.prixVente
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                          {item.product.photos && item.product.photos.length > 0 ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.product.photos[0]}
+                              alt={item.product.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <ImageIcon className="h-5 w-5 text-gray-400" />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-medium text-sm text-gray-900 leading-snug">{item.product.name}</p>
+                        {item.variant && (
+                          <p className="text-xs text-gray-500">{item.variant.name}</p>
+                        )}
+                        <p className="text-xs text-gray-400 font-mono">
+                          {item.variant?.sku || item.product.sku || "—"}
+                        </p>
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">{item.quantity}</TableCell>
+                      <TableCell className="text-center text-amber-600">{item.reserved}</TableCell>
+                      <TableCell className="text-right font-medium text-sm">{formatCurrency(price)}</TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50 gap-1"
+                          onClick={() => openRemove(item)}
+                        >
+                          <MinusCircle className="h-4 w-4" />
+                          Retirer
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Package className="h-12 w-12 text-gray-300 mb-4" />
+            <p className="text-gray-500">
+              {searchTerm ? "Aucun produit trouvé" : "Aucun stock disponible"}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Dialog de retrait */}
+    <Dialog open={removeDialog} onOpenChange={setRemoveDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MinusCircle className="h-5 w-5 text-red-500" />
+            Retirer du stock
+          </DialogTitle>
+          <DialogDescription>
+            {removeItem && (
+              <span>
+                Retirer des unités de <strong>{removeItem.product.name}</strong>
+                {removeItem.variant ? ` — ${removeItem.variant.name}` : ""}
+                {" "}(stock actuel : <strong>{removeItem?.quantity}</strong>)
+              </span>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Quantité */}
+          <div className="space-y-2">
+            <Label htmlFor="remove-qty">Quantité à retirer</Label>
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => setRemoveQty((q) => Math.max(1, q - 1))}
+                disabled={removeQty <= 1}
+              >
+                <span className="text-lg font-bold">−</span>
+              </Button>
+              <Input
+                id="remove-qty"
+                type="number"
+                min={1}
+                max={removeItem?.quantity ?? 1}
+                value={removeQty}
+                onChange={(e) => setRemoveQty(Math.min(removeItem?.quantity ?? 1, Math.max(1, Number(e.target.value))))}
+                className="text-center font-semibold text-lg h-9"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => setRemoveQty((q) => Math.min(removeItem?.quantity ?? 1, q + 1))}
+                disabled={removeQty >= (removeItem?.quantity ?? 1)}
+              >
+                <span className="text-lg font-bold">+</span>
+              </Button>
+            </div>
+            {removeItem && removeQty >= removeItem.quantity && (
+              <p className="text-xs text-amber-600">⚠️ Le produit sera complètement retiré du stock du livreur.</p>
+            )}
+          </div>
+
+          {/* Retour en magasin */}
+          <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <Checkbox
+              id="return-store"
+              checked={returnToStore}
+              onCheckedChange={(v) => setReturnToStore(Boolean(v))}
+            />
+            <div>
+              <Label htmlFor="return-store" className="cursor-pointer font-medium">
+                Retourner au stock du magasin
+              </Label>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {returnToStore
+                  ? "Les unités seront réintégrées dans le stock du magasin d'attache."
+                  : "Les unités seront simplement supprimées sans retour en magasin."}
               </p>
             </div>
-          )}
+          </div>
+
+          {/* Note */}
+          <div className="space-y-2">
+            <Label htmlFor="remove-notes">Note (optionnel)</Label>
+            <Input
+              id="remove-notes"
+              placeholder="Ex : Produit défectueux, retour d'inventaire…"
+              value={removeNotes}
+              onChange={(e) => setRemoveNotes(e.target.value)}
+            />
+          </div>
         </div>
-    </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setRemoveDialog(false)} disabled={removing}>
+            Annuler
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleRemove}
+            disabled={removing || removeQty <= 0}
+            className="gap-2"
+          >
+            {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
+            Retirer {removeQty} unité{removeQty > 1 ? "s" : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

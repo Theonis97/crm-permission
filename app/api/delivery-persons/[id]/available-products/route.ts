@@ -15,8 +15,11 @@ export async function GET(
     // Vérifier que le livreur existe
     const deliveryPerson = await prisma.deliveryPerson.findUnique({
       where: { id: deliveryPersonId },
-      include: {
-        store: true,
+      select: {
+        id: true,
+        name: true,
+        storeId: true,
+        store: { select: { id: true, name: true } },
       },
     })
 

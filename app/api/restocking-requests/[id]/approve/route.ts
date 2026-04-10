@@ -21,7 +21,21 @@ export async function POST(
 
     const { id } = await params
     const body = await request.json()
-    const { items } = body // items avec quantités approuvées
+    const { items: rawItems } = body
+
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Liste d'articles manquante ou vide",
+          message: "Liste d'articles manquante ou vide",
+        },
+        { status: 400 },
+      )
+    }
+
+    const normVariantId = (v: string | null | undefined): string | null =>
+      v == null || v === "" ? null : v
 
     // Récupérer l'utilisateur
     const user = await prisma.user.findUnique({
@@ -39,12 +53,37 @@ export async function POST(
     const restockingRequest = await prisma.restockingRequest.findUnique({
       where: { id },
       include: {
-        deliveryPerson: true,
-        store: true,
+        deliveryPerson: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+        store: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         items: {
           include: {
-            product: true,
-            variant: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                photos: true,
+              },
+            },
+            variant: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                attributes: true,
+              },
+            },
           },
         },
       },
@@ -59,16 +98,62 @@ export async function POST(
 
     if (restockingRequest.status !== "PENDING") {
       return NextResponse.json(
-        { success: false, error: "Cette demande a déjà été traitée" },
+        { success: false, error: "Cette demande a déjà été traitée", message: "Cette demande a déjà été traitée" },
         { status: 400 }
       )
     }
 
-    // Optimiser la vérification du stock avec une seule requête
-    const productIds = items.map((item: any) => {
-      const requestItem = restockingRequest.items.find((ri: any) => ri.id === item.id)
-      return requestItem?.productId
-    }).filter(Boolean)
+    const overrideById = new Map<string, number>()
+    for (const row of rawItems as Array<{ id?: string; approvedQuantity?: unknown }>) {
+      if (row?.id == null) {
+        return NextResponse.json(
+          { success: false, error: "Identifiant de ligne manquant", message: "Identifiant de ligne manquant" },
+          { status: 400 },
+        )
+      }
+      const q = Number(row.approvedQuantity)
+      if (!Number.isFinite(q) || q < 0) {
+        return NextResponse.json(
+          { success: false, error: "Quantité approuvée invalide", message: "Quantité approuvée invalide" },
+          { status: 400 },
+        )
+      }
+      overrideById.set(String(row.id), Math.floor(q))
+    }
+
+    const requestItemIds = new Set(restockingRequest.items.map((ri) => ri.id))
+    for (const idKey of overrideById.keys()) {
+      if (!requestItemIds.has(idKey)) {
+        return NextResponse.json(
+          { success: false, error: "Ligne de demande inconnue", message: "Ligne de demande inconnue" },
+          { status: 400 },
+        )
+      }
+    }
+
+    const lines = restockingRequest.items.map((ri) => {
+      const overridden = overrideById.has(ri.id) ? overrideById.get(ri.id)! : ri.requestedQuantity
+      const approvedQuantity = Math.min(Math.max(0, overridden), ri.requestedQuantity)
+      return { requestItem: ri, approvedQuantity }
+    })
+
+    const totalApproved = lines.reduce((s, l) => s + l.approvedQuantity, 0)
+    if (totalApproved < 1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Indiquez au moins une quantité positive à approuver.",
+          message: "Indiquez au moins une quantité positive à approuver.",
+        },
+        { status: 400 },
+      )
+    }
+
+    const productIds = [
+      ...new Set(
+        lines.filter((l) => l.approvedQuantity > 0).map((l) => l.requestItem.productId),
+      ),
+    ]
 
     const storeProducts = await prisma.storeProduct.findMany({
       where: {
@@ -77,41 +162,68 @@ export async function POST(
       },
     })
 
-    const stockValidations: Array<{
-      storeProductId: string;
-      productId: string;
-      variantId: string | null;
-      quantity: number;
-      requestItemId: string;
-    }> = []
-    
-    for (const item of items) {
-      const requestItem = restockingRequest.items.find((ri: any) => ri.id === item.id)
-      if (!requestItem) continue
+    type StockValidation = {
+      storeProductId: string
+      productId: string
+      variantId: string | null
+      quantity: number
+      requestItemId: string
+    }
 
-      const storeProduct = storeProducts.find(sp => sp.productId === requestItem.productId)
+    const stockValidations: StockValidation[] = []
 
-      if (!storeProduct || storeProduct.stock < item.approvedQuantity) {
+    for (const line of lines) {
+      if (line.approvedQuantity < 1) continue
+
+      const storeProduct = storeProducts.find((sp) => sp.productId === line.requestItem.productId)
+      if (!storeProduct) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: `Stock insuffisant pour ${requestItem.product.name}. Disponible: ${storeProduct?.stock || 0}, Demandé: ${item.approvedQuantity}` 
+          {
+            success: false,
+            error: `Le produit « ${line.requestItem.product.name} » n'est pas associé à ce magasin (stock magasin).`,
+            message: `Le produit « ${line.requestItem.product.name} » n'est pas associé à ce magasin (stock magasin).`,
           },
-          { status: 400 }
+          { status: 400 },
         )
       }
 
       stockValidations.push({
         storeProductId: storeProduct.id,
-        productId: requestItem.productId,
-        variantId: requestItem.variantId,
-        quantity: item.approvedQuantity,
-        requestItemId: item.id,
+        productId: line.requestItem.productId,
+        variantId: normVariantId(line.requestItem.variantId),
+        quantity: line.approvedQuantity,
+        requestItemId: line.requestItem.id,
       })
     }
 
+    const demandByStoreProductId = new Map<string, number>()
+    for (const v of stockValidations) {
+      demandByStoreProductId.set(
+        v.storeProductId,
+        (demandByStoreProductId.get(v.storeProductId) || 0) + v.quantity,
+      )
+    }
+
+    for (const [storeProductId, demand] of demandByStoreProductId) {
+      const sp = storeProducts.find((s) => s.id === storeProductId)
+      const label =
+        stockValidations.find((x) => x.storeProductId === storeProductId)?.productId ?? ""
+      const name =
+        restockingRequest.items.find((i) => i.productId === label)?.product.name ?? "Produit"
+      if (!sp || sp.stock < demand) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Stock insuffisant pour ${name}. Disponible : ${sp?.stock ?? 0}, besoin total : ${demand}.`,
+            message: `Stock insuffisant pour ${name}. Disponible : ${sp?.stock ?? 0}, besoin total : ${demand}.`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+
     // Transaction optimisée avec timeout augmenté
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       console.log(`🔄 Starting transaction for request ${id}`)
       
       // 1. Mettre à jour la demande et les items en une seule fois
@@ -124,114 +236,115 @@ export async function POST(
         },
       })
 
-      // 2. Mettre à jour les quantités approuvées des items en parallèle
+      // 2. Mettre à jour les quantités approuvées (toutes les lignes, y compris 0)
       await Promise.all(
-        items.map((item: any) =>
+        lines.map((line) =>
           tx.restockingRequestItem.update({
-            where: { id: item.id },
+            where: { id: line.requestItem.id },
             data: {
-              approvedQuantity: item.approvedQuantity,
+              approvedQuantity: line.approvedQuantity,
             },
-          })
-        )
+          }),
+        ),
       )
 
       console.log(`✅ Updated request and items for ${id}`)
 
-      // 3. Récupérer tous les stocks existants du livreur en une seule requête
-      const existingDeliveryStocks = await tx.deliveryPersonStock.findMany({
-        where: {
-          deliveryPersonId: restockingRequest.deliveryPersonId,
-          productId: { in: stockValidations.map(v => v.productId) },
-        },
-      })
+      // 3. Sortie magasin : une décrémentation + un mouvement par produit (total des lignes)
+      const decrementByStoreProduct = new Map<string, { productId: string; total: number }>()
+      for (const v of stockValidations) {
+        const cur = decrementByStoreProduct.get(v.storeProductId) || {
+          productId: v.productId,
+          total: 0,
+        }
+        cur.total += v.quantity
+        decrementByStoreProduct.set(v.storeProductId, cur)
+      }
 
-      // 4. Préparer les opérations de stock en batch
-      const storeProductUpdates = []
-      const stockMovements = []
-      const deliveryStockMovements = []
-      const deliveryPersonStockOps = []
-
-      for (const validation of stockValidations) {
-        // 4a. Préparer la sortie du stock du magasin
-        storeProductUpdates.push(
+      const storeOps = []
+      for (const [storeProductId, { productId, total }] of decrementByStoreProduct) {
+        storeOps.push(
           tx.storeProduct.update({
-            where: { id: validation.storeProductId },
-            data: {
-              stock: {
-                decrement: validation.quantity,
-              },
-            },
-          })
+            where: { id: storeProductId },
+            data: { stock: { decrement: total } },
+          }),
         )
-
-        // 4b. Préparer le mouvement de sortie magasin
-        stockMovements.push(
+        storeOps.push(
           tx.stockMovement.create({
             data: {
-              productId: validation.productId,
-              quantity: -validation.quantity, // Négatif = sortie
+              productId,
+              quantity: -total,
               type: "TRANSFER_OUT",
-              note: `Transfert vers livreur ${restockingRequest.deliveryPerson.name} - Demande ${id}`,
+              note: `Transfert vers livreur ${restockingRequest.deliveryPerson.name} — demande ${id} (${stockValidations.filter((s) => s.productId === productId).length} ligne(s))`,
               userId: user.id,
             },
-          })
-        )
-
-        // 4c. Préparer l'entrée dans le stock du livreur
-        const existingStock = existingDeliveryStocks.find(stock => 
-          stock.productId === validation.productId && 
-          stock.variantId === validation.variantId
-        )
-
-        if (existingStock) {
-          deliveryPersonStockOps.push(
-            tx.deliveryPersonStock.update({
-              where: { id: existingStock.id },
-              data: {
-                quantity: {
-                  increment: validation.quantity,
-                },
-              },
-            })
-          )
-        } else {
-          deliveryPersonStockOps.push(
-            tx.deliveryPersonStock.create({
-              data: {
-                deliveryPersonId: restockingRequest.deliveryPersonId,
-                productId: validation.productId,
-                variantId: validation.variantId,
-                quantity: validation.quantity,
-              },
-            })
-          )
-        }
-
-        // 4d. Préparer le mouvement d'entrée livreur
-        deliveryStockMovements.push(
-          tx.deliveryStockMovement.create({
-            data: {
-              deliveryPersonId: restockingRequest.deliveryPersonId,
-              productId: validation.productId,
-              variantId: validation.variantId,
-              type: "SUPPLY",
-              quantity: validation.quantity, // Positif = entrée
-              notes: `Approvisionnement depuis magasin - Demande ${id}`,
-              createdById: user.id,
-            },
-          })
+          }),
         )
       }
 
-      // Exécuter toutes les opérations de stock en parallèle
+      // 4. Entrée stock livreur : regrouper par (productId, variantId) pour éviter créations en double dans la même transaction
+      const deliveryGroups = new Map<
+        string,
+        { productId: string; variantId: string | null; quantity: number }
+      >()
+      for (const v of stockValidations) {
+        const key = `${v.productId}\0${v.variantId ?? ""}`
+        const g = deliveryGroups.get(key) || {
+          productId: v.productId,
+          variantId: v.variantId,
+          quantity: 0,
+        }
+        g.quantity += v.quantity
+        deliveryGroups.set(key, g)
+      }
+
+      const deliveryOps = []
+      for (const g of deliveryGroups.values()) {
+        const existing = await tx.deliveryPersonStock.findFirst({
+          where: {
+            deliveryPersonId: restockingRequest.deliveryPersonId,
+            productId: g.productId,
+            variantId: g.variantId,
+          },
+        })
+
+        if (existing) {
+          deliveryOps.push(
+            tx.deliveryPersonStock.update({
+              where: { id: existing.id },
+              data: { quantity: { increment: g.quantity } },
+            }),
+          )
+        } else {
+          deliveryOps.push(
+            tx.deliveryPersonStock.create({
+              data: {
+                deliveryPersonId: restockingRequest.deliveryPersonId,
+                productId: g.productId,
+                variantId: g.variantId,
+                quantity: g.quantity,
+              },
+            }),
+          )
+        }
+
+        deliveryOps.push(
+          tx.deliveryStockMovement.create({
+            data: {
+              deliveryPersonId: restockingRequest.deliveryPersonId,
+              productId: g.productId,
+              variantId: g.variantId,
+              type: "SUPPLY",
+              quantity: g.quantity,
+              notes: `Approvisionnement depuis magasin — demande ${id}`,
+              createdById: user.id,
+            },
+          }),
+        )
+      }
+
       console.log(`🔄 Executing stock operations for ${id}`)
-      await Promise.all([
-        ...storeProductUpdates,
-        ...stockMovements,
-        ...deliveryPersonStockOps,
-        ...deliveryStockMovements,
-      ])
+      await Promise.all([...storeOps, ...deliveryOps])
 
       console.log(`✅ Completed stock operations for ${id}`)
 
@@ -308,9 +421,10 @@ export async function POST(
     })
   } catch (error) {
     console.error("❌ Approve restocking request error:", error)
-    return NextResponse.json(
-      { success: false, error: "Erreur lors de l'approbation de la demande" },
-      { status: 500 }
-    )
+    const msg =
+      error instanceof Error && error.message
+        ? error.message
+        : "Erreur lors de l'approbation de la demande"
+    return NextResponse.json({ success: false, error: msg, message: msg }, { status: 500 })
   }
 }

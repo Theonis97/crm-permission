@@ -35,8 +35,9 @@ import {
   Building2,
   ShieldCheck,
 } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { ManagerSelector } from "@/components/stores/manager-selector"
+import { formatStoreDateForInput } from "@/lib/store-legal"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,6 @@ const FORMES_JURIDIQUES = [
 // ─── Composant principal ────────────────────────────────────────────────────
 
 export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreSheetProps) {
-  const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -159,14 +159,10 @@ export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreS
           cnssEmployeur: store.cnssEmployeur ?? "",
           cnssPatronale: store.cnssPatronale ?? "",
           siegeSocial: store.siegeSocial ?? "",
-          dateCreation: store.dateCreation ?? "",
+          dateCreation: formatStoreDateForInput(store.dateCreation),
         })
       } catch (err) {
-        toast({
-          title: "Erreur",
-          description: err instanceof Error ? err.message : "Erreur de chargement",
-          variant: "destructive",
-        })
+        toast.error(err instanceof Error ? err.message : "Erreur de chargement")
         onClose()
       } finally {
         setFetching(false)
@@ -188,7 +184,7 @@ export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreS
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      toast({ title: "Erreur", description: "Le nom est requis", variant: "destructive" })
+      toast.error("Le nom du magasin est requis")
       setCurrentStep(1)
       return
     }
@@ -201,23 +197,23 @@ export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreS
       })
 
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.message || "Erreur lors de la mise à jour")
+        const err = await res.json().catch(() => ({}))
+        const msg =
+          (typeof err.error === "string" && err.error) ||
+          (typeof err.message === "string" && err.message) ||
+          "Erreur lors de la mise à jour"
+        throw new Error(msg)
       }
 
-      const updated: StoreData = await res.json()
-      toast({
-        title: "Magasin mis à jour",
-        description: `${updated.name} a été modifié avec succès`,
-      })
+      const updated = (await res.json()) as StoreData & { _warning?: string }
+      const description = updated._warning
+        ? `${updated.name} a été modifié. ${updated._warning}`
+        : `${updated.name} a été modifié avec succès`
+      toast.success("Magasin mis à jour", { description })
       onSuccess()
       onClose()
     } catch (err) {
-      toast({
-        title: "Erreur",
-        description: err instanceof Error ? err.message : "Une erreur est survenue",
-        variant: "destructive",
-      })
+      toast.error(err instanceof Error ? err.message : "Une erreur est survenue")
     } finally {
       setLoading(false)
     }
@@ -226,7 +222,12 @@ export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreS
   // ─── Rendu ─────────────────────────────────────────────────────────────
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto flex flex-col gap-0 p-0">
         {/* En-tête */}
         <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-blue-50 to-purple-50">
@@ -413,7 +414,7 @@ export function EditStoreSheet({ storeId, open, onClose, onSuccess }: EditStoreS
                   {/* Forme juridique */}
                   <Field label="Forme juridique" icon={Building2}>
                     <Select
-                      value={formData.formeJuridique ?? ""}
+                      value={formData.formeJuridique?.trim() ? formData.formeJuridique : undefined}
                       onValueChange={(v) => set("formeJuridique", v)}
                     >
                       <SelectTrigger className="rounded-full">

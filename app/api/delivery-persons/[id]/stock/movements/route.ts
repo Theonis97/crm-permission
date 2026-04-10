@@ -163,7 +163,12 @@ export async function POST(
     // Vérifier que le livreur existe
     const deliveryPerson = await prisma.deliveryPerson.findUnique({
       where: { id },
-      include: { store: true },
+      select: {
+        id: true,
+        name: true,
+        storeId: true,
+        store: { select: { id: true, name: true } },
+      },
     })
 
     if (!deliveryPerson) {

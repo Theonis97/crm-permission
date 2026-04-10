@@ -132,16 +132,29 @@ export default function StoresPage() {
     try {
       setLoading(true)
       const response = await fetch("/api/stores")
-      
+      const data = await response.json().catch(() => null)
+
       if (!response.ok) {
-        throw new Error("Erreur lors de la récupération des stores")
+        const body = data && typeof data === "object" ? (data as { message?: string; error?: string }) : {}
+        const msg =
+          body.message ||
+          body.error ||
+          (response.status === 401
+            ? "Session expirée ou non authentifié — reconnectez-vous."
+            : `Erreur ${response.status} lors du chargement des magasins`)
+        throw new Error(msg)
       }
 
-      const data = await response.json()
+      if (!Array.isArray(data)) {
+        throw new Error("Réponse serveur invalide (liste magasins)")
+      }
+
       setStores(data)
     } catch (error) {
       console.error("Error fetching stores:", error)
-      toast.error("Erreur lors du chargement des boutiques")
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors du chargement des boutiques"
+      )
     } finally {
       setLoading(false)
     }

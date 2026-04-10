@@ -143,6 +143,16 @@ model Store {
   whatsapp   String?
   isActive   Boolean  @default(true) @map("is_active")
   managerId  String?  @map("manager_id") // Manager de la boutique (optionnel)
+
+  // Informations juridiques & fiscales (boutique)
+  formeJuridique String?   @map("forme_juridique")
+  rccm           String?
+  nif            String?
+  cnssEmployeur  String?   @map("cnss_employeur")
+  cnssPatronale  String?   @map("cnss_patronale")
+  siegeSocial    String?   @map("siege_social")
+  dateCreation   DateTime? @map("date_creation")
+
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -163,6 +173,9 @@ model Store {
   
   // Demandes d'approvisionnement
   restockingRequests RestockingRequest[]
+  
+  // Ventes déclarées par livreurs
+  driverSales DriverSale[]
   
   // Clôtures de journée
   dayCloses DayClose[]
@@ -247,6 +260,7 @@ model Product {
   deliveryPersonStocks    DeliveryPersonStock[] // Stock des livreurs
   deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs
   restockingRequestItems  RestockingRequestItem[] // Items des demandes d'approvisionnement
+  driverSaleItems         DriverSaleItem[] // Ventes déclarées par livreurs
   productReturnItems      ProductReturnItem[] // SAV - Items retournés
   exchangeReturnItems     ProductReturnItem[] @relation("ExchangeProduct") // SAV - Produits donnés en échange
 
@@ -292,6 +306,7 @@ model ProductVariant {
   deliveryPersonStocks   DeliveryPersonStock[] // Stock des livreurs pour cette variante
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs pour cette variante
   restockingRequestItems RestockingRequestItem[] // Items des demandes d'approvisionnement pour cette variante
+  driverSaleItems        DriverSaleItem[] // Ventes déclarées par livreurs pour cette variante
   returnedItems          ProductReturnItem[] @relation("ReturnedVariant") // SAV - Variantes retournées
   exchangeReturnItems    ProductReturnItem[] @relation("ExchangeVariant") // SAV - Variantes données en échange
 
@@ -667,6 +682,7 @@ model DeliveryPerson {
   pushTokens          DeliveryPersonPushToken[] // Tokens de notification push
   dayShifts           DayShift[] // Clôtures de journée
   restockingRequests  RestockingRequest[] // Demandes d'approvisionnement
+  driverSales         DriverSale[] // Ventes déclarées par le livreur
   notifications       DeliveryNotification[] // Notifications du livreur
 
   @@map("delivery_persons")
@@ -1583,6 +1599,50 @@ model RestockingRequestItem {
   @@index([restockingRequestId])
   @@index([productId])
   @@map("restocking_request_items")
+}
+
+// ============================================================================
+// VENTES DÉCLARÉES PAR LIVREURS
+// ============================================================================
+
+// Déclaration de ventes par un livreur (les produits qu'il a vendus sur le terrain)
+model DriverSale {
+  id               String         @id @default(cuid())
+  deliveryPersonId String         @map("delivery_person_id")
+  storeId          String         @map("store_id") // Magasin d'attache du livreur
+  totalAmount      Float          @map("total_amount") // Somme totale de la déclaration
+  notes            String?        // Notes optionnelles
+  declaredAt       DateTime       @default(now()) @map("declared_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items          DriverSaleItem[]
+
+  @@index([deliveryPersonId])
+  @@index([storeId])
+  @@index([declaredAt])
+  @@map("driver_sales")
+}
+
+// Articles d'une déclaration de vente d'un livreur
+model DriverSaleItem {
+  id           String  @id @default(cuid())
+  driverSaleId String  @map("driver_sale_id")
+  productId    String  @map("product_id")
+  variantId    String? @map("variant_id")
+  quantity     Int
+  unitPrice    Float   @map("unit_price")   // Prix unitaire de vente
+  totalPrice   Float   @map("total_price")  // quantity × unitPrice
+
+  driverSale DriverSale     @relation(fields: [driverSaleId], references: [id], onDelete: Cascade)
+  product    Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([driverSaleId])
+  @@index([productId])
+  @@map("driver_sale_items")
 }
 
 // Clôture de journée de caisse

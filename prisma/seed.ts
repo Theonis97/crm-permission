@@ -56,6 +56,13 @@ async function main() {
           isSystem: false,
         },
       }),
+      prisma.role.create({
+        data: {
+          name: "Livreur",
+          description: "Portail de demande de réapprovisionnement magasin (livreur)",
+          isSystem: true,
+        },
+      }),
     ])
 
     console.log(`✅ ${roles.length} rôles créés`)
@@ -211,6 +218,14 @@ async function main() {
       { name: "accounting.categories.manage", description: "Gérer les catégories de dépenses", module: "accounting", action: "manage" },
       { name: "accounting.reports.view", description: "Voir les rapports comptables", module: "accounting", action: "view" },
       { name: "accounting.reports.export", description: "Exporter les rapports comptables", module: "accounting", action: "export" },
+
+      // Livreur / réapprovisionnement magasin
+      {
+        name: "driver.restock",
+        description: "Accéder au portail de demande de réapprovisionnement (livreur)",
+        module: "driver",
+        action: "restock",
+      },
     ]
 
     const permissions = await Promise.all(
@@ -226,7 +241,7 @@ async function main() {
     // 3. Assigner les permissions aux rôles
     console.log("🔗 Attribution des permissions aux rôles...")
 
-    const [superAdminRole, adminRole, managerRole, commercialRole, userRole] = roles
+    const [superAdminRole, adminRole, managerRole, commercialRole, userRole, livreurRole] = roles
 
     // Super Admin : toutes les permissions
     await Promise.all(
@@ -306,6 +321,18 @@ async function main() {
       ),
     )
     console.log(`✅ Utilisateur: ${userPermissions.length} permissions`)
+
+    // Livreur : uniquement réapprovisionnement livreur
+    const livreurPermission = permissions.find((p) => p.name === "driver.restock")
+    if (livreurPermission) {
+      await prisma.rolePermission.create({
+        data: {
+          roleId: livreurRole.id,
+          permissionId: livreurPermission.id,
+        },
+      })
+      console.log("✅ Livreur: permission driver.restock")
+    }
 
     // 4. Créer les utilisateurs avec mots de passe
     console.log("👤 Création des utilisateurs...")

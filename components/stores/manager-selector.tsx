@@ -55,10 +55,19 @@ export function ManagerSelector({ value, onChange, disabled }: ManagerSelectorPr
   const loadUsers = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/users")
-      
+      let response: Response
+      try {
+        response = await fetch("/api/users")
+      } catch {
+        throw new Error("Serveur inaccessible. Vérifiez que le serveur est démarré.")
+      }
+
+      if (response.status === 401) {
+        throw new Error("Session expirée. Veuillez vous reconnecter.")
+      }
+
       if (!response.ok) {
-        throw new Error("Erreur lors du chargement des utilisateurs")
+        throw new Error(`Erreur ${response.status} lors du chargement des utilisateurs`)
       }
 
       const data = await response.json()
@@ -66,7 +75,7 @@ export function ManagerSelector({ value, onChange, disabled }: ManagerSelectorPr
     } catch (error) {
       console.error("Error loading users:", error)
       toast.error("Erreur", {
-        description: "Impossible de charger la liste des utilisateurs",
+        description: error instanceof Error ? error.message : "Impossible de charger la liste des utilisateurs",
       })
     } finally {
       setLoading(false)

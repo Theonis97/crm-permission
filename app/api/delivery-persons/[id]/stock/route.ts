@@ -20,8 +20,13 @@ export async function GET(
     // Vérifier que le livreur existe
     const deliveryPerson = await prisma.deliveryPerson.findUnique({
       where: { id },
-      include: {
-        store: true,
+      select: {
+        id: true,
+        name: true,
+        storeId: true,
+        store: {
+          select: { id: true, name: true },
+        },
       },
     })
 
@@ -101,6 +106,111 @@ export async function GET(
   }
 }
 
+// PATCH - Retirer du stock au livreur (avec retour optionnel en magasin)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
+    }
+
+    const { id } = await params
+    const body = await request.json()
+    const { stockItemId, quantity, returnToStore = true, notes } = body as {
+      stockItemId: string
+      quantity: number
+      returnToStore?: boolean
+      notes?: string
+    }
+
+    if (!stockItemId || !quantity || quantity <= 0) {
+      return NextResponse.json({ error: "stockItemId et quantity sont requis" }, { status: 400 })
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+    if (!user) return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 })
+
+    const deliveryPerson = await prisma.deliveryPerson.findUnique({
+      where: { id },
+      select: { id: true, name: true, storeId: true, store: { select: { id: true, name: true } } },
+    })
+    if (!deliveryPerson) return NextResponse.json({ error: "Livreur non trouvé" }, { status: 404 })
+
+    // Vérifier l'item de stock
+    const stockItem = await prisma.deliveryPersonStock.findUnique({
+      where: { id: stockItemId },
+      select: { id: true, deliveryPersonId: true, productId: true, variantId: true, quantity: true },
+    })
+    if (!stockItem || stockItem.deliveryPersonId !== id) {
+      return NextResponse.json({ error: "Article de stock introuvable" }, { status: 404 })
+    }
+    if (stockItem.quantity < quantity) {
+      return NextResponse.json(
+        { error: `Quantité insuffisante : ${stockItem.quantity} disponible(s), ${quantity} demandé(s)` },
+        { status: 400 }
+      )
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Décrémenter le stock du livreur (supprimer l'entrée si qty devient 0)
+      if (stockItem.quantity - quantity <= 0) {
+        await tx.deliveryPersonStock.delete({ where: { id: stockItemId } })
+      } else {
+        await tx.deliveryPersonStock.update({
+          where: { id: stockItemId },
+          data: { quantity: { decrement: quantity } },
+        })
+      }
+
+      // 2. Mouvement de stock livreur
+      await tx.deliveryStockMovement.create({
+        data: {
+          deliveryPersonId: id,
+          productId: stockItem.productId,
+          variantId: stockItem.variantId,
+          type: "RETURN",
+          quantity,
+          notes: notes || `Retrait par admin : ${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
+          createdById: user.id,
+        },
+      })
+
+      // 3. Retour au stock magasin si demandé
+      if (returnToStore) {
+        const storeProduct = await tx.storeProduct.findFirst({
+          where: { storeId: deliveryPerson.storeId, productId: stockItem.productId },
+        })
+        if (storeProduct) {
+          await tx.storeProduct.update({
+            where: { id: storeProduct.id },
+            data: { stock: { increment: quantity } },
+          })
+          await tx.stockMovement.create({
+            data: {
+              productId: stockItem.productId,
+              quantity,
+              type: "ENTRY",
+              note: `Retour depuis livreur : ${deliveryPerson.name}${notes ? ` — ${notes}` : ""}`,
+              userId: user.id,
+            },
+          })
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: `${quantity} unité(s) retirée(s) du stock de ${deliveryPerson.name}${returnToStore ? " et retournée(s) en magasin" : ""}`,
+    })
+  } catch (error) {
+    console.error("[DELIVERY_PERSON_STOCK_PATCH]", error)
+    return NextResponse.json({ error: "Erreur lors du retrait du stock" }, { status: 500 })
+  }
+}
+
 // POST - Ajouter du stock au livreur (approvisionnement depuis le magasin)
 export async function POST(
   request: NextRequest,
@@ -140,7 +250,12 @@ export async function POST(
     // Vérifier que le livreur existe
     const deliveryPerson = await prisma.deliveryPerson.findUnique({
       where: { id },
-      include: { store: true },
+      select: {
+        id: true,
+        name: true,
+        storeId: true,
+        store: { select: { id: true, name: true } },
+      },
     })
 
     if (!deliveryPerson) {

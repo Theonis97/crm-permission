@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { findUniqueStoreByIdForApi } from "@/lib/store-queries"
 
 export async function GET(
   request: NextRequest,
@@ -43,10 +44,8 @@ export async function GET(
 
     const { id: storeId } = await params
 
-    // Récupérer les informations du magasin
-    const store = await prisma.store.findUnique({
-      where: { id: storeId },
-    })
+    // Récupérer le magasin (select compatible base sans colonnes juridiques)
+    const store = await findUniqueStoreByIdForApi(storeId)
 
     if (!store) {
       return NextResponse.json({ error: "Magasin introuvable" }, { status: 404 })

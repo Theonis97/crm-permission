@@ -143,6 +143,7 @@ export function RolePermissionsSheet({ role, open, onOpenChange, onPermissionsUp
       reports: "📊",
       warehouses: "🏭",
       stores: "🏪",
+      driver: "🚚",
     }
     return icons[module] || "⚙️"
   }
@@ -160,6 +161,7 @@ export function RolePermissionsSheet({ role, open, onOpenChange, onPermissionsUp
       reports: "Rapports",
       warehouses: "Entrepôts",
       stores: "Magasins",
+      driver: "Livreur",
     }
     return names[module] || module
   }
@@ -179,6 +181,7 @@ export function RolePermissionsSheet({ role, open, onOpenChange, onPermissionsUp
       assign_manager: "Assigner gestionnaire",
       manage_inventory: "Gérer inventaire",
       view_sales: "Voir ventes",
+      restock: "Réapprovisionnement",
     }
     return names[action] || action
   }

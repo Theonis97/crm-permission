@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { useParams, usePathname } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,15 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
+function messageFromApiError(data: unknown, fallback: string): string {
+  if (data && typeof data === "object") {
+    const o = data as Record<string, unknown>
+    if (typeof o.error === "string" && o.error.trim()) return o.error
+    if (typeof o.message === "string" && o.message.trim()) return o.message
+  }
+  return fallback
+}
+
 // Réutiliser les interfaces du composant sheet
 interface RestockingRequestItem {
   id: string
@@ -119,9 +128,81 @@ interface RestockingRequest {
   items: RestockingRequestItem[]
 }
 
+function productThumbSrc(item: RestockingRequestItem): string | null {
+  const p = item.product?.photos
+  if (Array.isArray(p) && p.length > 0 && typeof p[0] === "string") return p[0]
+  return null
+}
+
+/** Aperçu produits demandés — petits carreaux (photo + quantité). */
+function RequestProductTiles({
+  items,
+  size = "md",
+  className,
+}: {
+  items: RestockingRequestItem[]
+  size?: "sm" | "md"
+  className?: string
+}) {
+  const box = size === "sm" ? "h-11 w-11" : "h-14 w-14"
+  const qtyClass = size === "sm" ? "text-[9px] px-0.5" : "text-[10px] px-1"
+  if (!items?.length) {
+    return <span className="text-xs text-gray-400">—</span>
+  }
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", className)}>
+      {items.map((item) => {
+        const src = productThumbSrc(item)
+        const label = item.variant ? `${item.product.name} (${item.variant.name})` : item.product.name
+        return (
+          <div
+            key={item.id}
+            className={cn(
+              "relative rounded-md overflow-hidden border border-gray-200 bg-gray-100 shrink-0 shadow-sm",
+              box,
+            )}
+            title={`${label} — ×${item.requestedQuantity}`}
+          >
+            {src ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={src} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center">
+                <Package className={size === "sm" ? "h-4 w-4 text-gray-400" : "h-5 w-5 text-gray-400"} />
+              </div>
+            )}
+            <span
+              className={cn(
+                "absolute bottom-0 right-0 font-bold bg-black/75 text-white leading-none py-0.5 rounded-tl",
+                qtyClass,
+              )}
+            >
+              ×{item.requestedQuantity}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function resolveStoreIdFromRoute(params: ReturnType<typeof useParams>, pathname: string | null): string {
+  const raw = params?.id
+  if (typeof raw === "string" && raw.length > 0 && raw !== "undefined") {
+    return raw
+  }
+  const m = pathname?.match(/\/dashboard\/stores\/([^/]+)/)
+  const fromPath = m?.[1]
+  if (fromPath && fromPath !== "undefined") {
+    return fromPath
+  }
+  return ""
+}
+
 export default function DeliveryRequestsPage() {
   const params = useParams()
-  const storeId = params.id as string
+  const pathname = usePathname()
+  const storeId = useMemo(() => resolveStoreIdFromRoute(params, pathname), [params, pathname])
   const [storeName, setStoreName] = useState<string>("")
   const [requests, setRequests] = useState<RestockingRequest[]>([])
   const [loading, setLoading] = useState(false)
@@ -150,36 +231,42 @@ export default function DeliveryRequestsPage() {
 
     if (storeId) {
       loadStoreInfo()
-      loadRequests()
     }
   }, [storeId])
 
-  const loadRequests = async () => {
+  const loadRequests = useCallback(async () => {
+    if (!storeId || storeId === "undefined") return
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      
-      if (statusFilter !== "all") {
-        params.append("status", statusFilter)
-      }
-      
       params.append("storeId", storeId)
+      /* Toujours charger toutes les demandes du magasin ; le filtre statut est appliqué côté client
+         (évite les listes vides si un filtre « Approuvé » restait actif alors qu’une nouvelle demande est « En attente »). */
 
       const response = await fetch(`/api/restocking-requests?${params}`)
-      
+      const data = await response.json().catch(() => ({}))
+
       if (!response.ok) {
-        throw new Error("Erreur lors du chargement")
+        const msg = messageFromApiError(data, "Erreur lors du chargement des demandes")
+        console.error("[delivery-requests] GET", response.status, data)
+        toast.error(msg)
+        setRequests([])
+        return
       }
 
-      const data = await response.json()
-      setRequests(data.data || [])
+      setRequests(Array.isArray(data.data) ? data.data : [])
     } catch (error) {
       console.error("Error loading restocking requests:", error)
-      toast.error("Erreur lors du chargement des demandes")
+      toast.error("Erreur réseau lors du chargement des demandes")
+      setRequests([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [storeId])
+
+  useEffect(() => {
+    loadRequests()
+  }, [loadRequests])
 
   // Fonctions d'approbation et de rejet
   const handleApprove = (request: RestockingRequest) => {
@@ -202,15 +289,22 @@ export default function DeliveryRequestsPage() {
 
     try {
       setProcessing(true)
+      const itemsPayload = selectedRequest.items.map((line) => {
+        const hit = approvalItems.find((a) => a.id === line.id)
+        return {
+          id: line.id,
+          approvedQuantity: hit != null ? hit.approvedQuantity : line.requestedQuantity,
+        }
+      })
       const response = await fetch(`/api/restocking-requests/${selectedRequest.id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: approvalItems })
+        body: JSON.stringify({ items: itemsPayload }),
       })
 
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Erreur lors de l'approbation")
+        throw new Error(messageFromApiError(data, "Erreur lors de l'approbation"))
       }
 
       toast.success("Demande approuvée avec succès")
@@ -242,9 +336,9 @@ export default function DeliveryRequestsPage() {
         })
       })
 
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Erreur lors du rejet")
+        throw new Error(messageFromApiError(data, "Erreur lors du rejet"))
       }
 
       toast.success("Demande rejetée")
@@ -307,8 +401,17 @@ export default function DeliveryRequestsPage() {
   }
 
   const filteredRequests = requests.filter((request) => {
-    const matchesSearch = request.deliveryPerson.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         request.notes?.toLowerCase().includes(searchTerm.toLowerCase())
+    const q = searchTerm.trim().toLowerCase()
+    const matchesSearch =
+      !q ||
+      Boolean(request.deliveryPerson?.name?.toLowerCase().includes(q)) ||
+      Boolean(request.notes?.toLowerCase().includes(q)) ||
+      request.items.some((it) => {
+        const n = it.product?.name?.toLowerCase() ?? ""
+        const sku = it.product?.sku?.toLowerCase() ?? ""
+        const vn = it.variant?.name?.toLowerCase() ?? ""
+        return n.includes(q) || sku.includes(q) || vn.includes(q)
+      })
     const matchesStatus = statusFilter === "all" || request.status === statusFilter
     return matchesSearch && matchesStatus
   })
@@ -325,7 +428,11 @@ export default function DeliveryRequestsPage() {
     <>
       <StorePageHeader
         title="Demandes d'approvisionnement"
-        description="Gérer les demandes d'approvisionnement des livreurs"
+        description={
+          storeName
+            ? `${storeName} — demandes des livreurs vers ce magasin (aperçu produits en carreaux)`
+            : "Demandes des livreurs vers ce magasin"
+        }
         icon={Truck}
         actions={
           <Button
@@ -381,7 +488,7 @@ export default function DeliveryRequestsPage() {
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Rechercher par livreur ou notes..."
+                  placeholder="Livreur, produit, SKU, notes…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -413,9 +520,58 @@ export default function DeliveryRequestsPage() {
                 Chargement des demandes...
               </div>
             ) : filteredRequests.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>Aucune demande d'approvisionnement</p>
+              <div className="text-center py-8 text-gray-500 space-y-3 px-4">
+                <Package className="h-12 w-12 mx-auto text-gray-300" />
+                {requests.length > 0 ? (
+                  <>
+                    <p className="font-medium text-gray-700">
+                      {requests.length} demande{requests.length > 1 ? "s" : ""} masquée{requests.length > 1 ? "s" : ""} par les filtres
+                    </p>
+                    <p className="text-sm">
+                      Remettez le statut sur « Tous les statuts » et videz la recherche pour tout afficher.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setStatusFilter("all")
+                        setSearchTerm("")
+                      }}
+                    >
+                      Réinitialiser les filtres
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium text-gray-700">
+                      Aucune demande pour{storeName ? ` « ${storeName} »` : " ce magasin"}.
+                    </p>
+                    <p className="text-sm text-gray-400 max-w-md mx-auto">
+                      Vérifiez que le livreur a bien sélectionné{storeName ? ` « ${storeName} »` : " ce magasin"} dans
+                      son application avant d&apos;envoyer la commande.
+                    </p>
+                    <details className="text-left max-w-sm mx-auto mt-2 border rounded-lg p-3 bg-gray-50 text-xs text-gray-500">
+                      <summary className="cursor-pointer font-medium text-gray-600 select-none">
+                        Diagnostic technique
+                      </summary>
+                      <div className="mt-2 space-y-1 font-mono break-all">
+                        <div><span className="font-semibold">storeId consulté :</span> {storeId || "—"}</div>
+                        <div><span className="font-semibold">storeName :</span> {storeName || "non résolu"}</div>
+                        <div className="pt-1">
+                          <a
+                            href="/api/debug/restock-requests"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-600"
+                          >
+                            Voir toutes les demandes en base →
+                          </a>
+                        </div>
+                      </div>
+                    </details>
+                  </>
+                )}
               </div>
             ) : (
               <Table>
@@ -446,14 +602,11 @@ export default function DeliveryRequestsPage() {
                           {formatDate(request.createdAt)}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">{request.items.length} produit(s)</div>
-                          <div className="text-gray-500">
-                            {request.items.slice(0, 2).map(item => item.product.name).join(", ")}
-                            {request.items.length > 2 && "..."}
-                          </div>
+                      <TableCell className="align-top min-w-[200px] max-w-[320px]">
+                        <div className="text-xs font-medium text-gray-600 mb-1.5">
+                          {request.items.length} produit{request.items.length > 1 ? "s" : ""}
                         </div>
+                        <RequestProductTiles items={request.items} size="sm" />
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(request.status)}
@@ -525,6 +678,10 @@ export default function DeliveryRequestsPage() {
           
           {selectedRequest && (
             <div className="space-y-4 max-h-96 overflow-y-auto">
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-3">
+                <p className="text-xs font-medium text-gray-500 mb-2">Aperçu des articles</p>
+                <RequestProductTiles items={selectedRequest.items} size="md" />
+              </div>
               {selectedRequest.items.map((item, index) => (
                 <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
                   <div className="flex items-start gap-4">
@@ -779,69 +936,57 @@ export default function DeliveryRequestsPage() {
                 </div>
               )}
 
-              {/* Tableau des produits */}
+              {/* Produits — petits carreaux */}
               <div>
                 <h4 className="font-medium text-gray-900 mb-3">Produits demandés</h4>
-                <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead>Produit</TableHead>
-                        <TableHead className="text-center">Qté demandée</TableHead>
-                        <TableHead className="text-center">Qté approuvée</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedRequest.items.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              {item.product.photos && item.product.photos.length > 0 ? (
-                                <img
-                                  src={item.product.photos[0]}
-                                  alt={item.product.name}
-                                  className="w-10 h-10 object-cover rounded border"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 bg-gray-200 rounded border flex items-center justify-center">
-                                  <Package className="w-5 h-5 text-gray-400" />
-                                </div>
-                              )}
-                              <div>
-                                <div className="font-medium text-gray-900">{item.product.name}</div>
-                                <div className="text-sm text-gray-500">SKU: {item.product.sku}</div>
-                                {item.variant && (
-                                  <div className="text-sm text-blue-600">
-                                    Variante: {item.variant.name}
-                                  </div>
-                                )}
-                              </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {selectedRequest.items.map((item) => {
+                    const src = productThumbSrc(item)
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm flex flex-col"
+                      >
+                        <div className="aspect-square w-full rounded-lg overflow-hidden bg-gray-100 mb-2 relative">
+                          {src ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={src} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center">
+                              <Package className="h-10 w-10 text-gray-300" />
                             </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="bg-blue-50 border border-blue-200 rounded px-3 py-1 inline-block">
-                              <span className="font-bold text-blue-600">{item.requestedQuantity}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {item.approvedQuantity !== undefined && item.approvedQuantity !== null ? (
-                              <div className="bg-green-50 border border-green-200 rounded px-3 py-1 inline-block">
-                                <span className="font-bold text-green-600">{item.approvedQuantity}</span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm text-gray-600">
-                              {item.notes || "-"}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                          )}
+                          <span className="absolute bottom-1 right-1 text-[11px] font-bold bg-black/75 text-white px-1.5 py-0.5 rounded">
+                            ×{item.requestedQuantity}
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-snug min-h-[2rem]">
+                          {item.product.name}
+                        </p>
+                        {item.variant ? (
+                          <p className="text-[10px] text-blue-600 line-clamp-1 mt-0.5">{item.variant.name}</p>
+                        ) : null}
+                        {item.product.sku ? (
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={item.product.sku}>
+                            {item.product.sku}
+                          </p>
+                        ) : null}
+                        <div className="mt-auto pt-2 flex flex-wrap gap-1 text-[10px]">
+                          <span className="bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded font-medium">
+                            Dem. {item.requestedQuantity}
+                          </span>
+                          {item.approvedQuantity != null ? (
+                            <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-medium">
+                              App. {item.approvedQuantity}
+                            </span>
+                          ) : null}
+                        </div>
+                        {item.notes ? (
+                          <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 border-t pt-1">{item.notes}</p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 

@@ -12,17 +12,21 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          console.log("Missing credentials")
+        const rawEmail = credentials?.email?.trim()
+        const password = credentials?.password
+        if (!rawEmail || !password) {
+          console.log("[auth] Missing credentials")
           return null
         }
 
+        const email = rawEmail.toLowerCase()
+
         try {
-          console.log("Attempting to find user:", credentials.email)
+          console.log("[auth] Attempting to find user:", email)
 
           const user = await prisma.user.findUnique({
             where: {
-              email: credentials.email,
+              email,
             },
             select: {
               id: true,
@@ -36,26 +40,26 @@ export const authOptions: NextAuthOptions = {
           })
 
           if (!user) {
-            console.log("User not found")
+            console.log("[auth] User not found for email:", email)
             return null
           }
 
           if (!user.password) {
-            console.log("User has no password")
+            console.log("[auth] User has no password (OAuth-only account?)")
             return null
           }
 
           // Vérifier si l'utilisateur est actif
           if (user.status !== "ACTIVE") {
-            console.log("User is not active:", user.status)
+            console.log("[auth] User is not active:", user.status)
             return null
           }
 
-          console.log("Verifying password...")
-          const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
+          console.log("[auth] Verifying password...")
+          const isPasswordValid = await bcrypt.compare(password, user.password)
 
           if (!isPasswordValid) {
-            console.log("Invalid password")
+            console.log("[auth] Invalid password")
             return null
           }
 
@@ -69,7 +73,8 @@ export const authOptions: NextAuthOptions = {
             lastName: user.lastName,
           }
         } catch (error) {
-          console.error("Auth error:", error)
+          const msg = error instanceof Error ? error.message : String(error)
+          console.error("[auth] Database or unexpected error during login:", msg)
           return null
         }
       },

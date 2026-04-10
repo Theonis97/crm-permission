@@ -61,6 +61,11 @@ import {
   Loader2,
   PackageX,
   History,
+  ClipboardList,
+  Store,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -163,6 +168,21 @@ interface StoreProduct {
   prixVente: number
 }
 
+interface RestockRequest {
+  id: string
+  status: "PENDING" | "APPROVED" | "REJECTED" | "COMPLETED"
+  createdAt: string
+  notes: string | null
+  store: { id: string; name: string }
+  items: Array<{
+    id: string
+    requestedQuantity: number
+    approvedQuantity?: number
+    product: { id: string; name: string; sku: string | null; photos: string[] }
+    variant?: { id: string; name: string; sku: string | null } | null
+  }>
+}
+
 export default function StoreDriverDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -199,6 +219,11 @@ export default function StoreDriverDetailPage() {
   const [movementQuantity, setMovementQuantity] = useState("")
   const [movementNotes, setMovementNotes] = useState("")
 
+  // Restocking requests
+  const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([])
+  const [loadingRestock, setLoadingRestock] = useState(false)
+  const [restockStatusFilter, setRestockStatusFilter] = useState("all")
+
   // Fetch driver data
   useEffect(() => {
     fetchDriverData()
@@ -210,6 +235,8 @@ export default function StoreDriverDetailPage() {
       fetchStock()
     } else if (activeTab === "history") {
       fetchMovements()
+    } else if (activeTab === "restock") {
+      fetchRestockRequests()
     }
   }, [activeTab, driverId])
   
@@ -270,6 +297,23 @@ export default function StoreDriverDetailPage() {
     }
   }
   
+  const fetchRestockRequests = async () => {
+    try {
+      setLoadingRestock(true)
+      const res = await fetch(`/api/restocking-requests?deliveryPersonId=${driverId}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setRestockRequests(Array.isArray(data.data) ? data.data : [])
+      } else {
+        toast.error("Erreur lors du chargement des demandes de réapprovisionnement")
+      }
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setLoadingRestock(false)
+    }
+  }
+
   const fetchStoreProducts = async () => {
     try {
       const response = await fetch(`/api/stores/${storeId}/products`)
@@ -615,26 +659,30 @@ export default function StoreDriverDetailPage() {
           {/* Contenu principal */}
           <div className="lg:col-span-3">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="orders">
-                  <ShoppingBag className="h-4 w-4 mr-2" />
+                  <ShoppingBag className="h-4 w-4 mr-1" />
                   Commandes
                 </TabsTrigger>
                 <TabsTrigger value="performance">
-                  <TrendingUp className="h-4 w-4 mr-2" />
+                  <TrendingUp className="h-4 w-4 mr-1" />
                   Performance
                 </TabsTrigger>
                 <TabsTrigger value="deliveries">
-                  <Truck className="h-4 w-4 mr-2" />
+                  <Truck className="h-4 w-4 mr-1" />
                   Livraisons
                 </TabsTrigger>
                 <TabsTrigger value="stock">
-                  <Package className="h-4 w-4 mr-2" />
+                  <Package className="h-4 w-4 mr-1" />
                   Stock
                 </TabsTrigger>
                 <TabsTrigger value="history">
-                  <Clock className="h-4 w-4 mr-2" />
+                  <Clock className="h-4 w-4 mr-1" />
                   Historique
+                </TabsTrigger>
+                <TabsTrigger value="restock">
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  Réappro.
                 </TabsTrigger>
               </TabsList>
 
@@ -1021,6 +1069,164 @@ export default function StoreDriverDetailPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              {/* ── Onglet Réapprovisionnement ───────────────────────────── */}
+              <TabsContent value="restock" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <ClipboardList className="h-5 w-5 text-orange-500" />
+                          Demandes de réapprovisionnement
+                        </CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Toutes les demandes de {driver.name} auprès des différents magasins
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={restockStatusFilter}
+                          onChange={(e) => setRestockStatusFilter(e.target.value)}
+                          className="text-sm border rounded-lg px-3 py-1.5 bg-white"
+                        >
+                          <option value="all">Tous les statuts</option>
+                          <option value="PENDING">En attente</option>
+                          <option value="APPROVED">Approuvées</option>
+                          <option value="REJECTED">Rejetées</option>
+                          <option value="COMPLETED">Terminées</option>
+                        </select>
+                        <Button variant="outline" size="sm" onClick={fetchRestockRequests} disabled={loadingRestock}>
+                          <RefreshCw className={`h-4 w-4 mr-1 ${loadingRestock ? "animate-spin" : ""}`} />
+                          Actualiser
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingRestock ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                      </div>
+                    ) : restockRequests.length === 0 ? (
+                      <div className="text-center py-12">
+                        <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">Aucune demande de réapprovisionnement</p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Les demandes envoyées par {driver.name} apparaîtront ici.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Statistiques rapides */}
+                        <div className="grid grid-cols-4 gap-3 mb-4">
+                          {(["all", "PENDING", "APPROVED", "COMPLETED"] as const).map((s) => {
+                            const count = s === "all"
+                              ? restockRequests.length
+                              : restockRequests.filter((r) => r.status === s).length
+                            const cfg: Record<string, { label: string; color: string }> = {
+                              all: { label: "Total", color: "text-gray-700" },
+                              PENDING: { label: "En attente", color: "text-amber-600" },
+                              APPROVED: { label: "Approuvées", color: "text-blue-600" },
+                              COMPLETED: { label: "Terminées", color: "text-green-600" },
+                            }
+                            return (
+                              <div key={s} className="bg-gray-50 rounded-xl p-3 text-center border">
+                                <div className={`text-2xl font-bold ${cfg[s].color}`}>{count}</div>
+                                <div className="text-xs text-gray-500">{cfg[s].label}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Liste filtrée */}
+                        {restockRequests
+                          .filter((r) => restockStatusFilter === "all" || r.status === restockStatusFilter)
+                          .map((req) => {
+                            const statusCfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+                              PENDING: { label: "En attente", cls: "bg-amber-100 text-amber-700", icon: <Clock className="h-3 w-3" /> },
+                              APPROVED: { label: "Approuvée", cls: "bg-blue-100 text-blue-700", icon: <CheckCircle2 className="h-3 w-3" /> },
+                              REJECTED: { label: "Rejetée", cls: "bg-red-100 text-red-700", icon: <XCircle className="h-3 w-3" /> },
+                              COMPLETED: { label: "Terminée", cls: "bg-green-100 text-green-700", icon: <CheckCircle2 className="h-3 w-3" /> },
+                            }
+                            const st = statusCfg[req.status] ?? statusCfg.PENDING
+                            const totalQty = req.items.reduce((s, i) => s + i.requestedQuantity, 0)
+                            return (
+                              <div key={req.id} className="border rounded-xl p-4 hover:bg-gray-50 transition-colors">
+                                {/* En-tête */}
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <Store className="h-4 w-4 text-gray-400" />
+                                    <span className="font-semibold text-gray-900">{req.store.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-gray-400">
+                                      {new Date(req.createdAt).toLocaleString("fr-FR", {
+                                        day: "2-digit", month: "2-digit", year: "numeric",
+                                        hour: "2-digit", minute: "2-digit",
+                                      })}
+                                    </span>
+                                    <Badge className={`flex items-center gap-1 text-xs ${st.cls}`}>
+                                      {st.icon}
+                                      {st.label}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                {/* Produits en petits carreaux */}
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                  {req.items.map((item) => {
+                                    const photo = Array.isArray(item.product?.photos) && item.product.photos.length > 0
+                                      ? item.product.photos[0] : null
+                                    const label = item.variant
+                                      ? `${item.product.name} · ${item.variant.name}`
+                                      : item.product.name
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        className="relative h-14 w-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0 shadow-sm"
+                                        title={`${label} ×${item.requestedQuantity}`}
+                                      >
+                                        {photo ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={photo} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                          <div className="h-full w-full flex items-center justify-center">
+                                            <Package className="h-5 w-5 text-gray-400" />
+                                          </div>
+                                        )}
+                                        <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-bold px-1 py-0.5 rounded-tl">
+                                          ×{item.requestedQuantity}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+
+                                {/* Résumé */}
+                                <div className="flex items-center justify-between mt-2">
+                                  <span className="text-xs text-gray-500">
+                                    {req.items.length} produit{req.items.length > 1 ? "s" : ""} · {totalQty} unité{totalQty > 1 ? "s" : ""}
+                                  </span>
+                                  {req.notes && (
+                                    <span className="text-xs text-gray-400 italic truncate max-w-xs">
+                                      « {req.notes} »
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+
+                        {restockRequests.filter((r) => restockStatusFilter === "all" || r.status === restockStatusFilter).length === 0 && (
+                          <div className="text-center py-8 text-gray-400 text-sm">
+                            Aucune demande avec ce statut.
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>

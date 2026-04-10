@@ -44,6 +44,11 @@ export async function GET(request: NextRequest) {
                         address: true,
                         phone: true,
                         email: true,
+                        rccm: true,
+                        nif: true,
+                        cnssEmployeur: true,
+                        siegeSocial: true,
+                        logo: true,
                       },
                     },
                   },
@@ -145,6 +150,17 @@ export async function GET(request: NextRequest) {
       const user = profile.user
       const period = payroll.period
       const hourlyRate = profile.baseSalary / (payroll.expectedWorkingDays * profile.workingHoursPerDay)
+
+      const paidTotal      = Number(payroll.paidAmount)     || 0
+      const cnssDeduction  = Number(payroll.totalDeductions) || 0
+      // netSalary = net après toutes les retenues (CNSS déjà déduite)
+      // NET À PAYER = netSalary − cnss − déjà versé
+      const netSalaryBrut  = Number(payroll.netSalary)       || 0
+      const remainingFromDb = Number(payroll.remainingAmount)
+      const netAPayerRestant =
+        Number.isFinite(remainingFromDb) && payroll.status === "PARTIALLY_PAID"
+          ? Math.max(0, remainingFromDb)
+          : Math.max(0, netSalaryBrut - cnssDeduction - paidTotal)
       
       // Utiliser les paramètres entreprise s'ils existent, sinon fallback sur la boutique
       const storeRole = user.storeUserRoles?.[0]
@@ -157,10 +173,10 @@ export async function GET(request: NextRequest) {
       const companyCountry = companySettings?.companyCountry || ''
       const companyPhone = companySettings?.companyPhone || store?.phone || ''
       const companyEmail = companySettings?.companyEmail || store?.email || ''
-      const rccmNumber = companySettings?.rccmNumber || ''
-      const nifNumber = companySettings?.nifNumber || ''
-      const cnssEmployerNumber = companySettings?.cnssEmployerNumber || ''
-      const companyLogo = companySettings?.companyLogo || ''
+      const rccmNumber = companySettings?.rccmNumber || store?.rccm || ''
+      const nifNumber = companySettings?.nifNumber || store?.nif || ''
+      const cnssEmployerNumber = companySettings?.cnssEmployerNumber || store?.cnssEmployeur || ''
+      const companyLogo = companySettings?.companyLogo || store?.logo || ''
       
       return `
       <div class="payslip ${index > 0 ? 'page-break' : ''}">
@@ -219,7 +235,21 @@ export async function GET(request: NextRequest) {
               <td class="right gain">${formatCurrency(payroll.grossSalary)}</td>
               <td></td>
             </tr>
-            
+
+            ${payroll.overtimeHours > 0 ? `
+            <!-- Section Heures supplémentaires -->
+            <tr class="section-header">
+              <td colspan="5">HEURES SUPPLÉMENTAIRES</td>
+            </tr>
+            <tr>
+              <td>Heures supplémentaires (taux × 1,5)</td>
+              <td class="center">${payroll.overtimeHours} h</td>
+              <td class="right">${formatCurrency(Math.round(hourlyRate * 1.5))}/h</td>
+              <td class="right gain">${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+              <td></td>
+            </tr>
+            ` : ''}
+
             ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
             <!-- Section Primes -->
             <tr class="section-header">
@@ -252,12 +282,16 @@ export async function GET(request: NextRequest) {
             `).join('')}
             ` : ''}
             
-            <!-- Ligne Total Brut -->
-            <tr class="subtotal-row">
-              <td><strong>SALAIRE BRUT + PRIMES + INDEMNITÉS</strong></td>
+            <!-- Ligne Total Brut (mise en évidence verte) -->
+            <tr class="subtotal-row subtotal-row-brut-gains">
+              <td><strong>TOTAL BRUT + HEURES SUP + PRIMES + INDEMNITÉS</strong></td>
               <td></td>
               <td></td>
-              <td class="right"><strong>${formatCurrency(payroll.grossSalary + (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0))}</strong></td>
+              <td class="right"><strong>${formatCurrency(
+                payroll.grossSalary +
+                (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
+                (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
+              )}</strong></td>
               <td></td>
             </tr>
 
@@ -313,11 +347,17 @@ export async function GET(request: NextRequest) {
             </table>
           </div>
           <div class="summary-right">
-            <table class="summary-table">
+            <table class="summary-table summary-table-gains">
               <tr>
                 <td>Salaire brut</td>
                 <td class="right">${formatCurrency(payroll.grossSalary)}</td>
               </tr>
+              ${payroll.overtimeHours > 0 ? `
+              <tr>
+                <td>Heures supplémentaires</td>
+                <td class="right">+ ${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+              </tr>
+              ` : ''}
               ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
               <tr>
                 <td>Primes</td>
@@ -330,68 +370,43 @@ export async function GET(request: NextRequest) {
                 <td class="right">+ ${formatCurrency(payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').reduce((sum: number, r: any) => sum + r.amount, 0))}</td>
               </tr>
               ` : ''}
-              <tr>
-                <td>Cotisations salariales</td>
-                <td class="right">- ${formatCurrency(payroll.totalDeductions)}</td>
-              </tr>
-              <tr class="net-row">
-                <td><strong>NET À PAYER</strong></td>
-                <td class="right"><strong>${formatCurrency(payroll.netSalary)}</strong></td>
+              <tr class="summary-gains-total-row">
+                <td><strong>Total brut</strong></td>
+                <td class="right"><strong>${formatCurrency(
+                  payroll.grossSalary +
+                  (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
+                  (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
+                )}</strong></td>
               </tr>
             </table>
+            <div class="cnss-cotisations-box">
+              <p class="cnss-cotisations-title">Cotisations CNSS</p>
+              <table class="cnss-cotisations-table">
+                <tr>
+                  <td>CNSS Employé</td>
+                  <td class="right">${formatCurrency(payroll.totalDeductions || 0)}</td>
+                </tr>
+              </table>
+            </div>
           </div>
         </div>
 
-        <!-- Net à payer en toutes lettres -->
-        <div class="net-in-words">
-          <p><strong>Net à payer :</strong> ${formatCurrency(payroll.netSalary)}</p>
-        </div>
-
-        <!-- Section Paiement Partiel -->
-        ${payroll.status === 'PARTIALLY_PAID' || (payroll.status === 'PAID' && payroll.payments && payroll.payments.length > 1) ? `
+        <!-- ACCOMPTE : toujours affiché sur le bulletin imprimé -->
         <div class="payment-status-section">
-          <h3 class="payment-status-title">
-            ${payroll.status === 'PARTIALLY_PAID' ? 'PAIEMENT PARTIEL' : 'PAIEMENT EN PLUSIEURS VERSEMENTS'}
-          </h3>
+          <h3 class="payment-status-title">ACCOMPTE</h3>
           <div class="payment-summary">
-            <p><strong>Montant total :</strong> ${formatCurrency(payroll.netSalary)}</p>
-            <p><strong>Montant payé :</strong> ${formatCurrency(payroll.paidAmount)}</p>
-            ${payroll.status === 'PARTIALLY_PAID' ? `<p><strong>Reste à payer :</strong> ${formatCurrency(payroll.remainingAmount)}</p>` : ''}
+            <p><strong>Net du bulletin :</strong> ${formatCurrency(netSalaryBrut)}</p>
+            ${cnssDeduction > 0 ? `<p><strong>CNSS Employé :</strong> &minus; ${formatCurrency(cnssDeduction)}</p>` : ''}
+            ${paidTotal > 0 ? `<p><strong>Montant déjà versé :</strong> &minus; ${formatCurrency(paidTotal)}</p>` : ''}
           </div>
-
-          ${payroll.payments && payroll.payments.length > 0 ? `
-          <table class="payments-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Montant</th>
-                <th>Mode</th>
-                <th>Référence</th>
-                <th>Par</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${payroll.payments.map((p: any) => `
-              <tr>
-                <td>${formatDate(p.paymentDate)}</td>
-                <td class="right">${formatCurrency(p.amount)}</td>
-                <td>${p.paymentMode === 'BANK' ? 'Virement' : p.paymentMode === 'CASH' ? 'Espèces' : p.paymentMode === 'MOBILE_MONEY' ? 'Mobile Money' : p.paymentMode === 'CHECK' ? 'Chèque' : p.paymentMode}</td>
-                <td>${p.reference || '-'}</td>
-                <td>${(p.paidBy?.firstName || '') + ' ' + (p.paidBy?.lastName || '')}</td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : ''}
+          <div class="net-restant-box">
+            <p class="net-restant-label">NET À PAYER</p>
+            <p class="net-restant-sublabel">Net du bulletin moins CNSS et versements déjà effectués</p>
+            <p class="net-restant-amount">${formatCurrency(netAPayerRestant)}</p>
+          </div>
         </div>
-        ` : ''}
 
-        <!-- Charges patronales (info) -->
-        ${payroll.employerCharges > 0 ? `
-        <div class="employer-charges">
-          <p><em>Charges patronales : ${formatCurrency(payroll.employerCharges)}</em></p>
-        </div>
-        ` : ''}
+        <!-- CNSS Employeur supprimé de l'affichage du bulletin -->
 
         <!-- Pied de page -->
         <div class="footer-section">
@@ -572,6 +587,23 @@ export async function GET(request: NextRequest) {
           border-bottom: 2px solid #1e3a5f;
         }
 
+        /* Ligne « salaire brut + primes + indemnités » : effet verre + teinte verte (gains) */
+        .main-table .subtotal-row-brut-gains td {
+          background: linear-gradient(
+            135deg,
+            rgba(220, 252, 231, 0.92) 0%,
+            rgba(187, 247, 208, 0.88) 100%
+          ) !important;
+          color: #14532d;
+          border-top: 2px solid rgba(22, 163, 74, 0.55);
+          border-bottom: 2px solid rgba(22, 163, 74, 0.55);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
         .main-table .gain { color: #16a34a; }
         .main-table .retenue { color: #dc2626; }
 
@@ -600,23 +632,86 @@ export async function GET(request: NextRequest) {
 
         .summary-table .right { text-align: right; }
 
-        .summary-table .net-row {
+        .summary-table-gains {
+          border-radius: 8px;
+          overflow: hidden;
+          border: 1px solid rgba(22, 163, 74, 0.35);
+          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+        }
+
+        .summary-table-gains td {
+          background: rgba(236, 253, 245, 0.9);
+          color: #14532d;
+          border-color: rgba(134, 239, 172, 0.7);
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        .summary-table-gains .summary-gains-total-row td {
+          background: rgba(187, 247, 208, 0.95);
+          font-weight: 600;
+          border-top: 2px solid rgba(22, 163, 74, 0.5);
+        }
+
+        .cnss-cotisations-box {
+          margin-top: 10px;
+          border: 1px solid #1e3a5f;
+          border-radius: 4px;
+          overflow: hidden;
+        }
+
+        .cnss-cotisations-title {
           background: #1e3a5f;
           color: white;
+          padding: 6px 10px;
+          font-size: 10px;
+          font-weight: bold;
+          margin: 0;
         }
 
-        .summary-table .net-row td {
-          padding: 10px 8px;
-          font-size: 12px;
+        .cnss-cotisations-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 10px;
         }
 
-        /* Net à payer */
-        .net-in-words {
-          background: #e8f0fe;
-          padding: 10px 15px;
-          margin: 15px 0;
-          border-left: 4px solid #1e3a5f;
-          font-size: 12px;
+        .cnss-cotisations-table td {
+          padding: 6px 10px;
+          border-bottom: 1px solid #e0e0e0;
+        }
+
+        .cnss-cotisations-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .net-restant-box {
+          margin: 12px 15px 15px;
+          padding: 14px 16px;
+          background: #1e3a5f;
+          color: white;
+          border-radius: 4px;
+          text-align: center;
+        }
+
+        .net-restant-label {
+          font-size: 13px;
+          font-weight: bold;
+          margin: 0 0 4px 0;
+        }
+
+        .net-restant-sublabel {
+          font-size: 9px;
+          opacity: 0.9;
+          margin: 0 0 8px 0;
+          line-height: 1.3;
+        }
+
+        .net-restant-amount {
+          font-size: 18px;
+          font-weight: bold;
+          margin: 0;
         }
 
         .employer-charges {

@@ -2,12 +2,69 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { hasPermission } from "@/lib/auth-helpers"
 
-// GET /api/stores/[id]/users/[userId]/permissions - Récupérer les permissions d'un utilisateur dans un magasin
+/** Permissions globales qui donnent un accès complet au tableau de bord magasin. */
+const GLOBAL_ADMIN_PERMS = [
+  "stores.manage",
+  "stores.view",
+  "roles.view",
+  "users.view",
+  "orders.view",
+]
+
+/** Toutes les permissions de niveau magasin accordées aux admins globaux. */
+const ALL_STORE_PERMISSIONS = [
+  "store.dashboard.view",
+  "store.products.view",
+  "store.products.create",
+  "store.products.edit",
+  "store.products.delete",
+  "store.products.stock",
+  "store.categories.view",
+  "store.categories.manage",
+  "store.brands.view",
+  "store.brands.manage",
+  "store.orders.view",
+  "store.orders.create",
+  "store.orders.edit",
+  "store.orders.cancel",
+  "store.orders.fulfill",
+  "store.pos.access",
+  "store.pos.sell",
+  "store.pos.refund",
+  "store.contacts.view",
+  "store.contacts.create",
+  "store.contacts.edit",
+  "store.contacts.delete",
+  "store.drivers.view",
+  "store.drivers.manage",
+  "store.drivers.assign",
+  "store.zones.view",
+  "store.zones.manage",
+  "store.movements.view",
+  "store.movements.create",
+  "store.sav.view",
+  "store.sav.create",
+  "store.sav.process",
+  "store.users.view",
+  "store.users.invite",
+  "store.users.roles",
+  "store.settings.edit",
+  "store.expenses.view",
+  "store.expenses.create",
+  "store.expenses.edit",
+  "store.expenses.delete",
+  "store.expenses.approve",
+]
+
+/**
+ * GET /api/stores/[id]/users/[userId]/permissions
+ * Permissions d'un utilisateur dans un magasin donné.
+ * Robuste : fonctionne même si les tables store_role_permissions ne sont pas migrées.
+ */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string; userId: string }> }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string; userId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -17,145 +74,100 @@ export async function GET(
 
     const { id: storeId, userId } = await params
 
-    // Vérifier que l'utilisateur existe
+    // ── 1. Vérifier que l'utilisateur existe ─────────────────────────────────
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true
-      }
+      select: { id: true, firstName: true, lastName: true, email: true, image: true },
     })
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Récupérer toutes les permissions de l'utilisateur dans ce magasin
-    const userRoles = await prisma.storeUserRole.findMany({
-      where: {
-        userId,
-        storeId
-      },
-      include: {
-        role: {
-          include: {
-            storeRolePermissions: {
-              include: {
-                permission: true
-              }
-            }
-          }
-        }
-      }
-    })
-
-    // Collecter toutes les permissions uniques
     const permissionsSet = new Set<string>()
-    const permissionsDetails: any[] = []
-    const rolesInfo: any[] = []
+    const rolesInfo: { id: string; name: string; description: string | null; isSystem: boolean }[] = []
 
-    userRoles.forEach(userRole => {
-      rolesInfo.push({
-        id: userRole.role.id,
-        name: userRole.role.name,
-        description: userRole.role.description,
-        isSystem: userRole.role.isSystem
+    // ── 2. Permissions via rôles magasin (tables store_user_roles) ───────────
+    try {
+      const userRoles = await prisma.storeUserRole.findMany({
+        where: { userId, storeId },
+        include: {
+          role: {
+            include: {
+              storeRolePermissions: {
+                include: { permission: true },
+              },
+            },
+          },
+        },
       })
 
-      userRole.role.storeRolePermissions.forEach(rp => {
-        if (!permissionsSet.has(rp.permission.name)) {
+      userRoles.forEach((ur) => {
+        rolesInfo.push({
+          id: ur.role.id,
+          name: ur.role.name,
+          description: ur.role.description,
+          isSystem: ur.role.isSystem,
+        })
+        ur.role.storeRolePermissions.forEach((rp) => {
           permissionsSet.add(rp.permission.name)
-          permissionsDetails.push(rp.permission)
-        }
+        })
       })
-    })
-
-    // Vérifier les permissions globales pour les actions de base
-    const globalPermissions = [
-      'products.view',
-      'products.create', 
-      'products.edit',
-      'products.delete',
-      'stores.view',
-      'dashboard.view'
-    ]
-
-    // Mapper les permissions globales vers les permissions de magasin
-    const globalToStoreMapping: Record<string, string> = {
-      'products.view': 'store.products.view',
-      'products.create': 'store.products.create',
-      'products.edit': 'store.products.edit',
-      'products.delete': 'store.products.delete',
-      'stores.view': 'store.dashboard.view',
-      'dashboard.view': 'store.dashboard.view'
+    } catch {
+      // Les tables store_role_permissions / store_permissions ne sont peut-être
+      // pas encore migrées — on continue sans elles.
     }
 
-    // Permissions automatiques pour les utilisateurs avec accès global aux produits
-    const autoGrantPermissions: Record<string, string[]> = {
-      'products.view': [
-        'store.brands.view',
-        'store.categories.view',
-        'store.dashboard.view'
-      ],
-      'products.create': [
-        'store.brands.manage',
-        'store.categories.manage'
-      ]
-    }
+    // ── 3. Vérifier si l'utilisateur est admin global ────────────────────────
+    let isGlobalAdmin = false
+    try {
+      const userWithRoles = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          userRoles: {
+            include: {
+              role: {
+                include: {
+                  rolePermissions: {
+                    include: { permission: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })
 
-    // Vérifier chaque permission globale et l'ajouter si l'utilisateur l'a
-    for (const globalPerm of globalPermissions) {
-      const hasGlobalPerm = await hasPermission(userId, globalPerm)
-      if (hasGlobalPerm) {
-        // Ajouter la permission mappée directement
-        const storePerm = globalToStoreMapping[globalPerm]
-        if (storePerm && !permissionsSet.has(storePerm)) {
-          permissionsSet.add(storePerm)
-          permissionsDetails.push({
-            id: `global-${globalPerm}`,
-            name: storePerm,
-            description: `Permission globale mappée: ${globalPerm}`,
-            isGlobal: true
-          })
-        }
+      if (userWithRoles?.userRoles) {
+        const globalPerms = new Set(
+          userWithRoles.userRoles.flatMap((ur) =>
+            ur.role.rolePermissions.map((rp) => rp.permission.name),
+          ),
+        )
+        isGlobalAdmin = GLOBAL_ADMIN_PERMS.some((p) => globalPerms.has(p))
 
-        // Ajouter les permissions automatiques
-        const autoPerms = autoGrantPermissions[globalPerm]
-        if (autoPerms) {
-          autoPerms.forEach(autoPerm => {
-            if (!permissionsSet.has(autoPerm)) {
-              permissionsSet.add(autoPerm)
-              permissionsDetails.push({
-                id: `auto-${globalPerm}-${autoPerm}`,
-                name: autoPerm,
-                description: `Permission automatique basée sur: ${globalPerm}`,
-                isGlobal: true,
-                isAuto: true
-              })
-            }
-          })
+        if (isGlobalAdmin) {
+          // L'admin global hérite de TOUTES les permissions magasin
+          ALL_STORE_PERMISSIONS.forEach((p) => permissionsSet.add(p))
         }
       }
+    } catch {
+      // Ignorer les erreurs de la vérification globale
     }
 
-    // L'utilisateur a accès au magasin s'il a des rôles spécifiques OU des permissions globales
-    const hasGlobalAccess = await hasPermission(userId, 'products.view') || 
-                           await hasPermission(userId, 'stores.view')
-    
     return NextResponse.json({
-      user,
+      user: {
+        id: user.id,
+        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
+        email: user.email,
+        image: user.image,
+      },
       permissions: Array.from(permissionsSet),
-      permissionsDetails,
       roles: rolesInfo,
-      hasStoreAccess: userRoles.length > 0 || hasGlobalAccess
+      hasStoreAccess: permissionsSet.size > 0 || rolesInfo.length > 0 || isGlobalAdmin,
     })
   } catch (error) {
     console.error("Error fetching user store permissions:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

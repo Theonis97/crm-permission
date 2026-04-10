@@ -24,6 +24,7 @@ import {
   Home,
   Warehouse,
   Store,
+  Truck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -72,6 +73,15 @@ const modules = [
     color: "from-teal-500 to-teal-600",
     permission: "contacts.view",
     href: "/dashboard/stores",
+  },
+  {
+    id: "livreur-restock",
+    name: "Réappro magasin",
+    description: "Demande réappro (livreur / gestionnaire)",
+    icon: Truck,
+    color: "from-sky-500 to-sky-600",
+    permission: "driver.restock",
+    href: "/dashboard/livreur/reapprovisionnement",
   },
   {
     id: "crm",
