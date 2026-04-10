@@ -28,6 +28,7 @@ export default function PayrollLayout({
   }
 
   return (
+    <PayrollAccessGuard>
       <div className="flex h-screen bg-gray-50 overflow-hidden">
         <PayrollSidebar 
           collapsed={collapsed} 
@@ -44,5 +45,6 @@ export default function PayrollLayout({
           onOpenChange={setShowCreatePeriodModal}
         />
       </div>
+    </PayrollAccessGuard>
   )
 }
