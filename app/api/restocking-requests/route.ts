@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import type { Prisma } from "@prisma/client"
+import type { Prisma, RestockingRequestStatus } from "@prisma/client"
 
 /**
  * GET /api/restocking-requests
@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
       storeIdRaw && storeIdRaw !== "undefined" && storeIdRaw.trim() !== "" ? storeIdRaw.trim() : null
     const deliveryPersonId =
       deliveryPersonIdRaw &&
-      deliveryPersonIdRaw !== "undefined" &&
-      deliveryPersonIdRaw.trim() !== ""
+        deliveryPersonIdRaw !== "undefined" &&
+        deliveryPersonIdRaw.trim() !== ""
         ? deliveryPersonIdRaw.trim()
         : null
 
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      where.status = status
+      where.status = status as RestockingRequestStatus
     }
 
     const requests = await prisma.restockingRequest.findMany({

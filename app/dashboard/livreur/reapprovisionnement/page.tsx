@@ -337,54 +337,54 @@ export default function LivreurReapprovisionnementPage() {
     if (status !== "authenticated") return
 
     let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      setBootError(null)
-      try {
-        const res = await fetch("/api/driver/restock/stores")
-        const json = await res.json().catch(() => ({}))
-        if (cancelled) return
-        if (!res.ok) {
-          setBootError(
-            typeof json.error === "string" ? json.error : "Impossible d’accéder à l’espace livreur.",
-          )
-          setStores([])
-          return
-        }
-        // Cas : rôle livreur mais aucune fiche DeliveryPerson en base
-        if (json.warning === "no_driver_profile") {
-          setNoDriverProfile(true)
-          setNoDriverProfileMsg(
-            json.message ||
+      ; (async () => {
+        setLoading(true)
+        setBootError(null)
+        try {
+          const res = await fetch("/api/driver/restock/stores")
+          const json = await res.json().catch(() => ({}))
+          if (cancelled) return
+          if (!res.ok) {
+            setBootError(
+              typeof json.error === "string" ? json.error : "Impossible d’accéder à l’espace livreur.",
+            )
+            setStores([])
+            return
+          }
+          // Cas : rôle livreur mais aucune fiche DeliveryPerson en base
+          if (json.warning === "no_driver_profile") {
+            setNoDriverProfile(true)
+            setNoDriverProfileMsg(
+              json.message ||
               "Votre compte n'a pas encore de fiche livreur. Contactez un administrateur.",
-          )
-          setStores([])
-          return
-        }
+            )
+            setStores([])
+            return
+          }
 
-        setStores(json.data || [])
-        const mode = json.mode === "staff" ? "staff" : "driver"
-        setPortalMode(mode)
-        if (json.driver?.name) {
-          setDriverName(json.driver.name)
-          setSelectedDeliveryPersonId(json.driver.id)
-          setDriverHomeStoreId(json.driver.homeStoreId || "")
-        } else {
-          setDriverName("")
-          setSelectedDeliveryPersonId("")
-          setDriverHomeStoreId("")
+          setStores(json.data || [])
+          const mode = json.mode === "staff" ? "staff" : "driver"
+          setPortalMode(mode)
+          if (json.driver?.name) {
+            setDriverName(json.driver.name)
+            setSelectedDeliveryPersonId(json.driver.id)
+            setDriverHomeStoreId(json.driver.homeStoreId || "")
+          } else {
+            setDriverName("")
+            setSelectedDeliveryPersonId("")
+            setDriverHomeStoreId("")
+          }
+          setStaffDrivers(Array.isArray(json.drivers) ? json.drivers : [])
+          if (mode === "staff" && (!json.drivers || json.drivers.length === 0)) {
+            setBootError(
+              "Aucun livreur actif : impossible de créer une demande pour le compte gestionnaire.",
+            )
+            setStores([])
+          }
+        } finally {
+          if (!cancelled) setLoading(false)
         }
-        setStaffDrivers(Array.isArray(json.drivers) ? json.drivers : [])
-        if (mode === "staff" && (!json.drivers || json.drivers.length === 0)) {
-          setBootError(
-            "Aucun livreur actif : impossible de créer une demande pour le compte gestionnaire.",
-          )
-          setStores([])
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
+      })()
 
     return () => {
       cancelled = true
@@ -412,7 +412,7 @@ export default function LivreurReapprovisionnementPage() {
     loadSales()
     // Aussi charger le stock pour la déclaration
     if (stockLines.length === 0) loadStock()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab, bootError, loading, canQueryDriver, loadSales])
 
   const loadProducts = async (store: StoreRow) => {
@@ -880,7 +880,7 @@ export default function LivreurReapprovisionnementPage() {
                       <li key={s.id}>
                         <button
                           type="button"
-                          disabled={loading || (portalMode === "staff" && !selectedDeliveryPersonId)}
+                          disabled={loading}
                           onClick={() => loadProducts(s)}
                           className={cn(
                             "w-full text-left rounded-2xl border p-4 shadow-sm",

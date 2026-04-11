@@ -7,7 +7,7 @@ import { hasPermission } from "@/lib/auth-helpers"
 // GET — Ventes livreurs pour un magasin (admin/gestionnaire)
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -20,7 +20,8 @@ export async function GET(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 })
     }
 
-    const storeId = params.id
+    const { id } = await params
+    const storeId = id
     const { searchParams } = new URL(req.url)
     const driverIdFilter = searchParams.get("driverId")
 
