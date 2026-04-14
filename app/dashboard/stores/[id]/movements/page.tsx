@@ -41,12 +41,20 @@ import {
   Loader2,
   ChevronDown,
   RotateCcw,
+  Warehouse,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  ChevronRight,
 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { toast } from "sonner"
 import { ReturnMovementDialog } from "@/components/stores/return-movement-dialog"
 import { DriverReturnDialog } from "@/components/stores/driver-return-dialog"
+import { StoreReturnWarehouseDialog } from "@/components/stores/store-return-warehouse-dialog"
 
 interface MovementsPageProps {
   params: Promise<{
@@ -128,6 +136,16 @@ export default function MovementsPage({ params }: MovementsPageProps) {
   const [filterType, setFilterType] = useState<string>("all")
   const [showReturnDialog, setShowReturnDialog] = useState(false)
   const [showDriverReturnDialog, setShowDriverReturnDialog] = useState(false)
+  const [showWarehouseReturnDialog, setShowWarehouseReturnDialog] = useState(false)
+
+  // Retours livreur en attente de validation
+  const [driverReturnRequests, setDriverReturnRequests] = useState<any[]>([])
+  const [driverReturnLoading, setDriverReturnLoading] = useState(false)
+  const [driverReturnStatusFilter, setDriverReturnStatusFilter] = useState("PENDING")
+  const [expandedDriverReturnId, setExpandedDriverReturnId] = useState<string | null>(null)
+  const [rejectingDriverReturnId, setRejectingDriverReturnId] = useState<string | null>(null)
+  const [driverRejectionReason, setDriverRejectionReason] = useState("")
+  const [validatingDriverReturnId, setValidatingDriverReturnId] = useState<string | null>(null)
   
   useEffect(() => {
     params.then(p => {
@@ -140,7 +158,59 @@ export default function MovementsPage({ params }: MovementsPageProps) {
     if (storeId && activeTab === "delivery") {
       fetchDeliveryMovements(storeId)
     }
+    if (storeId && activeTab === "driver-returns") {
+      loadDriverReturnRequests(storeId)
+    }
   }, [activeTab, storeId])
+
+  useEffect(() => {
+    if (storeId && activeTab === "driver-returns") {
+      loadDriverReturnRequests(storeId)
+    }
+  }, [driverReturnStatusFilter])
+
+  const loadDriverReturnRequests = async (id: string) => {
+    setDriverReturnLoading(true)
+    try {
+      const res = await fetch(`/api/stores/${id}/driver-return-requests?status=${driverReturnStatusFilter}`)
+      if (!res.ok) throw new Error("Erreur")
+      const data = await res.json()
+      setDriverReturnRequests(data.data || [])
+    } catch {
+      toast.error("Erreur lors du chargement des retours livreur")
+    } finally {
+      setDriverReturnLoading(false)
+    }
+  }
+
+  const handleValidateDriverReturn = async (reqId: string, action: "approve" | "reject") => {
+    if (!storeId) return
+    setValidatingDriverReturnId(reqId)
+    try {
+      const res = await fetch(`/api/stores/${storeId}/driver-return-requests/${reqId}/validate`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          rejectionReason: action === "reject" ? driverRejectionReason : undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error || "Erreur")
+        return
+      }
+      toast.success(json.message)
+      setRejectingDriverReturnId(null)
+      setDriverRejectionReason("")
+      setExpandedDriverReturnId(null)
+      loadDriverReturnRequests(storeId)
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setValidatingDriverReturnId(null)
+    }
+  }
   
   const fetchStoreMovements = async (id: string) => {
     try {
@@ -217,6 +287,10 @@ export default function MovementsPage({ params }: MovementsPageProps) {
             <DropdownMenuItem onClick={() => setShowDriverReturnDialog(true)}>
               <Truck className="h-4 w-4 mr-2" />
               Retour livreur
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowWarehouseReturnDialog(true)}>
+              <Warehouse className="h-4 w-4 mr-2" />
+              Retour entrepôt
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -317,6 +391,15 @@ export default function MovementsPage({ params }: MovementsPageProps) {
               <TabsTrigger value="delivery">
                 <Truck className="h-4 w-4 mr-2" />
                 Stock Livreurs ({deliveryMovements.length})
+              </TabsTrigger>
+              <TabsTrigger value="driver-returns" className="relative">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Retours livreurs
+                {driverReturnRequests.filter(r => r.status === "PENDING").length > 0 && (
+                  <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                    {driverReturnRequests.filter(r => r.status === "PENDING").length}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
             
@@ -468,6 +551,219 @@ export default function MovementsPage({ params }: MovementsPageProps) {
                 </Table>
               )}
             </TabsContent>
+
+            {/* ── Onglet : Retours livreurs ── */}
+            <TabsContent value="driver-returns" className="mt-4 space-y-4">
+              {/* Filtres statut */}
+              <div className="flex gap-2">
+                {[
+                  { value: "PENDING", label: "En attente" },
+                  { value: "APPROVED", label: "Approuvés" },
+                  { value: "REJECTED", label: "Rejetés" },
+                  { value: "all", label: "Tous" },
+                ].map((opt) => (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    size="sm"
+                    variant={driverReturnStatusFilter === opt.value ? "default" : "outline"}
+                    onClick={() => setDriverReturnStatusFilter(opt.value)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+
+              {driverReturnLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="h-7 w-7 animate-spin text-gray-400" />
+                </div>
+              ) : driverReturnRequests.length === 0 ? (
+                <div className="text-center py-16">
+                  <RotateCcw className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">
+                    {driverReturnStatusFilter === "PENDING"
+                      ? "Aucun retour en attente de validation"
+                      : "Aucune demande trouvée"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {driverReturnRequests.map((req: any) => {
+                    const isExpanded = expandedDriverReturnId === req.id
+                    const isRejecting = rejectingDriverReturnId === req.id
+                    const isValidating = validatingDriverReturnId === req.id
+
+                    return (
+                      <div
+                        key={req.id}
+                        className={cn(
+                          "border rounded-xl p-4 bg-white transition-shadow",
+                          isExpanded && "shadow-md ring-1 ring-blue-200"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Avatar livreur */}
+                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0 font-semibold text-blue-700 text-sm">
+                            {req.deliveryPerson?.name?.[0]?.toUpperCase() || "?"}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm text-gray-900">
+                                {req.deliveryPerson?.name}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                                  req.status === "PENDING" && "bg-amber-100 text-amber-700",
+                                  req.status === "APPROVED" && "bg-green-100 text-green-700",
+                                  req.status === "REJECTED" && "bg-red-100 text-red-700",
+                                )}
+                              >
+                                {req.status === "PENDING" && "En attente"}
+                                {req.status === "APPROVED" && "Approuvé"}
+                                {req.status === "REJECTED" && "Rejeté"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              <strong>{req.product?.name}</strong>
+                              {req.product?.sku && ` · ${req.product.sku}`}
+                              {" · "}
+                              <strong>{req.requestedQuantity} unité{req.requestedQuantity > 1 ? "s" : ""}</strong>
+                              {" · "}
+                              {new Date(req.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                            </p>
+                            {req.notes && (
+                              <p className="text-xs text-gray-400 mt-0.5 italic">{req.notes}</p>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {req.status === "PENDING" && (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white h-8"
+                                  disabled={isValidating}
+                                  onClick={() => handleValidateDriverReturn(req.id, "approve")}
+                                >
+                                  {isValidating ? (
+                                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                  ) : (
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  )}
+                                  Approuver
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-200 text-red-600 hover:bg-red-50 h-8"
+                                  disabled={isValidating}
+                                  onClick={() => {
+                                    setRejectingDriverReturnId(isRejecting ? null : req.id)
+                                    setDriverRejectionReason("")
+                                  }}
+                                >
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Rejeter
+                                </Button>
+                              </>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              onClick={() => setExpandedDriverReturnId(isExpanded ? null : req.id)}
+                            >
+                              <ChevronRight className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-90")} />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Zone rejet */}
+                        {isRejecting && (
+                          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg space-y-2">
+                            <p className="text-xs font-medium text-red-700">Motif du rejet (optionnel)</p>
+                            <Textarea
+                              placeholder="Précisez la raison..."
+                              value={driverRejectionReason}
+                              onChange={(e) => setDriverRejectionReason(e.target.value)}
+                              rows={2}
+                              className="bg-white text-sm"
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                                disabled={isValidating}
+                                onClick={() => handleValidateDriverReturn(req.id, "reject")}
+                              >
+                                {isValidating && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                                Confirmer le rejet
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setRejectingDriverReturnId(null)}
+                              >
+                                Annuler
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Détails */}
+                        {isExpanded && (
+                          <div className="mt-3 pt-3 border-t space-y-1 text-xs text-gray-600">
+                            <div className="flex justify-between">
+                              <span>Livreur :</span>
+                              <span className="font-medium">{req.deliveryPerson?.name} — {req.deliveryPerson?.phone}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Produit :</span>
+                              <span className="font-medium">{req.product?.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Quantité demandée :</span>
+                              <span className="font-medium">{req.requestedQuantity}</span>
+                            </div>
+                            {req.approvedQuantity && (
+                              <div className="flex justify-between">
+                                <span>Quantité approuvée :</span>
+                                <span className="font-medium text-green-700">{req.approvedQuantity}</span>
+                              </div>
+                            )}
+                            {req.approvedBy && (
+                              <div className="flex justify-between">
+                                <span>{req.status === "APPROVED" ? "Approuvé" : "Rejeté"} par :</span>
+                                <span className="font-medium">
+                                  {[req.approvedBy.firstName, req.approvedBy.lastName].filter(Boolean).join(" ") || req.approvedBy.email}
+                                  {" le "}
+                                  {new Date(req.approvedAt).toLocaleDateString("fr-FR")}
+                                </span>
+                              </div>
+                            )}
+                            {req.rejectionReason && (
+                              <div className="flex justify-between text-red-600">
+                                <span>Motif du rejet :</span>
+                                <span className="font-medium max-w-[60%] text-right">{req.rejectionReason}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </CardHeader>
       </Card>
@@ -495,6 +791,14 @@ export default function MovementsPage({ params }: MovementsPageProps) {
           fetchStoreMovements(storeId)
           fetchDeliveryMovements(storeId)
         }}
+      />
+
+      {/* Modal de retour entrepôt */}
+      <StoreReturnWarehouseDialog
+        open={showWarehouseReturnDialog}
+        onOpenChange={setShowWarehouseReturnDialog}
+        storeId={storeId}
+        onSuccess={() => fetchStoreMovements(storeId)}
       />
     </>
   )

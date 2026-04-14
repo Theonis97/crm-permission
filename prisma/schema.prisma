@@ -75,31 +75,31 @@ enum ContactStatus {
 // ============================================================================
 
 enum ExpenseStatus {
-  PENDING          // En attente
-  PARTIALLY_PAID   // Payée partiellement
-  PAID             // Payée
+  PENDING // En attente
+  PARTIALLY_PAID // Payée partiellement
+  PAID // Payée
 }
 
 enum ExpensePeriodicity {
-  ONCE        // Unique
-  WEEKLY      // Hebdomadaire
-  MONTHLY     // Mensuelle
-  YEARLY      // Annuelle
+  ONCE // Unique
+  WEEKLY // Hebdomadaire
+  MONTHLY // Mensuelle
+  YEARLY // Annuelle
 }
 
 enum ExpensePaymentMode {
-  CASH          // Caisse
-  BANK          // Banque
-  MOBILE_MONEY  // Mobile Money
+  CASH // Caisse
+  BANK // Banque
+  MOBILE_MONEY // Mobile Money
 }
 
 model MyPvitSecret {
-  id                    String   @id @default(cuid())
+  id                     String   @id @default(cuid())
   operation_account_code String
-  secret                String
-  created_at            DateTime @default(now())
-  expires_at            DateTime
-  
+  secret                 String
+  created_at             DateTime @default(now())
+  expires_at             DateTime
+
   @@map("mypvit_secrets")
 }
 
@@ -133,16 +133,16 @@ model Contact {
 }
 
 model Store {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   name       String
   logo       String?
-  coverImage String?  @map("cover_image")
+  coverImage String? @map("cover_image")
   address    String?
   phone      String?
   email      String?
   whatsapp   String?
-  isActive   Boolean  @default(true) @map("is_active")
-  managerId  String?  @map("manager_id") // Manager de la boutique (optionnel)
+  isActive   Boolean @default(true) @map("is_active")
+  managerId  String? @map("manager_id") // Manager de la boutique (optionnel)
 
   // Informations juridiques & fiscales (boutique)
   formeJuridique String?   @map("forme_juridique")
@@ -153,8 +153,8 @@ model Store {
   siegeSocial    String?   @map("siege_social")
   dateCreation   DateTime? @map("date_creation")
 
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
   manager         User?            @relation("StoreManager", fields: [managerId], references: [id], onDelete: SetNull)
@@ -164,33 +164,39 @@ model Store {
   deliveryPersons DeliveryPerson[]
   deliveryZones   DeliveryZone[]
   storeContacts   StoreContact[]
-  transfersFrom   Transfer[] @relation("fromStore")
-  transfersTo     Transfer[] @relation("toStore")
-  
+  transfersFrom   Transfer[]       @relation("fromStore")
+  transfersTo     Transfer[]       @relation("toStore")
+
   // Relations pour les rôles et permissions magasin
-  storeRoles      StoreRole[]
-  storeUserRoles  StoreUserRole[]
-  
+  storeRoles     StoreRole[]
+  storeUserRoles StoreUserRole[]
+
   // Demandes d'approvisionnement
   restockingRequests RestockingRequest[]
-  
+
   // Ventes déclarées par livreurs
   driverSales DriverSale[]
-  
+
   // Clôtures de journée
   dayCloses DayClose[]
-  
+
   // SAV - Retours de produits
   productReturns ProductReturn[]
-  
+
   // Sous-caisses
   subBoxes SubBox[]
-  
+
   // Comptabilité - Dépenses liées à ce magasin
   expenses Expense[]
-  
+
   // Recettes journalières
   dailyRevenues DailyRevenue[]
+
+  // Retours livreur → magasin (avec validation)
+  driverReturnRequests DriverReturnRequest[]
+
+  // Retours magasin → entrepôt
+  storeReturnRequests StoreReturnRequest[]
 
   @@map("stores")
 }
@@ -262,7 +268,9 @@ model Product {
   restockingRequestItems  RestockingRequestItem[] // Items des demandes d'approvisionnement
   driverSaleItems         DriverSaleItem[] // Ventes déclarées par livreurs
   productReturnItems      ProductReturnItem[] // SAV - Items retournés
-  exchangeReturnItems     ProductReturnItem[] @relation("ExchangeProduct") // SAV - Produits donnés en échange
+  storeReturnRequestItems StoreReturnRequestItem[] // Retours magasin → entrepôt
+  driverReturnRequests    DriverReturnRequest[] // Retours livreur → magasin
+  exchangeReturnItems     ProductReturnItem[]      @relation("ExchangeProduct") // SAV - Produits donnés en échange
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -307,8 +315,8 @@ model ProductVariant {
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs pour cette variante
   restockingRequestItems RestockingRequestItem[] // Items des demandes d'approvisionnement pour cette variante
   driverSaleItems        DriverSaleItem[] // Ventes déclarées par livreurs pour cette variante
-  returnedItems          ProductReturnItem[] @relation("ReturnedVariant") // SAV - Variantes retournées
-  exchangeReturnItems    ProductReturnItem[] @relation("ExchangeVariant") // SAV - Variantes données en échange
+  returnedItems          ProductReturnItem[]     @relation("ReturnedVariant") // SAV - Variantes retournées
+  exchangeReturnItems    ProductReturnItem[]     @relation("ExchangeVariant") // SAV - Variantes données en échange
 
   @@index([productId])
   @@index([sku])
@@ -338,8 +346,8 @@ enum StockType {
   ADJUSTMENT
   SALE
   RETURN
-  TRANSFER_OUT  // Transfert sortant (vers livreur)
-  TRANSFER_IN   // Transfert entrant (depuis entrepôt)
+  TRANSFER_OUT // Transfert sortant (vers livreur)
+  TRANSFER_IN // Transfert entrant (depuis entrepôt)
 }
 
 enum OrderStatus {
@@ -381,10 +389,10 @@ enum DeliveryPersonStatus {
 }
 
 enum DeliveryStockMovementType {
-  SUPPLY       // Approvisionnement depuis le magasin
-  SALE         // Vente à un client
-  RETURN       // Retour au magasin
-  ADJUSTMENT   // Ajustement de stock
+  SUPPLY // Approvisionnement depuis le magasin
+  SALE // Vente à un client
+  RETURN // Retour au magasin
+  ADJUSTMENT // Ajustement de stock
 }
 
 // ============================================================================
@@ -392,15 +400,15 @@ enum DeliveryStockMovementType {
 // ============================================================================
 
 enum AttendanceDeviceStatus {
-  PENDING   // En attente de validation RH
-  APPROVED  // Approuvé
-  REVOKED   // Révoqué
+  PENDING // En attente de validation RH
+  APPROVED // Approuvé
+  REVOKED // Révoqué
 }
 
 enum AttendanceTerminalType {
-  ENTRY_EXIT  // Entrée/Sortie
-  ENTRY_ONLY  // Entrée uniquement
-  EXIT_ONLY   // Sortie uniquement
+  ENTRY_EXIT // Entrée/Sortie
+  ENTRY_ONLY // Entrée uniquement
+  EXIT_ONLY // Sortie uniquement
 }
 
 enum AttendanceTerminalStatus {
@@ -410,15 +418,15 @@ enum AttendanceTerminalStatus {
 }
 
 enum AttendanceType {
-  CHECK_IN   // Entrée
-  CHECK_OUT  // Sortie
+  CHECK_IN // Entrée
+  CHECK_OUT // Sortie
 }
 
 enum AttendanceMethod {
-  QR_CODE    // Scan QR
-  MANUAL     // Saisie manuelle (RH)
-  NFC        // Badge NFC (futur)
-  BIOMETRIC  // Biométrie (futur)
+  QR_CODE // Scan QR
+  MANUAL // Saisie manuelle (RH)
+  NFC // Badge NFC (futur)
+  BIOMETRIC // Biométrie (futur)
 }
 
 // ============================================================================
@@ -426,77 +434,77 @@ enum AttendanceMethod {
 // ============================================================================
 
 enum EmployeeType {
-  DECLARED      // Employé déclaré (cotisations sociales)
-  UNDECLARED    // Employé non déclaré (pas de cotisations)
+  DECLARED // Employé déclaré (cotisations sociales)
+  UNDECLARED // Employé non déclaré (pas de cotisations)
 }
 
 enum ContractType {
-  CDI           // Contrat à durée indéterminée
-  CDD           // Contrat à durée déterminée
-  STAGE         // Stage
-  INTERIM       // Intérim / Mission temporaire
-  FREELANCE     // Prestataire / Freelance
+  CDI // Contrat à durée indéterminée
+  CDD // Contrat à durée déterminée
+  STAGE // Stage
+  INTERIM // Intérim / Mission temporaire
+  FREELANCE // Prestataire / Freelance
 }
 
 enum PayrollStatus {
-  DRAFT           // Brouillon (en cours de calcul)
-  PENDING         // En attente de validation RH
-  VALIDATED       // Validé par RH
-  APPROVED        // Approuvé par direction
-  PARTIALLY_PAID  // Partiellement payé (acomptes en cours)
-  PAID            // Payé intégralement
-  CANCELLED       // Annulé
+  DRAFT // Brouillon (en cours de calcul)
+  PENDING // En attente de validation RH
+  VALIDATED // Validé par RH
+  APPROVED // Approuvé par direction
+  PARTIALLY_PAID // Partiellement payé (acomptes en cours)
+  PAID // Payé intégralement
+  CANCELLED // Annulé
 }
 
 enum AdjustmentType {
-  BONUS         // Prime
-  DEDUCTION     // Retenue
-  OVERTIME      // Heures supplémentaires
-  ABSENCE       // Absence (non payée)
-  ADVANCE       // Avance sur salaire
-  OTHER         // Autre
+  BONUS // Prime
+  DEDUCTION // Retenue
+  OVERTIME // Heures supplémentaires
+  ABSENCE // Absence (non payée)
+  ADVANCE // Avance sur salaire
+  OTHER // Autre
 }
 
 // Type de rubrique de paie
 enum RubricType {
-  PRIME         // Prime (complément de rémunération, soumise aux cotisations)
-  INDEMNITY     // Indemnité (compensation de charge, peut être exonérée)
+  PRIME // Prime (complément de rémunération, soumise aux cotisations)
+  INDEMNITY // Indemnité (compensation de charge, peut être exonérée)
 }
 
 // Base de calcul pour les rubriques en pourcentage
 enum RubricCalculationBase {
-  GROSS_SALARY    // Salaire brut
-  BASE_SALARY     // Salaire de base
-  NET_SALARY      // Salaire net
-  FIXED           // Montant fixe
+  GROSS_SALARY // Salaire brut
+  BASE_SALARY // Salaire de base
+  NET_SALARY // Salaire net
+  FIXED // Montant fixe
 }
 
 enum PayrollPeriodType {
-  MONTHLY       // Mensuel
-  BIWEEKLY      // Bi-mensuel
-  WEEKLY        // Hebdomadaire
+  MONTHLY // Mensuel
+  BIWEEKLY // Bi-mensuel
+  WEEKLY // Hebdomadaire
 }
 
 enum RestockingRequestStatus {
-  PENDING      // En attente de validation
-  APPROVED     // Approuvée
-  REJECTED     // Rejetée
-  COMPLETED    // Terminée (stock transféré)
+  PENDING // En attente de validation
+  APPROVED // Approuvée
+  REJECTED // Rejetée
+  COMPLETED // Terminée (stock transféré)
 }
 
 // Relation produit-magasin (stock par magasin)
 model StoreProduct {
-  id         String   @id @default(cuid())
-  storeId    String   @map("store_id")
-  productId  String   @map("product_id")
-  stock      Int      @default(0)
-  minStock   Int      @default(0) @map("min_stock")
-  maxStock   Int?     @map("max_stock") // Seuil max optionnel
-  prixVente  Float?   @map("prix_vente") // Prix de vente spécifique au magasin
-  prixAchat  Float?   @map("prix_achat") // Prix d'achat spécifique (optionnel)
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  storeId   String   @map("store_id")
+  productId String   @map("product_id")
+  stock     Int      @default(0)
+  minStock  Int      @default(0) @map("min_stock")
+  maxStock  Int?     @map("max_stock") // Seuil max optionnel
+  prixVente Float?   @map("prix_vente") // Prix de vente spécifique au magasin
+  prixAchat Float?   @map("prix_achat") // Prix d'achat spécifique (optionnel)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -524,14 +532,14 @@ model StoreContact {
 
 // Commandes clients du magasin
 model StoreOrder {
-  id              String  @id @default(cuid())
-  number          String  @unique
-  storeId         String  @map("store_id")
-  contactId       String? @map("contact_id") // Peut être null pour client walk-in
-  customerName    String  @map("customer_name")
-  customerPhone   String  @map("customer_phone")
-  customerEmail   String? @map("customer_email")
-  deliveryAddress String? @map("delivery_address")
+  id                String  @id @default(cuid())
+  number            String  @unique
+  storeId           String  @map("store_id")
+  contactId         String? @map("contact_id") // Peut être null pour client walk-in
+  customerName      String  @map("customer_name")
+  customerPhone     String  @map("customer_phone")
+  customerEmail     String? @map("customer_email")
+  deliveryAddress   String? @map("delivery_address")
   deliveryLatitude  Float?  @map("delivery_latitude")
   deliveryLongitude Float?  @map("delivery_longitude")
 
@@ -547,20 +555,20 @@ model StoreOrder {
   paymentMethod PaymentMethod @default(CASH) @map("payment_method")
   paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
   paidAt        DateTime?     @map("paid_at")
-  
+
   // Nouveaux champs pour la gestion des paiements en espèces
   amountReceived Float? @map("amount_received") // Montant reçu du client
-  changeGiven    Float? @map("change_given")    // Monnaie rendue au client
+  changeGiven    Float? @map("change_given") // Monnaie rendue au client
 
-  deliveryPersonId  String?   @map("delivery_person_id")
-  deliveryZoneId    String?   @map("delivery_zone_id")
+  deliveryPersonId      String?   @map("delivery_person_id")
+  deliveryZoneId        String?   @map("delivery_zone_id")
   requestedDeliveryDate DateTime? @map("requested_delivery_date") // Date de livraison souhaitée par le client
-  estimatedDelivery DateTime? @map("estimated_delivery")
-  deliveredAt       DateTime? @map("delivered_at")
+  estimatedDelivery     DateTime? @map("estimated_delivery")
+  deliveredAt           DateTime? @map("delivered_at")
 
   notes        String?
   cancelReason String? @map("cancel_reason")
-  orderSource  String?  @map("order_source") // Source de la commande (whatsapp, pos, etc.)
+  orderSource  String? @map("order_source") // Source de la commande (whatsapp, pos, etc.)
 
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -575,9 +583,9 @@ model StoreOrder {
   items                  StoreOrderItem[]
   whatsappMessages       WhatsAppMessage[]
   deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock liés à cette commande
-  
+
   // SAV - Retours de produits
-  productReturns         ProductReturn[]
+  productReturns ProductReturn[]
 
   @@map("store_orders")
 }
@@ -601,7 +609,7 @@ model StoreOrderItem {
   storeOrder StoreOrder      @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
   product    Product         @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  
+
   // SAV - Items retournés
   productReturnItems ProductReturnItem[]
 
@@ -610,37 +618,37 @@ model StoreOrderItem {
 
 // Commandes WhatsApp avec erreurs de produits
 model FailedWhatsAppOrder {
-  id                String    @id @default(cuid())
-  rawMessage        String    @db.Text // Message WhatsApp original
-  senderId          String?   @map("sender_id") // ID WhatsApp du vendeur
-  senderPhone       String?   @map("sender_phone") // Téléphone du vendeur
-  timestamp         DateTime? // Timestamp du message original
-  
+  id          String    @id @default(cuid())
+  rawMessage  String    @db.Text // Message WhatsApp original
+  senderId    String?   @map("sender_id") // ID WhatsApp du vendeur
+  senderPhone String?   @map("sender_phone") // Téléphone du vendeur
+  timestamp   DateTime? // Timestamp du message original
+
   // Données extraites
-  customerName      String?   @map("customer_name")
-  customerPhone     String?   @map("customer_phone")
-  deliveryAddress   String?   @map("delivery_address")
-  totalAmount       Float?    @map("total_amount")
-  
+  customerName    String? @map("customer_name")
+  customerPhone   String? @map("customer_phone")
+  deliveryAddress String? @map("delivery_address")
+  totalAmount     Float?  @map("total_amount")
+
   // Produits demandés (JSON)
-  requestedProducts Json      @map("requested_products") // Liste des produits avec leurs codes
-  
+  requestedProducts Json @map("requested_products") // Liste des produits avec leurs codes
+
   // Erreur détaillée
-  errorType         String    @map("error_type") // "PRODUCT_NOT_FOUND", "MULTIPLE_ERRORS", etc.
-  errorDetails      String    @db.Text @map("error_details") // Description détaillée
-  missingProducts   Json      @map("missing_products") // Liste des codes produits non trouvés
-  
+  errorType       String @map("error_type") // "PRODUCT_NOT_FOUND", "MULTIPLE_ERRORS", etc.
+  errorDetails    String @map("error_details") @db.Text // Description détaillée
+  missingProducts Json   @map("missing_products") // Liste des codes produits non trouvés
+
   // Statut de traitement
-  status            String    @default("PENDING") // PENDING, RESOLVED, REJECTED
-  resolvedAt        DateTime? @map("resolved_at")
-  resolvedBy        String?   @map("resolved_by") // User ID qui a résolu
-  resolvedOrderId   String?   @map("resolved_order_id") // ID de la commande créée si résolu
-  resolutionNotes   String?   @db.Text @map("resolution_notes")
-  
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  
-  resolvedByUser    User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
+  status          String    @default("PENDING") // PENDING, RESOLVED, REJECTED
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?   @map("resolved_by") // User ID qui a résolu
+  resolvedOrderId String?   @map("resolved_order_id") // ID de la commande créée si résolu
+  resolutionNotes String?   @map("resolution_notes") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  resolvedByUser User? @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([customerPhone])
@@ -663,27 +671,28 @@ model DeliveryPerson {
   rating          Float? // Note moyenne
   totalDeliveries Int                  @default(0) @map("total_deliveries")
   isActive        Boolean              @default(true) @map("is_active")
-  
-  // Réinitialisation de mot de passe
-  resetPasswordToken       String?              @map("reset_password_token")
-  resetPasswordTokenExpiry DateTime?            @map("reset_password_token_expiry")
-  resetPasswordCode        String?              @map("reset_password_code") // Code à 6 chiffres
-  resetPasswordCodeExpiry  DateTime?            @map("reset_password_code_expiry") // Expiration du code
-  
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
 
-  store               Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  storeOrders         StoreOrder[]
-  wallet              CourierWallet?
-  deliveryZones       DeliveryZone[] // Zones assignées au livreur
-  stock               DeliveryPersonStock[] // Stock du livreur
-  stockMovements      DeliveryStockMovement[] // Mouvements de stock du livreur
-  pushTokens          DeliveryPersonPushToken[] // Tokens de notification push
-  dayShifts           DayShift[] // Clôtures de journée
-  restockingRequests  RestockingRequest[] // Demandes d'approvisionnement
-  driverSales         DriverSale[] // Ventes déclarées par le livreur
-  notifications       DeliveryNotification[] // Notifications du livreur
+  // Réinitialisation de mot de passe
+  resetPasswordToken       String?   @map("reset_password_token")
+  resetPasswordTokenExpiry DateTime? @map("reset_password_token_expiry")
+  resetPasswordCode        String?   @map("reset_password_code") // Code à 6 chiffres
+  resetPasswordCodeExpiry  DateTime? @map("reset_password_code_expiry") // Expiration du code
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store              Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeOrders        StoreOrder[]
+  wallet             CourierWallet?
+  deliveryZones      DeliveryZone[] // Zones assignées au livreur
+  stock              DeliveryPersonStock[] // Stock du livreur
+  stockMovements     DeliveryStockMovement[] // Mouvements de stock du livreur
+  pushTokens         DeliveryPersonPushToken[] // Tokens de notification push
+  dayShifts          DayShift[] // Clôtures de journée
+  restockingRequests RestockingRequest[] // Demandes d'approvisionnement
+  driverSales        DriverSale[] // Ventes déclarées par le livreur
+  notifications      DeliveryNotification[] // Notifications du livreur
+  returnRequests     DriverReturnRequest[] // Demandes de retour en magasin
 
   @@map("delivery_persons")
 }
@@ -807,16 +816,16 @@ model InvoiceItem {
 }
 
 model Opportunity {
-  id               String            @id @default(cuid())
-  title            String
-  description      String?
-  status           OpportunityStatus @default(NEW)
-  globalAmount     Float?            @map("global_amount")
-  finalAmount      Float?            @map("final_amount")
-  contactId        String            @map("contact_id")
-  ownerId          String            @map("owner_id")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
+  id           String            @id @default(cuid())
+  title        String
+  description  String?
+  status       OpportunityStatus @default(NEW)
+  globalAmount Float?            @map("global_amount")
+  finalAmount  Float?            @map("final_amount")
+  contactId    String            @map("contact_id")
+  ownerId      String            @map("owner_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
 
   contact      Contact                  @relation(fields: [contactId], references: [id])
   owner        User                     @relation(fields: [ownerId], references: [id])
@@ -936,70 +945,77 @@ model User {
   quotes   Quote[]
   invoices Invoice[]
 
-  assignedRoles             UserRole[]               @relation("AssignedBy")
-  tasks                     Task[]
-  opportunityParticipants   OpportunityParticipant[]
-  opportunities             Opportunity[]
-  auditLogs         AuditLog[]
-  contacts               Contact[]
-  stockMovements         StockMovement[]
-  storeOrders            StoreOrder[]
-  managedStores          Store[]                   @relation("StoreManager")
-  managedWarehouses      Warehouse[]
-  requestedOrders        Order[]                   @relation("OrderRequester")
-  approvedOrders         Order[]                   @relation("OrderApprover")
-  deliveryStockMovements DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
-  resolvedFailedOrders   FailedWhatsAppOrder[] // Commandes WhatsApp avec erreurs résolues par cet utilisateur
-  pwaPushSubscription    PWAPushSubscription? // Subscription PWA pour les notifications push
-  
+  assignedRoles           UserRole[]               @relation("AssignedBy")
+  tasks                   Task[]
+  opportunityParticipants OpportunityParticipant[]
+  opportunities           Opportunity[]
+  auditLogs               AuditLog[]
+  contacts                Contact[]
+  stockMovements          StockMovement[]
+  storeOrders             StoreOrder[]
+  managedStores           Store[]                  @relation("StoreManager")
+  managedWarehouses       Warehouse[]
+  requestedOrders         Order[]                  @relation("OrderRequester")
+  approvedOrders          Order[]                  @relation("OrderApprover")
+  deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
+  resolvedFailedOrders    FailedWhatsAppOrder[] // Commandes WhatsApp avec erreurs résolues par cet utilisateur
+  pwaPushSubscription     PWAPushSubscription? // Subscription PWA pour les notifications push
+
   // Relations pour les rôles et permissions magasin
-  storeUserRoles         StoreUserRole[]
-  assignedStoreRoles     StoreUserRole[] @relation("StoreRoleAssignedBy")
-  
+  storeUserRoles     StoreUserRole[]
+  assignedStoreRoles StoreUserRole[] @relation("StoreRoleAssignedBy")
+
   // Demandes d'approvisionnement approuvées
   approvedRestockingRequests RestockingRequest[]
-  
+
   // Clôtures de journée effectuées
   dayCloses DayClose[]
-  
+
   // SAV - Retours de produits
   processedProductReturns ProductReturn[] @relation("ProductReturnProcessor")
   createdProductReturns   ProductReturn[] @relation("ProductReturnCreator")
   sentToCashierReturns    ProductReturn[] @relation("ProductReturnSentToCashier")
   cashierValidatedReturns ProductReturn[] @relation("ProductReturnCashierValidator")
-  
+
   // Pointage - Relations
   attendanceDevices         AttendanceDevice[] // Appareils autorisés pour le pointage
-  approvedAttendanceDevices AttendanceDevice[] @relation("DeviceApprover") // Appareils approuvés par cet utilisateur
+  approvedAttendanceDevices AttendanceDevice[]  @relation("DeviceApprover") // Appareils approuvés par cet utilisateur
   attendanceLogs            AttendanceLog[] // Historique des pointages
   usedQRTokens              AttendanceQRToken[] // Tokens QR utilisés
-  
+
   // Comptabilité - Relations
-  createdExpenses           Expense[]          @relation("ExpenseCreator")
-  expensePayments           ExpensePayment[]   @relation("ExpensePaymentPayer")
-  createdDailyRevenues      DailyRevenue[]     @relation("DailyRevenueCreatedBy")
-  accountingAccessCodes     AccountingAccessCode[]
-  
+  createdExpenses       Expense[]              @relation("ExpenseCreator")
+  expensePayments       ExpensePayment[]       @relation("ExpensePaymentPayer")
+  createdDailyRevenues  DailyRevenue[]         @relation("DailyRevenueCreatedBy")
+  accountingAccessCodes AccountingAccessCode[]
+
   // Paie - Relations
-  payrollProfile            EmployeePayrollProfile?
-  validatedPayrolls         Payroll[] @relation("PayrollValidatedBy")
-  approvedPayrolls          Payroll[] @relation("PayrollApprovedBy")
-  closedPayrollPeriods      PayrollPeriod[] @relation("PayrollPeriodClosedBy")
-  createdAdjustments        PayrollAdjustment[] @relation("AdjustmentCreatedBy")
-  payrollAuditLogs          PayrollAuditLog[] @relation("PayrollAuditUser")
-  payrollAccessCodes        PayrollAccessCode[]
-  moduleAccessConfigs       ModuleAccessConfig[] @relation("ModuleAccessConfigUpdatedBy")
-  createdEmployeeRubrics    EmployeeRubric[] @relation("EmployeeRubricCreatedBy")
-  payrollCompanySettings    PayrollCompanySettings[] @relation("PayrollCompanySettingsUpdatedBy")
-  payrollPayments           PayrollPayment[] @relation("PayrollPaymentPaidBy")
-  
+  payrollProfile         EmployeePayrollProfile?
+  validatedPayrolls      Payroll[]                @relation("PayrollValidatedBy")
+  approvedPayrolls       Payroll[]                @relation("PayrollApprovedBy")
+  closedPayrollPeriods   PayrollPeriod[]          @relation("PayrollPeriodClosedBy")
+  createdAdjustments     PayrollAdjustment[]      @relation("AdjustmentCreatedBy")
+  payrollAuditLogs       PayrollAuditLog[]        @relation("PayrollAuditUser")
+  payrollAccessCodes     PayrollAccessCode[]
+  moduleAccessConfigs    ModuleAccessConfig[]     @relation("ModuleAccessConfigUpdatedBy")
+  createdEmployeeRubrics EmployeeRubric[]         @relation("EmployeeRubricCreatedBy")
+  payrollCompanySettings PayrollCompanySettings[] @relation("PayrollCompanySettingsUpdatedBy")
+  payrollPayments        PayrollPayment[]         @relation("PayrollPaymentPaidBy")
+
+  // Retours livreur → magasin
+  approvedDriverReturns DriverReturnRequest[] @relation("DriverReturnApprovedBy")
+
+  // Retours magasin → entrepôt
+  requestedStoreReturns StoreReturnRequest[] @relation("StoreReturnRequestedBy")
+  validatedStoreReturns StoreReturnRequest[] @relation("StoreReturnValidatedBy")
+
   // GED - Relations
-  gedFolders                GedFolder[] @relation("GedFolderOwner")
-  gedFiles                  GedFile[] @relation("GedFileOwner")
-  gedFileVersions           GedFileVersion[] @relation("GedVersionCreator")
-  gedSharesReceived         GedShare[] @relation("GedSharedWith")
-  gedSharesGiven            GedShare[] @relation("GedSharedBy")
-  gedFavorites              GedFavorite[] @relation("GedFavorites")
+  gedFolders        GedFolder[]      @relation("GedFolderOwner")
+  gedFiles          GedFile[]        @relation("GedFileOwner")
+  gedFileVersions   GedFileVersion[] @relation("GedVersionCreator")
+  gedSharesReceived GedShare[]       @relation("GedSharedWith")
+  gedSharesGiven    GedShare[]       @relation("GedSharedBy")
+  gedFavorites      GedFavorite[]    @relation("GedFavorites")
 
   @@map("users")
 }
@@ -1073,7 +1089,7 @@ model RolePermission {
 
 model StoreRole {
   id          String   @id @default(cuid())
-  name        String   // Ex: "Manager", "Vendeur", "Caissier"
+  name        String // Ex: "Manager", "Vendeur", "Caissier"
   description String?
   storeId     String   @map("store_id")
   isSystem    Boolean  @default(false) @map("is_system")
@@ -1092,8 +1108,8 @@ model StorePermission {
   id          String   @id @default(cuid())
   name        String   @unique // Ex: "store.products.view", "store.pos.access"
   description String?
-  module      String   // Ex: "products", "pos", "orders"
-  action      String   // Ex: "view", "create", "edit", "delete"
+  module      String // Ex: "products", "pos", "orders"
+  action      String // Ex: "view", "create", "edit", "delete"
   createdAt   DateTime @default(now()) @map("created_at")
 
   storeRolePermissions StoreRolePermission[]
@@ -1439,16 +1455,16 @@ model DeliveryPersonStock {
 
 // Mouvements de stock des livreurs
 model DeliveryStockMovement {
-  id               String                     @id @default(cuid())
-  deliveryPersonId String                     @map("delivery_person_id")
-  productId        String                     @map("product_id")
-  variantId        String?                    @map("variant_id")
+  id               String                    @id @default(cuid())
+  deliveryPersonId String                    @map("delivery_person_id")
+  productId        String                    @map("product_id")
+  variantId        String?                   @map("variant_id")
   type             DeliveryStockMovementType
   quantity         Int // Quantité (positif ou négatif selon le type)
-  storeOrderId     String?                    @map("store_order_id") // Référence à la commande client si c'est une vente
+  storeOrderId     String?                   @map("store_order_id") // Référence à la commande client si c'est une vente
   notes            String?
-  createdById      String?                    @map("created_by_id") // Utilisateur qui a créé le mouvement
-  createdAt        DateTime                   @default(now()) @map("created_at")
+  createdById      String?                   @map("created_by_id") // Utilisateur qui a créé le mouvement
+  createdAt        DateTime                  @default(now()) @map("created_at")
 
   deliveryPerson DeliveryPerson  @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
   product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1469,7 +1485,7 @@ model DeliveryPersonPushToken {
   deliveryPersonId String   @map("delivery_person_id")
   token            String   @unique // Token Expo push
   deviceId         String?  @map("device_id") // Identifiant unique du device
-  platform         String?  // "ios" ou "android"
+  platform         String? // "ios" ou "android"
   isActive         Boolean  @default(true) @map("is_active")
   lastUsedAt       DateTime @default(now()) @map("last_used_at")
   createdAt        DateTime @default(now()) @map("created_at")
@@ -1506,9 +1522,9 @@ model DayShift {
 
 // Notifications pour les livreurs
 enum NotificationType {
-  ORDER      // Notification de commande
-  SYSTEM     // Notification système
-  INFO       // Notification informative
+  ORDER // Notification de commande
+  SYSTEM // Notification système
+  INFO // Notification informative
 }
 
 model DeliveryNotification {
@@ -1518,7 +1534,7 @@ model DeliveryNotification {
   body             String
   type             NotificationType @default(INFO)
   isRead           Boolean          @default(false) @map("is_read")
-  data             Json?            // Données additionnelles (orderId, zoneId, etc.)
+  data             Json? // Données additionnelles (orderId, zoneId, etc.)
   createdAt        DateTime         @default(now()) @map("created_at")
   readAt           DateTime?        @map("read_at")
 
@@ -1533,15 +1549,15 @@ model DeliveryNotification {
 
 // Subscriptions PWA pour les notifications push
 model PWAPushSubscription {
-  id         String   @id @default(cuid())
-  userId     String   @unique @map("user_id") // ID de l'utilisateur (livreur)
-  endpoint   String   // URL de l'endpoint push
-  p256dhKey  String   @map("p256dh_key") // Clé publique pour le chiffrement
-  authKey    String   @map("auth_key") // Clé d'authentification
-  userAgent  String?  @map("user_agent") // Navigateur utilisé
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id") // ID de l'utilisateur (livreur)
+  endpoint  String // URL de l'endpoint push
+  p256dhKey String   @map("p256dh_key") // Clé publique pour le chiffrement
+  authKey   String   @map("auth_key") // Clé d'authentification
+  userAgent String?  @map("user_agent") // Navigateur utilisé
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1557,21 +1573,21 @@ model PWAPushSubscription {
 
 // Demande d'approvisionnement d'un livreur
 model RestockingRequest {
-  id               String                 @id @default(cuid())
-  deliveryPersonId String                 @map("delivery_person_id")
-  storeId          String                 @map("store_id")
+  id               String                  @id @default(cuid())
+  deliveryPersonId String                  @map("delivery_person_id")
+  storeId          String                  @map("store_id")
   status           RestockingRequestStatus @default(PENDING)
-  notes            String?                // Notes du livreur
-  rejectionReason  String?                @map("rejection_reason") // Raison du rejet
-  approvedById     String?                @map("approved_by_id") // Utilisateur qui a approuvé
-  approvedAt       DateTime?              @map("approved_at")
-  completedAt      DateTime?              @map("completed_at")
-  createdAt        DateTime               @default(now()) @map("created_at")
-  updatedAt        DateTime               @updatedAt @map("updated_at")
+  notes            String? // Notes du livreur
+  rejectionReason  String?                 @map("rejection_reason") // Raison du rejet
+  approvedById     String?                 @map("approved_by_id") // Utilisateur qui a approuvé
+  approvedAt       DateTime?               @map("approved_at")
+  completedAt      DateTime?               @map("completed_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
 
-  deliveryPerson DeliveryPerson        @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
-  store          Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  approvedBy     User?                 @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+  deliveryPerson DeliveryPerson          @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  store          Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  approvedBy     User?                   @relation(fields: [approvedById], references: [id], onDelete: SetNull)
   items          RestockingRequestItem[] // Items demandés
 
   @@index([deliveryPersonId])
@@ -1583,13 +1599,13 @@ model RestockingRequest {
 
 // Items d'une demande d'approvisionnement
 model RestockingRequestItem {
-  id                 String   @id @default(cuid())
-  restockingRequestId String   @map("restocking_request_id")
-  productId          String   @map("product_id")
-  variantId          String?  @map("variant_id")
-  requestedQuantity  Int      @map("requested_quantity") // Quantité demandée
-  approvedQuantity   Int?     @map("approved_quantity")  // Quantité approuvée (peut être différente)
-  notes              String?  // Notes spécifiques à cet item
+  id                  String  @id @default(cuid())
+  restockingRequestId String  @map("restocking_request_id")
+  productId           String  @map("product_id")
+  variantId           String? @map("variant_id")
+  requestedQuantity   Int     @map("requested_quantity") // Quantité demandée
+  approvedQuantity    Int?    @map("approved_quantity") // Quantité approuvée (peut être différente)
+  notes               String? // Notes spécifiques à cet item
 
   restockingRequest RestockingRequest @relation(fields: [restockingRequestId], references: [id], onDelete: Cascade)
   product           Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1607,17 +1623,19 @@ model RestockingRequestItem {
 
 // Déclaration de ventes par un livreur (les produits qu'il a vendus sur le terrain)
 model DriverSale {
-  id               String         @id @default(cuid())
-  deliveryPersonId String         @map("delivery_person_id")
-  storeId          String         @map("store_id") // Magasin d'attache du livreur
-  totalAmount      Float          @map("total_amount") // Somme totale de la déclaration
-  notes            String?        // Notes optionnelles
-  declaredAt       DateTime       @default(now()) @map("declared_at")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  deliveryPersonId   String   @map("delivery_person_id")
+  storeId            String   @map("store_id")
+  totalAmount        Float    @map("total_amount")         // Total encaissé client (brut)
+  totalDeliveryFees  Float    @default(0) @map("total_delivery_fees") // Total frais livraison
+  netTotalAmount     Float    @default(0) @map("net_total_amount")     // Montant net dû au magasin
+  notes              String?
+  declaredAt         DateTime @default(now()) @map("declared_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
-  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  deliveryPerson DeliveryPerson   @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  store          Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
   items          DriverSaleItem[]
 
   @@index([deliveryPersonId])
@@ -1628,16 +1646,20 @@ model DriverSale {
 
 // Articles d'une déclaration de vente d'un livreur
 model DriverSaleItem {
-  id           String  @id @default(cuid())
-  driverSaleId String  @map("driver_sale_id")
-  productId    String  @map("product_id")
-  variantId    String? @map("variant_id")
-  quantity     Int
-  unitPrice    Float   @map("unit_price")   // Prix unitaire de vente
-  totalPrice   Float   @map("total_price")  // quantity × unitPrice
+  id             String  @id @default(cuid())
+  driverSaleId   String  @map("driver_sale_id")
+  productId      String  @map("product_id")
+  variantId      String? @map("variant_id")
+  quantity       Int
+  unitPrice      Float   @map("unit_price")      // Prix unitaire vendu au client
+  totalPrice     Float   @map("total_price")     // quantity × unitPrice
+  deliveryFee    Float   @default(0) @map("delivery_fee")    // Frais de livraison par unité
+  deliveryType   String  @default("none") @map("delivery_type") // "none" | "free" | "paid"
+  netUnitPrice   Float   @default(0) @map("net_unit_price")  // Prix net dû au magasin (unitPrice - deliveryFee si free)
+  netTotalPrice  Float   @default(0) @map("net_total_price") // quantity × netUnitPrice
 
-  driverSale DriverSale     @relation(fields: [driverSaleId], references: [id], onDelete: Cascade)
-  product    Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  driverSale DriverSale      @relation(fields: [driverSaleId], references: [id], onDelete: Cascade)
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([driverSaleId])
@@ -1647,19 +1669,19 @@ model DriverSaleItem {
 
 // Clôture de journée de caisse
 model DayClose {
-  id            String   @id @default(cuid())
-  storeId       String   @map("store_id")
-  userId        String   @map("user_id")
-  closeDate     DateTime @map("close_date") // Date de la journée clôturée (sans heure)
-  totalSales    Int      @map("total_sales") // Nombre de ventes
-  totalItems    Int      @map("total_items") // Nombre total d'articles vendus
-  subtotal      Float    @map("subtotal") // Sous-total avant TVA et remises
-  totalTax      Float    @map("total_tax") // Total TVA
-  totalDiscounts Float   @map("total_discounts") // Total des remises accordées
-  totalRevenue  Float    @map("total_revenue") // Recette totale encaissée
-  notes         String?  // Notes optionnelles de clôture
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(cuid())
+  storeId        String   @map("store_id")
+  userId         String   @map("user_id")
+  closeDate      DateTime @map("close_date") // Date de la journée clôturée (sans heure)
+  totalSales     Int      @map("total_sales") // Nombre de ventes
+  totalItems     Int      @map("total_items") // Nombre total d'articles vendus
+  subtotal       Float    @map("subtotal") // Sous-total avant TVA et remises
+  totalTax       Float    @map("total_tax") // Total TVA
+  totalDiscounts Float    @map("total_discounts") // Total des remises accordées
+  totalRevenue   Float    @map("total_revenue") // Recette totale encaissée
+  notes          String? // Notes optionnelles de clôture
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1673,24 +1695,24 @@ model DayClose {
 
 // Recette journalière d'un magasin (agrégation des clôtures + dépenses + recette comptée)
 model DailyRevenue {
-  id              String   @id @default(cuid())
-  storeId         String   @map("store_id")
-  date            DateTime // Date du jour (sans heure)
-  
-  // Données calculées/agrégées
-  totalDayCloses  Float    @default(0) @map("total_day_closes")  // Somme des clôtures de caisse du jour
-  totalExpenses   Float    @default(0) @map("total_expenses")    // Somme des dépenses du magasin ce jour
-  
-  // Données saisies manuellement
-  countedRevenue  Float?   @map("counted_revenue")  // Recette comptée (saisie manuelle)
-  
-  notes           String?
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  createdById     String?  @map("created_by_id")
+  id      String   @id @default(cuid())
+  storeId String   @map("store_id")
+  date    DateTime // Date du jour (sans heure)
 
-  store     Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdBy User?  @relation("DailyRevenueCreatedBy", fields: [createdById], references: [id])
+  // Données calculées/agrégées
+  totalDayCloses Float @default(0) @map("total_day_closes") // Somme des clôtures de caisse du jour
+  totalExpenses  Float @default(0) @map("total_expenses") // Somme des dépenses du magasin ce jour
+
+  // Données saisies manuellement
+  countedRevenue Float? @map("counted_revenue") // Recette comptée (saisie manuelle)
+
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+
+  store     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("DailyRevenueCreatedBy", fields: [createdById], references: [id])
 
   @@unique([storeId, date]) // Un seul enregistrement par magasin par jour
   @@index([storeId])
@@ -1704,98 +1726,98 @@ model DailyRevenue {
 
 // Motif de retour d'un produit
 enum ProductReturnReason {
-  DEFECTIVE       // Défectueux
-  BROKEN          // Cassé
-  NOT_SATISFIED   // Pas satisfait
-  NON_FUNCTIONAL  // Non fonctionnel
-  WRONG_PRODUCT   // Mauvais produit livré
-  EXPIRED         // Produit périmé
-  QUALITY_ISSUE   // Problème de qualité
-  OTHER           // Autre
+  DEFECTIVE // Défectueux
+  BROKEN // Cassé
+  NOT_SATISFIED // Pas satisfait
+  NON_FUNCTIONAL // Non fonctionnel
+  WRONG_PRODUCT // Mauvais produit livré
+  EXPIRED // Produit périmé
+  QUALITY_ISSUE // Problème de qualité
+  OTHER // Autre
 }
 
 // État/Condition du produit retourné
 enum ProductCondition {
-  NEW             // Neuf (emballage intact)
-  GOOD            // Bon état
-  USED            // Utilisé
-  DAMAGED         // Endommagé
-  DEFECTIVE       // Défectueux
+  NEW // Neuf (emballage intact)
+  GOOD // Bon état
+  USED // Utilisé
+  DAMAGED // Endommagé
+  DEFECTIVE // Défectueux
 }
 
 // Statut du retour
 enum ProductReturnStatus {
-  PENDING           // En attente de traitement SAV
-  APPROVED          // Approuvé par SAV (en attente de décision échange/remboursement)
-  AWAITING_CASHIER  // Envoyé à la caisse, en attente de validation
-  REFUNDED          // Remboursé (validé par caisse)
-  EXCHANGED         // Échangé (validé par caisse si ajout requis)
-  REJECTED          // Rejeté
+  PENDING // En attente de traitement SAV
+  APPROVED // Approuvé par SAV (en attente de décision échange/remboursement)
+  AWAITING_CASHIER // Envoyé à la caisse, en attente de validation
+  REFUNDED // Remboursé (validé par caisse)
+  EXCHANGED // Échangé (validé par caisse si ajout requis)
+  REJECTED // Rejeté
 }
 
 // Type de résolution SAV
 enum SAVResolutionType {
-  EXCHANGE    // Échange de produit
-  REFUND      // Remboursement
+  EXCHANGE // Échange de produit
+  REFUND // Remboursement
 }
 
 // Retour de produit (peut être lié ou non à une commande)
 model ProductReturn {
-  id              String              @id @default(cuid())
-  number          String              @unique // Numéro de retour (ex: RET-20231215-001)
-  trackingNumber  String?             @unique @map("tracking_number") // Numéro de suivi SAV (ex: SAV-20231215-001)
-  storeId         String              @map("store_id")
-  storeOrderId    String?             @map("store_order_id") // Optionnel - peut ne pas être lié à une commande
-  
+  id             String  @id @default(cuid())
+  number         String  @unique // Numéro de retour (ex: RET-20231215-001)
+  trackingNumber String? @unique @map("tracking_number") // Numéro de suivi SAV (ex: SAV-20231215-001)
+  storeId        String  @map("store_id")
+  storeOrderId   String? @map("store_order_id") // Optionnel - peut ne pas être lié à une commande
+
   // Informations client (optionnelles si pas de commande liée)
-  customerName    String?             @map("customer_name")
-  customerPhone   String?             @map("customer_phone")
-  
+  customerName  String? @map("customer_name")
+  customerPhone String? @map("customer_phone")
+
   // Statut et résolution
-  status          ProductReturnStatus @default(PENDING)
-  resolutionType  SAVResolutionType?  @map("resolution_type") // Type de résolution choisi
-  resolution      String?             // Notes sur la résolution
-  
+  status         ProductReturnStatus @default(PENDING)
+  resolutionType SAVResolutionType?  @map("resolution_type") // Type de résolution choisi
+  resolution     String? // Notes sur la résolution
+
   // Montants
-  totalRefundAmount   Float           @default(0) @map("total_refund_amount") // Montant total remboursé
-  totalCustomerAddition Float         @default(0) @map("total_customer_addition") // Montant total à payer par le client (échange)
-  totalDiscount       Float           @default(0) @map("total_discount") // Rabais total accordé par SAV
-  
+  totalRefundAmount     Float @default(0) @map("total_refund_amount") // Montant total remboursé
+  totalCustomerAddition Float @default(0) @map("total_customer_addition") // Montant total à payer par le client (échange)
+  totalDiscount         Float @default(0) @map("total_discount") // Rabais total accordé par SAV
+
   // Commande SubBox SAV créée pour l'échange
-  savSubBoxOrderId    String?         @unique @map("sav_sub_box_order_id")
-  
+  savSubBoxOrderId String? @unique @map("sav_sub_box_order_id")
+
   // Traitement SAV
-  processedById   String?             @map("processed_by_id")
-  processedAt     DateTime?           @map("processed_at")
-  
+  processedById String?   @map("processed_by_id")
+  processedAt   DateTime? @map("processed_at")
+
   // Envoi à la caisse
-  sentToCashier       Boolean         @default(false) @map("sent_to_cashier")
-  sentToCashierAt     DateTime?       @map("sent_to_cashier_at")
-  sentToCashierById   String?         @map("sent_to_cashier_by_id")
-  
+  sentToCashier     Boolean   @default(false) @map("sent_to_cashier")
+  sentToCashierAt   DateTime? @map("sent_to_cashier_at")
+  sentToCashierById String?   @map("sent_to_cashier_by_id")
+
   // Validation par la caisse
-  cashierValidated    Boolean         @default(false) @map("cashier_validated")
-  cashierValidatedAt  DateTime?       @map("cashier_validated_at")
-  cashierValidatedById String?        @map("cashier_validated_by_id")
-  
+  cashierValidated     Boolean   @default(false) @map("cashier_validated")
+  cashierValidatedAt   DateTime? @map("cashier_validated_at")
+  cashierValidatedById String?   @map("cashier_validated_by_id")
+
   // Notes
-  notes           String?
-  
-  createdById     String              @map("created_by_id")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  notes String?
+
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  storeOrder      StoreOrder?         @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
-  savSubBoxOrder  SubBoxOrder?        @relation("SAVSubBoxOrder", fields: [savSubBoxOrderId], references: [id], onDelete: SetNull)
-  processedBy     User?               @relation("ProductReturnProcessor", fields: [processedById], references: [id], onDelete: SetNull)
-  sentToCashierBy User?               @relation("ProductReturnSentToCashier", fields: [sentToCashierById], references: [id], onDelete: SetNull)
-  cashierValidatedBy User?            @relation("ProductReturnCashierValidator", fields: [cashierValidatedById], references: [id], onDelete: SetNull)
-  createdBy       User                @relation("ProductReturnCreator", fields: [createdById], references: [id])
-  
+  store              Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeOrder         StoreOrder?  @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
+  savSubBoxOrder     SubBoxOrder? @relation("SAVSubBoxOrder", fields: [savSubBoxOrderId], references: [id], onDelete: SetNull)
+  processedBy        User?        @relation("ProductReturnProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+  sentToCashierBy    User?        @relation("ProductReturnSentToCashier", fields: [sentToCashierById], references: [id], onDelete: SetNull)
+  cashierValidatedBy User?        @relation("ProductReturnCashierValidator", fields: [cashierValidatedById], references: [id], onDelete: SetNull)
+  createdBy          User         @relation("ProductReturnCreator", fields: [createdById], references: [id])
+
   // Items retournés
-  items           ProductReturnItem[]
+  items ProductReturnItem[]
 
   @@index([storeId])
   @@index([storeOrderId])
@@ -1808,48 +1830,48 @@ model ProductReturn {
 
 // Item retourné (un produit spécifique du retour)
 model ProductReturnItem {
-  id                String              @id @default(cuid())
-  productReturnId   String              @map("product_return_id")
-  productId         String              @map("product_id")
-  variantId         String?             @map("variant_id") // Variante du produit retourné
-  storeOrderItemId  String?             @map("store_order_item_id") // Optionnel - lien vers l'item de la commande originale
-  
+  id               String  @id @default(cuid())
+  productReturnId  String  @map("product_return_id")
+  productId        String  @map("product_id")
+  variantId        String? @map("variant_id") // Variante du produit retourné
+  storeOrderItemId String? @map("store_order_item_id") // Optionnel - lien vers l'item de la commande originale
+
   // Informations produit (snapshot)
-  productName       String              @map("product_name")
-  productSku        String?             @map("product_sku")
-  
+  productName String  @map("product_name")
+  productSku  String? @map("product_sku")
+
   // Quantité et prix
-  quantity          Int                 // Quantité retournée
-  unitPrice         Float               @map("unit_price") // Prix unitaire du produit
-  refundAmount      Float               @default(0) @map("refund_amount") // Montant remboursé pour cet item
-  
+  quantity     Int // Quantité retournée
+  unitPrice    Float @map("unit_price") // Prix unitaire du produit
+  refundAmount Float @default(0) @map("refund_amount") // Montant remboursé pour cet item
+
   // État du produit retourné
-  condition         ProductCondition    @default(GOOD) // État/condition du produit
-  
+  condition ProductCondition @default(GOOD) // État/condition du produit
+
   // Motif du retour
-  reason            ProductReturnReason
-  reasonDetails     String?             @map("reason_details") // Détails supplémentaires du motif
-  
+  reason        ProductReturnReason
+  reasonDetails String?             @map("reason_details") // Détails supplémentaires du motif
+
   // Résolution spécifique à cet item
-  isRefunded        Boolean             @default(false) @map("is_refunded") // true = remboursé, false = échangé
-  
+  isRefunded Boolean @default(false) @map("is_refunded") // true = remboursé, false = échangé
+
   // Informations d'échange (si isRefunded = false)
-  exchangeProductId       String?       @map("exchange_product_id") // Produit donné en échange
-  exchangeProductVariantId String?      @map("exchange_product_variant_id") // Variante du produit d'échange
-  exchangeProductName     String?       @map("exchange_product_name") // Nom du produit d'échange (snapshot)
-  exchangeProductPrice    Float?        @map("exchange_product_price") // Prix du produit d'échange
-  exchangeDiscount        Float         @default(0) @map("exchange_discount") // Rabais accordé par SAV
-  customerAddition        Float         @default(0) @map("customer_addition") // Montant à payer par le client (prix échange - prix retour - rabais)
-  
-  createdAt         DateTime            @default(now()) @map("created_at")
+  exchangeProductId        String? @map("exchange_product_id") // Produit donné en échange
+  exchangeProductVariantId String? @map("exchange_product_variant_id") // Variante du produit d'échange
+  exchangeProductName      String? @map("exchange_product_name") // Nom du produit d'échange (snapshot)
+  exchangeProductPrice     Float?  @map("exchange_product_price") // Prix du produit d'échange
+  exchangeDiscount         Float   @default(0) @map("exchange_discount") // Rabais accordé par SAV
+  customerAddition         Float   @default(0) @map("customer_addition") // Montant à payer par le client (prix échange - prix retour - rabais)
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  productReturn     ProductReturn       @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
-  product           Product             @relation(fields: [productId], references: [id])
-  variant           ProductVariant?     @relation("ReturnedVariant", fields: [variantId], references: [id])
-  storeOrderItem    StoreOrderItem?     @relation(fields: [storeOrderItemId], references: [id])
-  exchangeProduct   Product?            @relation("ExchangeProduct", fields: [exchangeProductId], references: [id])
-  exchangeVariant   ProductVariant?     @relation("ExchangeVariant", fields: [exchangeProductVariantId], references: [id])
+  productReturn   ProductReturn   @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id])
+  variant         ProductVariant? @relation("ReturnedVariant", fields: [variantId], references: [id])
+  storeOrderItem  StoreOrderItem? @relation(fields: [storeOrderItemId], references: [id])
+  exchangeProduct Product?        @relation("ExchangeProduct", fields: [exchangeProductId], references: [id])
+  exchangeVariant ProductVariant? @relation("ExchangeVariant", fields: [exchangeProductVariantId], references: [id])
 
   @@index([productReturnId])
   @@index([productId])
@@ -1863,23 +1885,23 @@ model ProductReturnItem {
 
 // Statut d'une commande de sous-caisse
 enum SubBoxOrderStatus {
-  PENDING   // En attente - le client est encore avec la sous-caisse
+  PENDING // En attente - le client est encore avec la sous-caisse
   VALIDATED // Validée - la caisse principale a validé et encaissé
   CANCELLED // Annulée
 }
 
 // Sous-caisse d'un magasin
 model SubBox {
-  id          String   @id @default(cuid())
-  storeId     String   @map("store_id")
-  name        String   // Prénom de l'opérateur de la sous-caisse
-  code        String   // Code unique de la sous-caisse (ex: "SC01", "SC02")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  storeId   String   @map("store_id")
+  name      String // Prénom de l'opérateur de la sous-caisse
+  code      String // Code unique de la sous-caisse (ex: "SC01", "SC02")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  store       Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders      SubBoxOrder[] // Commandes créées par cette sous-caisse
+  store  Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders SubBoxOrder[] // Commandes créées par cette sous-caisse
 
   @@unique([storeId, code]) // Code unique par magasin
   @@index([storeId])
@@ -1889,33 +1911,33 @@ model SubBox {
 
 // Commande créée par une sous-caisse
 model SubBoxOrder {
-  id           String            @id @default(cuid())
-  subBoxId     String            @map("sub_box_id")
-  storeId      String            @map("store_id")
-  clientCode   String            @map("client_code") // Code unique donné au client (ex: "A001", "B042")
-  status       SubBoxOrderStatus @default(PENDING)
-  
-  // Totaux calculés
-  subtotal     Float             @default(0)
-  totalDiscount Float            @default(0) @map("total_discount")
-  totalItems   Int               @default(0) @map("total_items")
-  
-  // Notes optionnelles
-  notes        String?
-  
-  // Validation par la caisse principale
-  validatedAt  DateTime?         @map("validated_at")
-  cancelledAt  DateTime?         @map("cancelled_at")
-  cancelReason String?           @map("cancel_reason")
-  
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id         String            @id @default(cuid())
+  subBoxId   String            @map("sub_box_id")
+  storeId    String            @map("store_id")
+  clientCode String            @map("client_code") // Code unique donné au client (ex: "A001", "B042")
+  status     SubBoxOrderStatus @default(PENDING)
 
-  subBox       SubBox            @relation(fields: [subBoxId], references: [id], onDelete: Cascade)
-  items        SubBoxOrderItem[] // Produits de la commande
-  
+  // Totaux calculés
+  subtotal      Float @default(0)
+  totalDiscount Float @default(0) @map("total_discount")
+  totalItems    Int   @default(0) @map("total_items")
+
+  // Notes optionnelles
+  notes String?
+
+  // Validation par la caisse principale
+  validatedAt  DateTime? @map("validated_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelReason String?   @map("cancel_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subBox SubBox            @relation(fields: [subBoxId], references: [id], onDelete: Cascade)
+  items  SubBoxOrderItem[] // Produits de la commande
+
   // Retour SAV lié (si commande créée pour échange SAV)
-  productReturn ProductReturn?   @relation("SAVSubBoxOrder")
+  productReturn ProductReturn? @relation("SAVSubBoxOrder")
 
   @@index([subBoxId])
   @@index([storeId])
@@ -1927,22 +1949,22 @@ model SubBoxOrder {
 
 // Item d'une commande de sous-caisse
 model SubBoxOrderItem {
-  id            String   @id @default(cuid())
-  subBoxOrderId String   @map("sub_box_order_id")
-  productId     String   @map("product_id")
-  
-  // Snapshot du produit au moment de la création
-  name          String   // Nom du produit
-  sku           String?  // SKU du produit
-  unitPrice     Float    @map("unit_price") // Prix unitaire
-  discount      Float    @default(0)
-  
-  quantity      Int      // Quantité
-  total         Float    // Total (unitPrice * quantity)
-  
-  createdAt     DateTime @default(now()) @map("created_at")
+  id            String @id @default(cuid())
+  subBoxOrderId String @map("sub_box_order_id")
+  productId     String @map("product_id")
 
-  subBoxOrder   SubBoxOrder @relation(fields: [subBoxOrderId], references: [id], onDelete: Cascade)
+  // Snapshot du produit au moment de la création
+  name      String // Nom du produit
+  sku       String? // SKU du produit
+  unitPrice Float   @map("unit_price") // Prix unitaire
+  discount  Float   @default(0)
+
+  quantity Int // Quantité
+  total    Float // Total (unitPrice * quantity)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  subBoxOrder SubBoxOrder @relation(fields: [subBoxOrderId], references: [id], onDelete: Cascade)
 
   @@index([subBoxOrderId])
   @@index([productId])
@@ -1955,17 +1977,17 @@ model SubBoxOrderItem {
 
 // Appareils autorisés pour le pointage
 model AttendanceDevice {
-  id          String                 @id @default(cuid())
-  userId      String                 @map("user_id")
-  deviceId    String                 @map("device_id") // UUID unique de l'appareil
-  deviceName  String?                @map("device_name") // Ex: "iPhone 14 Pro"
-  platform    String?                // "ios" ou "android"
-  status      AttendanceDeviceStatus @default(PENDING)
-  lastSeenAt  DateTime?              @map("last_seen_at")
-  approvedBy  String?                @map("approved_by")
-  approvedAt  DateTime?              @map("approved_at")
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
+  id         String                 @id @default(cuid())
+  userId     String                 @map("user_id")
+  deviceId   String                 @map("device_id") // UUID unique de l'appareil
+  deviceName String?                @map("device_name") // Ex: "iPhone 14 Pro"
+  platform   String? // "ios" ou "android"
+  status     AttendanceDeviceStatus @default(PENDING)
+  lastSeenAt DateTime?              @map("last_seen_at")
+  approvedBy String?                @map("approved_by")
+  approvedAt DateTime?              @map("approved_at")
+  createdAt  DateTime               @default(now()) @map("created_at")
+  updatedAt  DateTime               @updatedAt @map("updated_at")
 
   user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   approver User? @relation("DeviceApprover", fields: [approvedBy], references: [id])
@@ -1981,8 +2003,8 @@ model AttendanceDevice {
 model AttendanceTerminal {
   id        String                   @id @default(cuid())
   code      String                   @unique // Ex: "ENTREE_BAT_A"
-  name      String                   // Ex: "Entrée Bâtiment A"
-  location  String?                  // Emplacement physique
+  name      String // Ex: "Entrée Bâtiment A"
+  location  String? // Emplacement physique
   type      AttendanceTerminalType   @default(ENTRY_EXIT)
   status    AttendanceTerminalStatus @default(ACTIVE)
   secretKey String                   @map("secret_key") // Clé pour signer les QR
@@ -2023,7 +2045,7 @@ model AttendanceLog {
   userId     String           @map("user_id")
   deviceId   String?          @map("device_id") // ID de l'appareil utilisé
   terminalId String?          @map("terminal_id")
-  type       AttendanceType   // CHECK_IN ou CHECK_OUT
+  type       AttendanceType // CHECK_IN ou CHECK_OUT
   method     AttendanceMethod @default(QR_CODE)
   timestamp  DateTime         @default(now())
   latitude   Float?
@@ -2067,42 +2089,42 @@ model ExpenseCategory {
 
 // Dépenses
 model Expense {
-  id              String             @id @default(cuid())
-  storeId         String?            @map("store_id")
-  categoryId      String             @map("category_id")
-  
-  title           String
-  description     String?
-  amount          Float
-  
-  supplierName    String?            @map("supplier_name")
-  supplierPhone   String?            @map("supplier_phone")
-  
-  dueDate         DateTime           @map("due_date")
-  periodicity     ExpensePeriodicity @default(ONCE)
-  paymentDay      Int?               @map("payment_day")
-  
-  documentUrl     String?            @map("document_url")
-  documentName    String?            @map("document_name")
-  
-  status          ExpenseStatus      @default(PENDING)
-  paidAmount      Float              @default(0) @map("paid_amount")
-  remainingAmount Float              @default(0) @map("remaining_amount")
-  
-  parentExpenseId String?            @map("parent_expense_id")
-  isRecurring     Boolean            @default(false) @map("is_recurring")
-  
-  createdById     String             @map("created_by_id")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id         String  @id @default(cuid())
+  storeId    String? @map("store_id")
+  categoryId String  @map("category_id")
 
-  store           Store?             @relation(fields: [storeId], references: [id], onDelete: SetNull)
-  category        ExpenseCategory    @relation(fields: [categoryId], references: [id])
-  createdBy       User               @relation("ExpenseCreator", fields: [createdById], references: [id])
-  parentExpense   Expense?           @relation("RecurringExpenses", fields: [parentExpenseId], references: [id])
-  childExpenses   Expense[]          @relation("RecurringExpenses")
-  payments        ExpensePayment[]
-  documents       ExpenseDocument[]
+  title       String
+  description String?
+  amount      Float
+
+  supplierName  String? @map("supplier_name")
+  supplierPhone String? @map("supplier_phone")
+
+  dueDate     DateTime           @map("due_date")
+  periodicity ExpensePeriodicity @default(ONCE)
+  paymentDay  Int?               @map("payment_day")
+
+  documentUrl  String? @map("document_url")
+  documentName String? @map("document_name")
+
+  status          ExpenseStatus @default(PENDING)
+  paidAmount      Float         @default(0) @map("paid_amount")
+  remainingAmount Float         @default(0) @map("remaining_amount")
+
+  parentExpenseId String? @map("parent_expense_id")
+  isRecurring     Boolean @default(false) @map("is_recurring")
+
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store         Store?            @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  category      ExpenseCategory   @relation(fields: [categoryId], references: [id])
+  createdBy     User              @relation("ExpenseCreator", fields: [createdById], references: [id])
+  parentExpense Expense?          @relation("RecurringExpenses", fields: [parentExpenseId], references: [id])
+  childExpenses Expense[]         @relation("RecurringExpenses")
+  payments      ExpensePayment[]
+  documents     ExpenseDocument[]
 
   @@index([storeId])
   @@index([categoryId])
@@ -2114,24 +2136,24 @@ model Expense {
 
 // Paiements de dépenses
 model ExpensePayment {
-  id           String             @id @default(cuid())
-  expenseId    String             @map("expense_id")
-  
-  amount       Float
-  paymentDate  DateTime           @map("payment_date")
-  paymentMode  ExpensePaymentMode @map("payment_mode")
-  reference    String?
-  
-  receiptUrl   String?            @map("receipt_url")
-  receiptName  String?            @map("receipt_name")
-  notes        String?
-  
-  paidById     String             @map("paid_by_id")
-  createdAt    DateTime           @default(now()) @map("created_at")
+  id        String @id @default(cuid())
+  expenseId String @map("expense_id")
 
-  expense      Expense            @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  paidBy       User               @relation("ExpensePaymentPayer", fields: [paidById], references: [id])
-  documents    ExpenseDocument[]
+  amount      Float
+  paymentDate DateTime           @map("payment_date")
+  paymentMode ExpensePaymentMode @map("payment_mode")
+  reference   String?
+
+  receiptUrl  String? @map("receipt_url")
+  receiptName String? @map("receipt_name")
+  notes       String?
+
+  paidById  String   @map("paid_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  expense   Expense           @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  paidBy    User              @relation("ExpensePaymentPayer", fields: [paidById], references: [id])
+  documents ExpenseDocument[]
 
   @@index([expenseId])
   @@index([paymentDate])
@@ -2140,21 +2162,21 @@ model ExpensePayment {
 
 // Documents attachés aux dépenses et paiements
 model ExpenseDocument {
-  id          String   @id @default(cuid())
-  
-  expenseId   String?  @map("expense_id")
-  paymentId   String?  @map("payment_id")
-  
-  url         String
-  name        String
-  type        String?  // "invoice", "receipt", "contract", "other"
-  size        Int?     // Taille en bytes
-  mimeType    String?  @map("mime_type")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
+  id String @id @default(cuid())
 
-  expense     Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  payment     ExpensePayment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  expenseId String? @map("expense_id")
+  paymentId String? @map("payment_id")
+
+  url      String
+  name     String
+  type     String? // "invoice", "receipt", "contract", "other"
+  size     Int? // Taille en bytes
+  mimeType String? @map("mime_type")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  expense Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  payment ExpensePayment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([expenseId])
   @@index([paymentId])
@@ -2163,14 +2185,14 @@ model ExpenseDocument {
 
 // Codes de vérification pour l'accès à la comptabilité
 model AccountingAccessCode {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  code        String   // Code à 6 chiffres
-  expiresAt   DateTime @map("expires_at")
-  isUsed      Boolean  @default(false) @map("is_used")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  code      String // Code à 6 chiffres
+  expiresAt DateTime @map("expires_at")
+  isUsed    Boolean  @default(false) @map("is_used")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([code])
@@ -2179,14 +2201,14 @@ model AccountingAccessCode {
 
 // Codes de vérification pour l'accès au module Paie
 model PayrollAccessCode {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  code        String   // Code à 6 chiffres
-  expiresAt   DateTime @map("expires_at")
-  isUsed      Boolean  @default(false) @map("is_used")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  code      String // Code à 6 chiffres
+  expiresAt DateTime @map("expires_at")
+  isUsed    Boolean  @default(false) @map("is_used")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([code])
@@ -2200,14 +2222,14 @@ enum SecureModule {
 }
 
 model ModuleAccessConfig {
-  id              String       @id @default(cuid())
-  module          SecureModule @unique
-  recipientEmail  String       @map("recipient_email")
-  updatedById     String?      @map("updated_by_id")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+  id             String       @id @default(cuid())
+  module         SecureModule @unique
+  recipientEmail String       @map("recipient_email")
+  updatedById    String?      @map("updated_by_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  updatedBy       User?        @relation("ModuleAccessConfigUpdatedBy", fields: [updatedById], references: [id])
+  updatedBy User? @relation("ModuleAccessConfigUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("module_access_configs")
 }
@@ -2218,86 +2240,86 @@ model ModuleAccessConfig {
 
 // Paramètres de l'entreprise pour les bulletins de paie
 model PayrollCompanySettings {
-  id                    String    @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Informations légales obligatoires
-  companyName           String    @map("company_name")           // Raison sociale
-  companyAddress        String    @map("company_address")        // Adresse complète
-  companyCity           String    @map("company_city")           // Ville
-  companyPostalCode     String?   @map("company_postal_code")    // Code postal / BP
-  companyCountry        String    @default("Gabon") @map("company_country") // Pays
-  
+  companyName       String  @map("company_name") // Raison sociale
+  companyAddress    String  @map("company_address") // Adresse complète
+  companyCity       String  @map("company_city") // Ville
+  companyPostalCode String? @map("company_postal_code") // Code postal / BP
+  companyCountry    String  @default("Gabon") @map("company_country") // Pays
+
   // Numéros d'identification
-  rccmNumber            String?   @map("rccm_number")            // Numéro RCCM
-  nifNumber             String?   @map("nif_number")             // Numéro d'Identification Fiscale
-  cnssEmployerNumber    String?   @map("cnss_employer_number")   // Numéro CNSS employeur
-  
+  rccmNumber         String? @map("rccm_number") // Numéro RCCM
+  nifNumber          String? @map("nif_number") // Numéro d'Identification Fiscale
+  cnssEmployerNumber String? @map("cnss_employer_number") // Numéro CNSS employeur
+
   // Coordonnées
-  companyPhone          String?   @map("company_phone")          // Téléphone
-  companyEmail          String?   @map("company_email")          // Email
-  companyWebsite        String?   @map("company_website")        // Site web
-  
+  companyPhone   String? @map("company_phone") // Téléphone
+  companyEmail   String? @map("company_email") // Email
+  companyWebsite String? @map("company_website") // Site web
+
   // Logo
-  companyLogo           String?   @map("company_logo")           // URL du logo
-  
+  companyLogo String? @map("company_logo") // URL du logo
+
   // Informations complémentaires
-  conventionCollective  String?   @map("convention_collective")  // Convention collective
-  codeApe               String?   @map("code_ape")               // Code APE/NAF
-  
+  conventionCollective String? @map("convention_collective") // Convention collective
+  codeApe              String? @map("code_ape") // Code APE/NAF
+
   // Métadonnées
-  updatedById           String?   @map("updated_by_id")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  
-  updatedBy             User?     @relation("PayrollCompanySettingsUpdatedBy", fields: [updatedById], references: [id])
-  
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy User? @relation("PayrollCompanySettingsUpdatedBy", fields: [updatedById], references: [id])
+
   @@map("payroll_company_settings")
 }
 
 // Configuration du profil employé pour la paie
 model EmployeePayrollProfile {
-  id                  String        @id @default(cuid())
-  userId              String        @unique @map("user_id")
-  
-  // Type d'employé
-  employeeType        EmployeeType  @default(DECLARED) @map("employee_type")
-  contractType        ContractType  @default(CDI) @map("contract_type")
-  
-  // Salaire de référence
-  baseSalary          Float         @map("base_salary")
-  salaryIsNet         Boolean       @default(false) @map("salary_is_net")
-  
-  // Jours de travail (ex: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"])
-  workingDaysPattern  String[]      @default(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]) @map("working_days_pattern")
-  workingHoursPerDay  Float         @default(8) @map("working_hours_per_day")
-  
-  // Taux calculés automatiquement
-  dailyRate           Float?        @map("daily_rate")
-  hourlyRate          Float?        @map("hourly_rate")
-  
-  // Taux heures supplémentaires
-  overtimeRate        Float         @default(1.5) @map("overtime_rate")
-  
-  // Poste
-  position            String?       @map("position")
-  
-  // Dates
-  hireDate            DateTime?     @map("hire_date")
-  contractEndDate     DateTime?     @map("contract_end_date")
-  
-  // Informations bancaires (optionnel)
-  bankName            String?       @map("bank_name")
-  bankAccountNumber   String?       @map("bank_account_number")
-  
-  isActive            Boolean       @default(true) @map("is_active")
-  createdAt           DateTime      @default(now()) @map("created_at")
-  updatedAt           DateTime      @updatedAt @map("updated_at")
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
 
-  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payrolls            Payroll[]
-  adjustments         PayrollAdjustment[]
-  contributions       EmployeeContribution[]
-  rubrics             EmployeeRubric[]
+  // Type d'employé
+  employeeType EmployeeType @default(DECLARED) @map("employee_type")
+  contractType ContractType @default(CDI) @map("contract_type")
+
+  // Salaire de référence
+  baseSalary  Float   @map("base_salary")
+  salaryIsNet Boolean @default(false) @map("salary_is_net")
+
+  // Jours de travail (ex: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"])
+  workingDaysPattern String[] @default(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]) @map("working_days_pattern")
+  workingHoursPerDay Float    @default(8) @map("working_hours_per_day")
+
+  // Taux calculés automatiquement
+  dailyRate  Float? @map("daily_rate")
+  hourlyRate Float? @map("hourly_rate")
+
+  // Taux heures supplémentaires
+  overtimeRate Float @default(1.5) @map("overtime_rate")
+
+  // Poste
+  position String? @map("position")
+
+  // Dates
+  hireDate        DateTime? @map("hire_date")
+  contractEndDate DateTime? @map("contract_end_date")
+
+  // Informations bancaires (optionnel)
+  bankName          String? @map("bank_name")
+  bankAccountNumber String? @map("bank_account_number")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payrolls      Payroll[]
+  adjustments   PayrollAdjustment[]
+  contributions EmployeeContribution[]
+  rubrics       EmployeeRubric[]
 
   @@index([userId])
   @@index([employeeType])
@@ -2307,34 +2329,34 @@ model EmployeePayrollProfile {
 
 // Configuration des cotisations et taxes
 model PayrollContribution {
-  id                String        @id @default(cuid())
-  
-  name              String        @unique
-  code              String        @unique
-  description       String?
-  
-  // Type de cotisation
-  isEmployeeShare   Boolean       @default(true) @map("is_employee_share")
-  isEmployerShare   Boolean       @default(false) @map("is_employer_share")
-  
-  // Taux en pourcentage
-  rate              Float
-  
-  // Plafond (optionnel)
-  ceiling           Float?
-  
-  // Applicable aux employés déclarés uniquement
-  declaredOnly      Boolean       @default(true) @map("declared_only")
-  
-  // Ordre d'affichage sur le bulletin
-  displayOrder      Int           @default(0) @map("display_order")
-  
-  isActive          Boolean       @default(true) @map("is_active")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+  id String @id @default(cuid())
 
-  payrollLines             PayrollContributionLine[]
-  employeeContributions     EmployeeContribution[]
+  name        String  @unique
+  code        String  @unique
+  description String?
+
+  // Type de cotisation
+  isEmployeeShare Boolean @default(true) @map("is_employee_share")
+  isEmployerShare Boolean @default(false) @map("is_employer_share")
+
+  // Taux en pourcentage
+  rate Float
+
+  // Plafond (optionnel)
+  ceiling Float?
+
+  // Applicable aux employés déclarés uniquement
+  declaredOnly Boolean @default(true) @map("declared_only")
+
+  // Ordre d'affichage sur le bulletin
+  displayOrder Int @default(0) @map("display_order")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payrollLines          PayrollContributionLine[]
+  employeeContributions EmployeeContribution[]
 
   @@index([isActive])
   @@map("payroll_contributions")
@@ -2342,20 +2364,20 @@ model PayrollContribution {
 
 // Cotisations assignées à un employé
 model EmployeeContribution {
-  id                    String                  @id @default(cuid())
-  
-  employeeProfileId     String                  @map("employee_profile_id")
-  contributionId        String                  @map("contribution_id")
-  
+  id String @id @default(cuid())
+
+  employeeProfileId String @map("employee_profile_id")
+  contributionId    String @map("contribution_id")
+
   // Permet de surcharger le taux par défaut si nécessaire
-  customRate            Float?                  @map("custom_rate")
-  
-  isActive              Boolean                 @default(true) @map("is_active")
-  createdAt             DateTime                @default(now()) @map("created_at")
-  
-  employeeProfile       EmployeePayrollProfile  @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
-  contribution          PayrollContribution     @relation(fields: [contributionId], references: [id], onDelete: Cascade)
-  
+  customRate Float? @map("custom_rate")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  employeeProfile EmployeePayrollProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  contribution    PayrollContribution    @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
   @@unique([employeeProfileId, contributionId])
   @@index([employeeProfileId])
   @@index([contributionId])
@@ -2364,26 +2386,26 @@ model EmployeeContribution {
 
 // Période de paie
 model PayrollPeriod {
-  id                String            @id @default(cuid())
-  
-  name              String
-  periodType        PayrollPeriodType @default(MONTHLY) @map("period_type")
-  
-  startDate         DateTime          @map("start_date")
-  endDate           DateTime          @map("end_date")
-  
-  // Jours ouvrés dans la période
-  workingDays       Int               @map("working_days")
-  
-  isClosed          Boolean           @default(false) @map("is_closed")
-  closedAt          DateTime?         @map("closed_at")
-  closedById        String?           @map("closed_by_id")
-  
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  id String @id @default(cuid())
 
-  closedBy          User?             @relation("PayrollPeriodClosedBy", fields: [closedById], references: [id])
-  payrolls          Payroll[]
+  name       String
+  periodType PayrollPeriodType @default(MONTHLY) @map("period_type")
+
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+
+  // Jours ouvrés dans la période
+  workingDays Int @map("working_days")
+
+  isClosed   Boolean   @default(false) @map("is_closed")
+  closedAt   DateTime? @map("closed_at")
+  closedById String?   @map("closed_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  closedBy User?     @relation("PayrollPeriodClosedBy", fields: [closedById], references: [id])
+  payrolls Payroll[]
 
   @@unique([startDate, endDate])
   @@index([isClosed])
@@ -2392,64 +2414,64 @@ model PayrollPeriod {
 
 // Bulletin de paie
 model Payroll {
-  id                String        @id @default(cuid())
-  
-  // Numéro unique du bulletin
-  number            String        @unique
-  
-  // Relations
-  employeeProfileId String        @map("employee_profile_id")
-  periodId          String        @map("period_id")
-  
-  // Données de temps (depuis pointage + ajustements)
-  daysWorked        Float         @map("days_worked")
-  hoursWorked       Float         @map("hours_worked")
-  overtimeHours     Float         @default(0) @map("overtime_hours")
-  absenceDays       Float         @default(0) @map("absence_days")
-  
-  // Données de pointage brutes (avant ajustement)
-  rawDaysWorked     Float         @map("raw_days_worked")
-  rawHoursWorked    Float         @map("raw_hours_worked")
-  
-  // Jours ouvrés attendus pour cet employé sur cette période
-  expectedWorkingDays Float       @default(22) @map("expected_working_days")
-  
-  // Montants calculés
-  grossSalary       Float         @map("gross_salary")
-  totalDeductions   Float         @default(0) @map("total_deductions")
-  totalBonuses      Float         @default(0) @map("total_bonuses")
-  netSalary         Float         @map("net_salary")
-  
-  // Charges patronales (pour info)
-  employerCharges   Float         @default(0) @map("employer_charges")
-  
-  // Statut et workflow
-  status            PayrollStatus @default(DRAFT)
-  
-  // Validation RH
-  validatedById     String?       @map("validated_by_id")
-  validatedAt       DateTime?     @map("validated_at")
-  validationNotes   String?       @map("validation_notes")
-  
-  // Approbation Direction
-  approvedById      String?       @map("approved_by_id")
-  approvedAt        DateTime?     @map("approved_at")
-  approvalNotes     String?       @map("approval_notes")
-  
-  // Paiement
-  paidAt            DateTime?     @map("paid_at")
-  paymentReference  String?       @map("payment_reference")
-  paidAmount        Float         @default(0) @map("paid_amount")
-  remainingAmount   Float         @default(0) @map("remaining_amount")
-  
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+  id String @id @default(cuid())
 
-  employeeProfile   EmployeePayrollProfile @relation(fields: [employeeProfileId], references: [id])
-  period            PayrollPeriod          @relation(fields: [periodId], references: [id])
-  validatedBy       User?                  @relation("PayrollValidatedBy", fields: [validatedById], references: [id])
-  approvedBy        User?                  @relation("PayrollApprovedBy", fields: [approvedById], references: [id])
-  
+  // Numéro unique du bulletin
+  number String @unique
+
+  // Relations
+  employeeProfileId String @map("employee_profile_id")
+  periodId          String @map("period_id")
+
+  // Données de temps (depuis pointage + ajustements)
+  daysWorked    Float @map("days_worked")
+  hoursWorked   Float @map("hours_worked")
+  overtimeHours Float @default(0) @map("overtime_hours")
+  absenceDays   Float @default(0) @map("absence_days")
+
+  // Données de pointage brutes (avant ajustement)
+  rawDaysWorked  Float @map("raw_days_worked")
+  rawHoursWorked Float @map("raw_hours_worked")
+
+  // Jours ouvrés attendus pour cet employé sur cette période
+  expectedWorkingDays Float @default(22) @map("expected_working_days")
+
+  // Montants calculés
+  grossSalary     Float @map("gross_salary")
+  totalDeductions Float @default(0) @map("total_deductions")
+  totalBonuses    Float @default(0) @map("total_bonuses")
+  netSalary       Float @map("net_salary")
+
+  // Charges patronales (pour info)
+  employerCharges Float @default(0) @map("employer_charges")
+
+  // Statut et workflow
+  status PayrollStatus @default(DRAFT)
+
+  // Validation RH
+  validatedById   String?   @map("validated_by_id")
+  validatedAt     DateTime? @map("validated_at")
+  validationNotes String?   @map("validation_notes")
+
+  // Approbation Direction
+  approvedById  String?   @map("approved_by_id")
+  approvedAt    DateTime? @map("approved_at")
+  approvalNotes String?   @map("approval_notes")
+
+  // Paiement
+  paidAt           DateTime? @map("paid_at")
+  paymentReference String?   @map("payment_reference")
+  paidAmount       Float     @default(0) @map("paid_amount")
+  remainingAmount  Float     @default(0) @map("remaining_amount")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employeeProfile EmployeePayrollProfile @relation(fields: [employeeProfileId], references: [id])
+  period          PayrollPeriod          @relation(fields: [periodId], references: [id])
+  validatedBy     User?                  @relation("PayrollValidatedBy", fields: [validatedById], references: [id])
+  approvedBy      User?                  @relation("PayrollApprovedBy", fields: [approvedById], references: [id])
+
   contributionLines PayrollContributionLine[]
   adjustments       PayrollAdjustment[]
   auditLogs         PayrollAuditLog[]
@@ -2464,24 +2486,24 @@ model Payroll {
 
 // Versements (acomptes) sur un bulletin de paie
 model PayrollPayment {
-  id                String   @id @default(cuid())
-  
-  payrollId         String   @map("payroll_id")
-  amount            Float
-  paymentDate       DateTime @map("payment_date")
-  paymentMode       String   @default("BANK") @map("payment_mode") // BANK, CASH, MOBILE_MONEY
-  reference         String?
-  notes             String?
-  
-  // Lien vers la dépense comptable créée
-  expensePaymentId  String?  @map("expense_payment_id")
-  
-  // Traçabilité
-  paidById          String   @map("paid_by_id")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id String @id @default(cuid())
 
-  payroll           Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  paidBy            User     @relation("PayrollPaymentPaidBy", fields: [paidById], references: [id])
+  payrollId   String   @map("payroll_id")
+  amount      Float
+  paymentDate DateTime @map("payment_date")
+  paymentMode String   @default("BANK") @map("payment_mode") // BANK, CASH, MOBILE_MONEY
+  reference   String?
+  notes       String?
+
+  // Lien vers la dépense comptable créée
+  expensePaymentId String? @map("expense_payment_id")
+
+  // Traçabilité
+  paidById  String   @map("paid_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payroll Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  paidBy  User    @relation("PayrollPaymentPaidBy", fields: [paidById], references: [id])
 
   @@index([payrollId])
   @@index([paymentDate])
@@ -2490,24 +2512,24 @@ model PayrollPayment {
 
 // Lignes de cotisations sur un bulletin
 model PayrollContributionLine {
-  id                String        @id @default(cuid())
-  
-  payrollId         String        @map("payroll_id")
-  contributionId    String        @map("contribution_id")
-  
-  // Montant de base pour le calcul
-  baseAmount        Float         @map("base_amount")
-  
-  // Taux appliqué (snapshot au moment du calcul)
-  appliedRate       Float         @map("applied_rate")
-  
-  // Montant calculé
-  amount            Float
-  
-  createdAt         DateTime      @default(now()) @map("created_at")
+  id String @id @default(cuid())
 
-  payroll           Payroll              @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  contribution      PayrollContribution  @relation(fields: [contributionId], references: [id])
+  payrollId      String @map("payroll_id")
+  contributionId String @map("contribution_id")
+
+  // Montant de base pour le calcul
+  baseAmount Float @map("base_amount")
+
+  // Taux appliqué (snapshot au moment du calcul)
+  appliedRate Float @map("applied_rate")
+
+  // Montant calculé
+  amount Float
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payroll      Payroll             @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  contribution PayrollContribution @relation(fields: [contributionId], references: [id])
 
   @@index([payrollId])
   @@map("payroll_contribution_lines")
@@ -2515,32 +2537,32 @@ model PayrollContributionLine {
 
 // Ajustements manuels (primes, retenues, absences)
 model PayrollAdjustment {
-  id                String          @id @default(cuid())
-  
-  // Peut être lié à un profil (récurrent) ou à un bulletin (ponctuel)
-  employeeProfileId String?         @map("employee_profile_id")
-  payrollId         String?         @map("payroll_id")
-  
-  type              AdjustmentType
-  description       String
-  amount            Float
-  
-  // Pour les absences
-  daysAffected      Float?          @map("days_affected")
-  hoursAffected     Float?          @map("hours_affected")
-  
-  // Traçabilité
-  createdById       String          @map("created_by_id")
-  reason            String?
-  
-  isRecurring       Boolean         @default(false) @map("is_recurring")
-  
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  id String @id @default(cuid())
 
-  employeeProfile   EmployeePayrollProfile? @relation(fields: [employeeProfileId], references: [id])
-  payroll           Payroll?                @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  createdBy         User                    @relation("AdjustmentCreatedBy", fields: [createdById], references: [id])
+  // Peut être lié à un profil (récurrent) ou à un bulletin (ponctuel)
+  employeeProfileId String? @map("employee_profile_id")
+  payrollId         String? @map("payroll_id")
+
+  type        AdjustmentType
+  description String
+  amount      Float
+
+  // Pour les absences
+  daysAffected  Float? @map("days_affected")
+  hoursAffected Float? @map("hours_affected")
+
+  // Traçabilité
+  createdById String  @map("created_by_id")
+  reason      String?
+
+  isRecurring Boolean @default(false) @map("is_recurring")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employeeProfile EmployeePayrollProfile? @relation(fields: [employeeProfileId], references: [id])
+  payroll         Payroll?                @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  createdBy       User                    @relation("AdjustmentCreatedBy", fields: [createdById], references: [id])
 
   @@index([employeeProfileId])
   @@index([payrollId])
@@ -2550,21 +2572,21 @@ model PayrollAdjustment {
 
 // Audit trail des modifications de paie
 model PayrollAuditLog {
-  id                String        @id @default(cuid())
-  
-  payrollId         String        @map("payroll_id")
-  userId            String        @map("user_id")
-  
-  action            String
-  field             String?
-  oldValue          String?       @map("old_value")
-  newValue          String?       @map("new_value")
-  comment           String?
-  
-  createdAt         DateTime      @default(now()) @map("created_at")
+  id String @id @default(cuid())
 
-  payroll           Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  user              User          @relation("PayrollAuditUser", fields: [userId], references: [id])
+  payrollId String @map("payroll_id")
+  userId    String @map("user_id")
+
+  action   String
+  field    String?
+  oldValue String? @map("old_value")
+  newValue String? @map("new_value")
+  comment  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payroll Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  user    User    @relation("PayrollAuditUser", fields: [userId], references: [id])
 
   @@index([payrollId])
   @@index([createdAt])
@@ -2577,37 +2599,37 @@ model PayrollAuditLog {
 
 // Catalogue des rubriques de paie (primes et indemnités)
 model PayrollRubric {
-  id                  String                @id @default(cuid())
-  
-  code                String                @unique // Ex: "PRIME_PERF", "IND_TRANSPORT"
-  name                String                         // Ex: "Prime de performance"
-  description         String?
-  
-  type                RubricType                     // PRIME ou INDEMNITY
-  
+  id String @id @default(cuid())
+
+  code        String  @unique // Ex: "PRIME_PERF", "IND_TRANSPORT"
+  name        String // Ex: "Prime de performance"
+  description String?
+
+  type RubricType // PRIME ou INDEMNITY
+
   // Caractéristiques fiscales et sociales
-  isSubjectToTax      Boolean               @default(true) @map("is_subject_to_tax")      // Imposable (IRPP)
-  isSubjectToSocial   Boolean               @default(true) @map("is_subject_to_social")   // Soumis aux cotisations sociales
-  
+  isSubjectToTax    Boolean @default(true) @map("is_subject_to_tax") // Imposable (IRPP)
+  isSubjectToSocial Boolean @default(true) @map("is_subject_to_social") // Soumis aux cotisations sociales
+
   // Mode de calcul
-  calculationBase     RubricCalculationBase @default(FIXED) @map("calculation_base")
-  defaultAmount       Float?                @map("default_amount")      // Montant par défaut
-  defaultRate         Float?                @map("default_rate")        // Taux par défaut (si pourcentage)
-  
+  calculationBase RubricCalculationBase @default(FIXED) @map("calculation_base")
+  defaultAmount   Float?                @map("default_amount") // Montant par défaut
+  defaultRate     Float?                @map("default_rate") // Taux par défaut (si pourcentage)
+
   // Plafond d'exonération (pour certaines indemnités)
-  exemptionCeiling    Float?                @map("exemption_ceiling")   // Plafond exonéré de cotisations
-  
+  exemptionCeiling Float? @map("exemption_ceiling") // Plafond exonéré de cotisations
+
   // Affichage et organisation
-  displayOrder        Int                   @default(0) @map("display_order")
-  category            String?                          // Catégorie pour regroupement (ex: "Transport", "Performance")
-  
-  isActive            Boolean               @default(true) @map("is_active")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  
+  displayOrder Int     @default(0) @map("display_order")
+  category     String? // Catégorie pour regroupement (ex: "Transport", "Performance")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relations
-  rubricLines         PayrollRubricLine[]
-  employeeRubrics     EmployeeRubric[]
+  rubricLines     PayrollRubricLine[]
+  employeeRubrics EmployeeRubric[]
 
   @@index([type])
   @@index([isActive])
@@ -2617,31 +2639,31 @@ model PayrollRubric {
 
 // Rubriques assignées à un employé (récurrentes ou temporaires)
 model EmployeeRubric {
-  id                  String                  @id @default(cuid())
-  
-  employeeProfileId   String                  @map("employee_profile_id")
-  rubricId            String                  @map("rubric_id")
-  
+  id String @id @default(cuid())
+
+  employeeProfileId String @map("employee_profile_id")
+  rubricId          String @map("rubric_id")
+
   // Montant personnalisé pour cet employé
-  amount              Float?                  // Montant fixe (si applicable)
-  rate                Float?                  // Taux personnalisé (si pourcentage)
-  
+  amount Float? // Montant fixe (si applicable)
+  rate   Float? // Taux personnalisé (si pourcentage)
+
   // Période d'application
-  startDate           DateTime?               @map("start_date")   // Date de début (null = immédiat)
-  endDate             DateTime?               @map("end_date")     // Date de fin (null = permanent)
-  
-  isActive            Boolean                 @default(true) @map("is_active")
-  
+  startDate DateTime? @map("start_date") // Date de début (null = immédiat)
+  endDate   DateTime? @map("end_date") // Date de fin (null = permanent)
+
+  isActive Boolean @default(true) @map("is_active")
+
   // Traçabilité
-  createdById         String                  @map("created_by_id")
-  notes               String?
-  
-  createdAt           DateTime                @default(now()) @map("created_at")
-  updatedAt           DateTime                @updatedAt @map("updated_at")
-  
-  employeeProfile     EmployeePayrollProfile  @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
-  rubric              PayrollRubric           @relation(fields: [rubricId], references: [id], onDelete: Cascade)
-  createdBy           User                    @relation("EmployeeRubricCreatedBy", fields: [createdById], references: [id])
+  createdById String  @map("created_by_id")
+  notes       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employeeProfile EmployeePayrollProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  rubric          PayrollRubric          @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  createdBy       User                   @relation("EmployeeRubricCreatedBy", fields: [createdById], references: [id])
 
   @@unique([employeeProfileId, rubricId])
   @@index([employeeProfileId])
@@ -2652,33 +2674,33 @@ model EmployeeRubric {
 
 // Lignes de rubriques sur un bulletin de paie
 model PayrollRubricLine {
-  id                  String        @id @default(cuid())
-  
-  payrollId           String        @map("payroll_id")
-  rubricId            String        @map("rubric_id")
-  
+  id String @id @default(cuid())
+
+  payrollId String @map("payroll_id")
+  rubricId  String @map("rubric_id")
+
   // Snapshot des informations de la rubrique au moment du calcul
-  rubricCode          String        @map("rubric_code")
-  rubricName          String        @map("rubric_name")
-  rubricType          RubricType    @map("rubric_type")
-  
+  rubricCode String     @map("rubric_code")
+  rubricName String     @map("rubric_name")
+  rubricType RubricType @map("rubric_type")
+
   // Montants
-  baseAmount          Float         @map("base_amount")     // Base de calcul
-  rate                Float?                                 // Taux appliqué (si pourcentage)
-  amount              Float                                  // Montant final
-  
+  baseAmount Float  @map("base_amount") // Base de calcul
+  rate       Float? // Taux appliqué (si pourcentage)
+  amount     Float // Montant final
+
   // Caractéristiques appliquées (snapshot)
-  isSubjectToTax      Boolean       @map("is_subject_to_tax")
-  isSubjectToSocial   Boolean       @map("is_subject_to_social")
-  
+  isSubjectToTax    Boolean @map("is_subject_to_tax")
+  isSubjectToSocial Boolean @map("is_subject_to_social")
+
   // Montant exonéré (si plafond d'exonération)
-  exemptAmount        Float         @default(0) @map("exempt_amount")
-  taxableAmount       Float         @default(0) @map("taxable_amount")
-  
-  createdAt           DateTime      @default(now()) @map("created_at")
-  
-  payroll             Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  rubric              PayrollRubric @relation(fields: [rubricId], references: [id])
+  exemptAmount  Float @default(0) @map("exempt_amount")
+  taxableAmount Float @default(0) @map("taxable_amount")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payroll Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  rubric  PayrollRubric @relation(fields: [rubricId], references: [id])
 
   @@index([payrollId])
   @@index([rubricId])
@@ -2692,34 +2714,34 @@ model PayrollRubricLine {
 
 // Dossiers GED
 model GedFolder {
-  id          String      @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
-  color       String?     // Couleur du dossier (optionnel)
-  icon        String?     // Icône personnalisée (optionnel)
-  
+  color       String? // Couleur du dossier (optionnel)
+  icon        String? // Icône personnalisée (optionnel)
+
   // Hiérarchie
-  parentId    String?     @map("parent_id")
-  parent      GedFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children    GedFolder[] @relation("FolderHierarchy")
-  
+  parentId String?     @map("parent_id")
+  parent   GedFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children GedFolder[] @relation("FolderHierarchy")
+
   // Propriétaire
-  ownerId     String      @map("owner_id")
-  owner       User        @relation("GedFolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  
+  ownerId String @map("owner_id")
+  owner   User   @relation("GedFolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
   // Métadonnées
-  isArchived  Boolean     @default(false) @map("is_archived")
-  isDeleted   Boolean     @default(false) @map("is_deleted")
-  deletedAt   DateTime?   @map("deleted_at")
-  
+  isArchived Boolean   @default(false) @map("is_archived")
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  deletedAt  DateTime? @map("deleted_at")
+
   // Relations
-  files       GedFile[]
-  shares      GedShare[]  @relation("FolderShares")
-  favorites   GedFavorite[] @relation("FolderFavorites")
-  
+  files     GedFile[]
+  shares    GedShare[]    @relation("FolderShares")
+  favorites GedFavorite[] @relation("FolderFavorites")
+
   // Timestamps
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([ownerId])
   @@index([parentId])
@@ -2729,41 +2751,41 @@ model GedFolder {
 
 // Fichiers GED
 model GedFile {
-  id            String      @id @default(cuid())
-  name          String      // Nom affiché
-  originalName  String      @map("original_name") // Nom original du fichier
-  
+  id           String @id @default(cuid())
+  name         String // Nom affiché
+  originalName String @map("original_name") // Nom original du fichier
+
   // Stockage S3
-  s3Key         String      @map("s3_key") // Clé S3 du fichier
-  s3Bucket      String      @map("s3_bucket")
-  thumbnailKey  String?     @map("thumbnail_key") // Clé S3 de la miniature
-  
+  s3Key        String  @map("s3_key") // Clé S3 du fichier
+  s3Bucket     String  @map("s3_bucket")
+  thumbnailKey String? @map("thumbnail_key") // Clé S3 de la miniature
+
   // Métadonnées fichier
-  mimeType      String      @map("mime_type")
-  size          Int         // Taille en bytes
-  extension     String      // Extension du fichier
-  
+  mimeType  String @map("mime_type")
+  size      Int // Taille en bytes
+  extension String // Extension du fichier
+
   // Organisation
-  folderId      String?     @map("folder_id")
-  folder        GedFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  
+  folderId String?    @map("folder_id")
+  folder   GedFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
   // Propriétaire
-  ownerId       String      @map("owner_id")
-  owner         User        @relation("GedFileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  
+  ownerId String @map("owner_id")
+  owner   User   @relation("GedFileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
   // État
-  isArchived    Boolean     @default(false) @map("is_archived")
-  isDeleted     Boolean     @default(false) @map("is_deleted")
-  deletedAt     DateTime?   @map("deleted_at")
-  
+  isArchived Boolean   @default(false) @map("is_archived")
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  deletedAt  DateTime? @map("deleted_at")
+
   // Relations
-  shares        GedShare[]  @relation("FileShares")
-  favorites     GedFavorite[] @relation("FileFavorites")
-  versions      GedFileVersion[]
-  
+  shares    GedShare[]       @relation("FileShares")
+  favorites GedFavorite[]    @relation("FileFavorites")
+  versions  GedFileVersion[]
+
   // Timestamps
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([ownerId])
   @@index([folderId])
@@ -2774,18 +2796,18 @@ model GedFile {
 
 // Versions de fichiers GED
 model GedFileVersion {
-  id          String    @id @default(cuid())
-  fileId      String    @map("file_id")
-  file        GedFile   @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  
-  version     Int       // Numéro de version
-  s3Key       String    @map("s3_key")
-  size        Int
-  
-  createdById String    @map("created_by_id")
-  createdBy   User      @relation("GedVersionCreator", fields: [createdById], references: [id])
-  
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id     String  @id @default(cuid())
+  fileId String  @map("file_id")
+  file   GedFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  version Int // Numéro de version
+  s3Key   String @map("s3_key")
+  size    Int
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("GedVersionCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([fileId, version])
   @@index([fileId])
@@ -2794,32 +2816,32 @@ model GedFileVersion {
 
 // Partages GED
 model GedShare {
-  id          String      @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Type de partage (fichier ou dossier)
-  fileId      String?     @map("file_id")
-  file        GedFile?    @relation("FileShares", fields: [fileId], references: [id], onDelete: Cascade)
-  
-  folderId    String?     @map("folder_id")
-  folder      GedFolder?  @relation("FolderShares", fields: [folderId], references: [id], onDelete: Cascade)
-  
+  fileId String?  @map("file_id")
+  file   GedFile? @relation("FileShares", fields: [fileId], references: [id], onDelete: Cascade)
+
+  folderId String?    @map("folder_id")
+  folder   GedFolder? @relation("FolderShares", fields: [folderId], references: [id], onDelete: Cascade)
+
   // Utilisateur avec qui on partage
-  sharedWithId String     @map("shared_with_id")
-  sharedWith   User       @relation("GedSharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
-  
+  sharedWithId String @map("shared_with_id")
+  sharedWith   User   @relation("GedSharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
+
   // Qui a partagé
-  sharedById   String     @map("shared_by_id")
-  sharedBy     User       @relation("GedSharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
-  
+  sharedById String @map("shared_by_id")
+  sharedBy   User   @relation("GedSharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
+
   // Permissions
-  canEdit      Boolean    @default(false) @map("can_edit")
-  canDelete    Boolean    @default(false) @map("can_delete")
-  canShare     Boolean    @default(false) @map("can_share")
-  
+  canEdit   Boolean @default(false) @map("can_edit")
+  canDelete Boolean @default(false) @map("can_delete")
+  canShare  Boolean @default(false) @map("can_share")
+
   // Expiration (optionnel)
-  expiresAt    DateTime?  @map("expires_at")
-  
-  createdAt    DateTime   @default(now()) @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([fileId, sharedWithId])
   @@unique([folderId, sharedWithId])
@@ -2828,19 +2850,106 @@ model GedShare {
   @@map("ged_shares")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RETOURS LIVREUR → MAGASIN (avec validation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DriverReturnStatus {
+  PENDING // En attente de validation par le gestionnaire du magasin
+  APPROVED // Approuvée — stock transféré livreur → magasin
+  REJECTED // Rejetée
+}
+
+model DriverReturnRequest {
+  id                String             @id @default(cuid())
+  deliveryPersonId  String             @map("delivery_person_id")
+  storeId           String             @map("store_id")
+  stockItemId       String             @map("stock_item_id") // DeliveryPersonStock.id
+  productId         String             @map("product_id")
+  variantId         String?            @map("variant_id")
+  requestedQuantity Int                @map("requested_quantity")
+  approvedQuantity  Int?               @map("approved_quantity")
+  notes             String?
+  rejectionReason   String?            @map("rejection_reason")
+  status            DriverReturnStatus @default(PENDING)
+  approvedById      String?            @map("approved_by_id")
+  approvedAt        DateTime?          @map("approved_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id], onDelete: Cascade)
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product        Product        @relation(fields: [productId], references: [id])
+  approvedBy     User?          @relation("DriverReturnApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([deliveryPersonId])
+  @@index([storeId])
+  @@index([status])
+  @@map("driver_return_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RETOURS MAGASIN → ENTREPÔT
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum StoreReturnStatus {
+  PENDING // En attente de validation par le gestionnaire entrepôt
+  APPROVED // Approuvée — stock entrepôt augmenté
+  REJECTED // Rejetée
+}
+
+model StoreReturnRequest {
+  id              String            @id @default(cuid())
+  number          String            @unique
+  storeId         String            @map("store_id")
+  status          StoreReturnStatus @default(PENDING)
+  reason          String? // Motif du retour
+  notes           String? // Notes libres
+  rejectionReason String?           @map("rejection_reason")
+  requestedById   String            @map("requested_by_id")
+  validatedById   String?           @map("validated_by_id")
+  validatedAt     DateTime?         @map("validated_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  store       Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  requestedBy User                     @relation("StoreReturnRequestedBy", fields: [requestedById], references: [id])
+  validatedBy User?                    @relation("StoreReturnValidatedBy", fields: [validatedById], references: [id])
+  items       StoreReturnRequestItem[]
+
+  @@index([storeId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("store_return_requests")
+}
+
+model StoreReturnRequestItem {
+  id                String  @id @default(cuid())
+  returnRequestId   String  @map("return_request_id")
+  productId         String  @map("product_id")
+  requestedQuantity Int     @map("requested_quantity")
+  approvedQuantity  Int?    @map("approved_quantity")
+  notes             String?
+
+  returnRequest StoreReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [id])
+
+  @@map("store_return_request_items")
+}
+
 // Favoris GED
 model GedFavorite {
-  id        String      @id @default(cuid())
-  userId    String      @map("user_id")
-  user      User        @relation("GedFavorites", fields: [userId], references: [id], onDelete: Cascade)
-  
-  fileId    String?     @map("file_id")
-  file      GedFile?    @relation("FileFavorites", fields: [fileId], references: [id], onDelete: Cascade)
-  
-  folderId  String?     @map("folder_id")
-  folder    GedFolder?  @relation("FolderFavorites", fields: [folderId], references: [id], onDelete: Cascade)
-  
-  createdAt DateTime    @default(now()) @map("created_at")
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation("GedFavorites", fields: [userId], references: [id], onDelete: Cascade)
+
+  fileId String?  @map("file_id")
+  file   GedFile? @relation("FileFavorites", fields: [fileId], references: [id], onDelete: Cascade)
+
+  folderId String?    @map("folder_id")
+  folder   GedFolder? @relation("FolderFavorites", fields: [folderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([userId, fileId])
   @@unique([userId, folderId])

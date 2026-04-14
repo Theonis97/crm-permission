@@ -39,7 +39,12 @@ import {
   X,
   FileDown,
   Trash2,
+  RotateCcw,
+  Warehouse,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { OrderDetailsSheet } from "@/components/warehouse/order-details-sheet"
 import { OrderFormDialog } from "@/components/warehouse/order-form-dialog"
@@ -135,6 +140,9 @@ const mockStores = [
 ]
 
 export default function WarehouseOrdersPage() {
+  const [activeTab, setActiveTab] = useState<"orders" | "returns">("orders")
+
+  // ── Onglet Commandes ────────────────────────────────────────────────────────
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [stores, setStores] = useState<any[]>([])
@@ -148,6 +156,60 @@ export default function WarehouseOrdersPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const itemsPerPage = 20
+
+  // ── Onglet Retours ──────────────────────────────────────────────────────────
+  const [returnRequests, setReturnRequests] = useState<any[]>([])
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnStatusFilter, setReturnStatusFilter] = useState("PENDING")
+  const [expandedReturnId, setExpandedReturnId] = useState<string | null>(null)
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [rejectionReason, setRejectionReason] = useState("")
+  const [validatingId, setValidatingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (activeTab === "returns") loadReturnRequests()
+  }, [activeTab, returnStatusFilter])
+
+  const loadReturnRequests = async () => {
+    setReturnLoading(true)
+    try {
+      const res = await fetch(`/api/warehouse/return-requests?status=${returnStatusFilter}`)
+      if (!res.ok) throw new Error("Erreur")
+      const data = await res.json()
+      setReturnRequests(data.data || [])
+    } catch {
+      toast.error("Erreur lors du chargement des retours")
+    } finally {
+      setReturnLoading(false)
+    }
+  }
+
+  const handleValidateReturn = async (id: string, action: "approve" | "reject") => {
+    setValidatingId(id)
+    try {
+      const res = await fetch(`/api/warehouse/return-requests/${id}/validate`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          rejectionReason: action === "reject" ? rejectionReason : undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error || "Erreur")
+        return
+      }
+      setRejectingId(null)
+      setRejectionReason("")
+      setExpandedReturnId(null)
+      loadReturnRequests()
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setValidatingId(null)
+    }
+  }
 
   useEffect(() => {
     loadOrders()
@@ -396,27 +458,313 @@ export default function WarehouseOrdersPage() {
     ready: orders.filter((o) => o.status === "SHIPPED").length,
   }
 
+  const pendingReturnsCount = returnRequests.filter((r) => r.status === "PENDING").length
+
   return (
     <>
       <ModuleNavbar
-        title="Commandes magasins"
-        description="Suivi des commandes vers l'entrepôt"
-        icon={ShoppingCart}
-        primaryAction={{
-          label: "Nouvelle commande",
-          onClick: () => setCreateOpen(true),
-          icon: Plus,
-        }}
+        title={activeTab === "orders" ? "Commandes magasins" : "Retours magasins"}
+        description={
+          activeTab === "orders"
+            ? "Suivi des commandes vers l'entrepôt"
+            : "Demandes de retour en attente de validation"
+        }
+        icon={activeTab === "orders" ? ShoppingCart : RotateCcw}
+        primaryAction={
+          activeTab === "orders"
+            ? { label: "Nouvelle commande", onClick: () => setCreateOpen(true), icon: Plus }
+            : undefined
+        }
         secondaryActions={
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Exporter
-          </Button>
+          activeTab === "orders" ? (
+            <Button variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Exporter
+            </Button>
+          ) : undefined
         }
       />
 
       <div className="py-8">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-6">
+
+          {/* ── Onglets ── */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab("orders")}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === "orders"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              Commandes
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab("returns"); loadReturnRequests() }}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === "returns"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Retours magasins
+              {returnStatusFilter === "PENDING" && pendingReturnsCount > 0 && (
+                <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {pendingReturnsCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════════
+              ONGLET : RETOURS MAGASINS
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeTab === "returns" && (
+            <div className="space-y-5">
+              {/* Filtres statut */}
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { value: "PENDING", label: "En attente", color: "amber" },
+                  { value: "APPROVED", label: "Approuvées", color: "green" },
+                  { value: "REJECTED", label: "Rejetées", color: "red" },
+                  { value: "all", label: "Toutes", color: "gray" },
+                ].map((opt) => (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    size="sm"
+                    variant={returnStatusFilter === opt.value ? "default" : "outline"}
+                    onClick={() => setReturnStatusFilter(opt.value)}
+                    className={returnStatusFilter === opt.value ? "" : "text-gray-600"}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+
+              {returnLoading ? (
+                <div className="flex justify-center py-20">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+                </div>
+              ) : returnRequests.length === 0 ? (
+                <div className="text-center py-20">
+                  <RotateCcw className="h-14 w-14 mx-auto text-gray-300 mb-4" />
+                  <p className="text-gray-500 text-lg font-medium">Aucune demande de retour</p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {returnStatusFilter === "PENDING"
+                      ? "Aucun retour en attente de validation"
+                      : "Aucune demande correspondante"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {returnRequests.map((rr) => {
+                    const isExpanded = expandedReturnId === rr.id
+                    const isRejecting = rejectingId === rr.id
+                    const isValidating = validatingId === rr.id
+                    const totalQty = rr.items?.reduce((s: number, i: any) => s + i.requestedQuantity, 0) || 0
+
+                    return (
+                      <Card key={rr.id} className={cn("transition-shadow", isExpanded && "shadow-md ring-1 ring-indigo-200")}>
+                        <CardContent className="p-5">
+                          {/* Ligne principale */}
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                              <RotateCcw className="h-5 w-5 text-indigo-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-gray-900">{rr.number}</span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-xs",
+                                    rr.status === "PENDING" && "border-amber-200 text-amber-700 bg-amber-50",
+                                    rr.status === "APPROVED" && "border-green-200 text-green-700 bg-green-50",
+                                    rr.status === "REJECTED" && "border-red-200 text-red-700 bg-red-50"
+                                  )}
+                                >
+                                  {rr.status === "PENDING" && "En attente"}
+                                  {rr.status === "APPROVED" && "Approuvée"}
+                                  {rr.status === "REJECTED" && "Rejetée"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Warehouse className="h-3.5 w-3.5" />
+                                  {rr.store?.name}
+                                </span>
+                                <span>·</span>
+                                <span>{rr.items?.length} produit{rr.items?.length > 1 ? "s" : ""}</span>
+                                <span>·</span>
+                                <span>{totalQty} unité{totalQty > 1 ? "s" : ""}</span>
+                                <span>·</span>
+                                <span>{new Date(rr.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}</span>
+                              </div>
+                              {rr.reason && (
+                                <p className="text-xs text-gray-500 mt-1 italic">Motif : {rr.reason}</p>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {rr.status === "PENDING" && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                    disabled={isValidating}
+                                    onClick={() => handleValidateReturn(rr.id, "approve")}
+                                  >
+                                    {isValidating ? (
+                                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                    )}
+                                    Approuver
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-red-200 text-red-600 hover:bg-red-50"
+                                    disabled={isValidating}
+                                    onClick={() => {
+                                      setRejectingId(isRejecting ? null : rr.id)
+                                      setRejectionReason("")
+                                    }}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1.5" />
+                                    Rejeter
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setExpandedReturnId(isExpanded ? null : rr.id)}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Zone de rejet */}
+                          {isRejecting && (
+                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-3">
+                              <p className="text-sm font-medium text-red-700">Motif du rejet (optionnel)</p>
+                              <Textarea
+                                placeholder="Précisez la raison du rejet..."
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                rows={2}
+                                className="bg-white"
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="bg-red-600 hover:bg-red-700 text-white"
+                                  disabled={isValidating}
+                                  onClick={() => handleValidateReturn(rr.id, "reject")}
+                                >
+                                  {isValidating ? (
+                                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                  ) : null}
+                                  Confirmer le rejet
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setRejectingId(null)}
+                                >
+                                  Annuler
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Détails produits */}
+                          {isExpanded && (
+                            <div className="mt-4 border rounded-lg overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-gray-50">
+                                    <TableHead>Produit</TableHead>
+                                    <TableHead className="text-center">Qté demandée</TableHead>
+                                    {rr.status === "APPROVED" && (
+                                      <TableHead className="text-center">Qté approuvée</TableHead>
+                                    )}
+                                    <TableHead>Note</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {rr.items?.map((item: any) => (
+                                    <TableRow key={item.id}>
+                                      <TableCell>
+                                        <div className="font-medium text-sm">{item.product?.name}</div>
+                                        {item.product?.sku && (
+                                          <Badge variant="outline" className="text-xs mt-0.5">
+                                            {item.product.sku}
+                                          </Badge>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <Badge className="bg-indigo-100 text-indigo-700">
+                                          {item.requestedQuantity}
+                                        </Badge>
+                                      </TableCell>
+                                      {rr.status === "APPROVED" && (
+                                        <TableCell className="text-center">
+                                          <Badge className="bg-green-100 text-green-700">
+                                            {item.approvedQuantity ?? item.requestedQuantity}
+                                          </Badge>
+                                        </TableCell>
+                                      )}
+                                      <TableCell className="text-sm text-gray-500">
+                                        {item.notes || "—"}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                              {rr.validatedBy && (
+                                <div className="px-4 py-3 bg-gray-50 border-t text-xs text-gray-500">
+                                  {rr.status === "APPROVED" ? "Approuvée" : "Rejetée"} par{" "}
+                                  <strong>
+                                    {[rr.validatedBy.firstName, rr.validatedBy.lastName].filter(Boolean).join(" ") || rr.validatedBy.email}
+                                  </strong>{" "}
+                                  le {new Date(rr.validatedAt).toLocaleDateString("fr-FR")}
+                                  {rr.rejectionReason && (
+                                    <span className="block mt-1 text-red-600">Motif : {rr.rejectionReason}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              ONGLET : COMMANDES
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeTab === "orders" && <>
           {/* Stats rapides */}
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter("all")}>
@@ -720,6 +1068,7 @@ export default function WarehouseOrdersPage() {
               )}
             </CardContent>
           </Card>
+          </>}
         </div>
       </div>
 

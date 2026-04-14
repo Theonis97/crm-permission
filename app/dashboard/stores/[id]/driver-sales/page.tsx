@@ -19,12 +19,14 @@ import {
   Search,
   Loader2,
   Package,
-  TrendingUp,
   Users,
   DollarSign,
   Receipt,
   Calendar,
   RefreshCw,
+  Truck,
+  ArrowDownCircle,
+  Store,
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatFCFA } from "@/lib/utils"
@@ -35,6 +37,10 @@ interface SaleItem {
   quantity: number
   unitPrice: number
   totalPrice: number
+  deliveryFee: number
+  deliveryType: string
+  netUnitPrice: number
+  netTotalPrice: number
   product: { id: string; name: string; sku: string | null; photos: string[] }
   variant?: { id: string; name: string; sku: string | null } | null
 }
@@ -42,6 +48,8 @@ interface SaleItem {
 interface DriverSale {
   id: string
   totalAmount: number
+  totalDeliveryFees: number
+  netTotalAmount: number
   declaredAt: string
   notes?: string | null
   deliveryPerson: { id: string; name: string; email: string; avatar?: string | null }
@@ -50,8 +58,17 @@ interface DriverSale {
 }
 
 interface Summary {
-  byDriver: Array<{ driverId: string; driverName: string; total: number; count: number }>
+  byDriver: Array<{
+    driverId: string
+    driverName: string
+    total: number
+    netTotal: number
+    totalDeliveryFees: number
+    count: number
+  }>
   grandTotal: number
+  grandNetTotal: number
+  grandDeliveryFees: number
   totalSales: number
 }
 
@@ -64,6 +81,7 @@ export default function DriverSalesPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [driverFilter, setDriverFilter] = useState("all")
+  const [storeFilter, setStoreFilter] = useState("all")
 
   const loadSales = useCallback(async () => {
     setLoading(true)
@@ -87,16 +105,22 @@ export default function DriverSalesPage() {
     loadSales()
   }, [loadSales])
 
-  // Liste unique de livreurs pour le filtre
   const drivers = summary?.byDriver ?? []
+
+  // Liste unique de magasins extraite des ventes
+  const storeList = Array.from(
+    new Map(sales.map((s) => [s.store.id, s.store])).values()
+  )
 
   const filteredSales = sales.filter((s) => {
     const matchDriver = driverFilter === "all" || s.deliveryPerson.id === driverFilter
+    const matchStore  = storeFilter  === "all" || s.store.id === storeFilter
     const matchSearch =
       searchTerm === "" ||
       s.deliveryPerson.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.items.some((i) => i.product.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    return matchDriver && matchSearch
+    return matchDriver && matchStore && matchSearch
   })
 
   const formatDate = (iso: string) =>
@@ -126,10 +150,24 @@ export default function DriverSalesPage() {
                 <DollarSign className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-green-600">
-                  {formatFCFA(summary.grandTotal)}
-                </p>
+                <p className="text-2xl font-bold text-green-600">{formatFCFA(summary.grandTotal)}</p>
                 <p className="text-xs text-gray-500 mt-1">Toutes déclarations</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-blue-200 bg-blue-50/40">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-blue-800">Net à reverser</CardTitle>
+                <ArrowDownCircle className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-blue-700">{formatFCFA(summary.grandNetTotal)}</p>
+                {summary.grandDeliveryFees > 0 && (
+                  <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                    <Truck className="h-3 w-3" />
+                    Livraison : {formatFCFA(summary.grandDeliveryFees)}
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -154,21 +192,6 @@ export default function DriverSalesPage() {
                 <p className="text-xs text-gray-500 mt-1">Ayant déclaré des ventes</p>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Moy. par déclaration</CardTitle>
-                <TrendingUp className="h-4 w-4 text-orange-600" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-orange-600">
-                  {summary.totalSales > 0
-                    ? formatFCFA(summary.grandTotal / summary.totalSales)
-                    : "—"}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Montant moyen</p>
-              </CardContent>
-            </Card>
           </div>
         )}
 
@@ -186,22 +209,48 @@ export default function DriverSalesPage() {
                 {drivers.map((d) => (
                   <div
                     key={d.driverId}
-                    className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3"
+                    className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 space-y-2"
                   >
-                    <div>
-                      <p className="font-semibold text-sm text-gray-900">{d.driverName}</p>
-                      <p className="text-xs text-gray-500">{d.count} déclaration{d.count > 1 ? "s" : ""}</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">{d.driverName}</p>
+                        <p className="text-xs text-gray-500">{d.count} déclaration{d.count > 1 ? "s" : ""}</p>
+                      </div>
+                      <span className="text-sm font-bold text-green-600">{formatFCFA(d.total)}</span>
                     </div>
-                    <span className="text-sm font-bold text-green-600">{formatFCFA(d.total)}</span>
+                    {d.totalDeliveryFees > 0 && (
+                      <div className="flex items-center justify-between border-t border-neutral-200 pt-2">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Truck className="h-3 w-3 text-orange-500" />
+                          Livraison retenue
+                        </span>
+                        <span className="text-xs font-semibold text-orange-600">− {formatFCFA(d.totalDeliveryFees)}</span>
+                      </div>
+                    )}
+                    {d.totalDeliveryFees > 0 && (
+                      <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
+                        <span className="text-xs font-semibold text-blue-800">À reverser</span>
+                        <span className="text-sm font-bold text-blue-700">{formatFCFA(d.netTotal)}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
               {/* Total global */}
-              <div className="mt-4 flex items-center justify-between rounded-xl bg-green-50 border border-green-200 px-4 py-3">
-                <span className="font-bold text-green-800">Total tous livreurs</span>
-                <span className="text-lg font-bold text-green-600">
-                  {formatFCFA(summary?.grandTotal ?? 0)}
-                </span>
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between rounded-xl bg-green-50 border border-green-200 px-4 py-3">
+                  <span className="font-bold text-green-800">Total encaissé (tous livreurs)</span>
+                  <span className="text-lg font-bold text-green-600">{formatFCFA(summary?.grandTotal ?? 0)}</span>
+                </div>
+                {(summary?.grandDeliveryFees ?? 0) > 0 && (
+                  <div className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
+                    <span className="font-bold text-blue-800 flex items-center gap-2">
+                      <ArrowDownCircle className="h-4 w-4" />
+                      Net à reverser au magasin
+                    </span>
+                    <span className="text-lg font-bold text-blue-700">{formatFCFA(summary?.grandNetTotal ?? 0)}</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -218,6 +267,18 @@ export default function DriverSalesPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <Select value={storeFilter} onValueChange={setStoreFilter}>
+            <SelectTrigger className="w-48">
+              <Store className="h-4 w-4 mr-2 text-gray-400" />
+              <SelectValue placeholder="Tous les magasins" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les magasins</SelectItem>
+              {storeList.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={driverFilter} onValueChange={setDriverFilter}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Tous les livreurs" />
@@ -251,81 +312,109 @@ export default function DriverSalesPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredSales.map((sale) => (
-              <Card key={sale.id} className="overflow-hidden">
-                <CardContent className="p-4">
-                  {/* En-tête : livreur + date + montant */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={sale.deliveryPerson.avatar ?? undefined} />
-                        <AvatarFallback className="bg-orange-100 text-orange-700 font-semibold text-sm">
-                          {sale.deliveryPerson.name.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-semibold text-gray-900">{sale.deliveryPerson.name}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(sale.declaredAt)}
-                        </p>
+            {filteredSales.map((sale) => {
+              const hasDelivery = (sale.totalDeliveryFees ?? 0) > 0
+              return (
+                <Card key={sale.id} className="overflow-hidden">
+                  <CardContent className="p-4 space-y-4">
+                    {/* En-tête : livreur + date + montants */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={sale.deliveryPerson.avatar ?? undefined} />
+                          <AvatarFallback className="bg-orange-100 text-orange-700 font-semibold text-sm">
+                            {sale.deliveryPerson.name.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-900">{sale.deliveryPerson.name}</p>
+                            <Badge variant="outline" className="text-xs flex items-center gap-1">
+                              <Store className="h-3 w-3" />
+                              {sale.store.name}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(sale.declaredAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 space-y-1">
+                        <Badge className="bg-green-100 text-green-700 border-green-200 text-sm px-3 py-1">
+                          Encaissé : {formatFCFA(sale.totalAmount)}
+                        </Badge>
+                        {hasDelivery && (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-xs text-orange-600 flex items-center gap-1">
+                              <Truck className="h-3 w-3" />
+                              Livraison : − {formatFCFA(sale.totalDeliveryFees)}
+                            </span>
+                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-sm px-3 py-1">
+                              À reverser : {formatFCFA(sale.netTotalAmount)}
+                            </Badge>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <Badge className="bg-green-100 text-green-700 border-green-200 text-sm px-3 py-1">
-                      {formatFCFA(sale.totalAmount)}
-                    </Badge>
-                  </div>
 
-                  {/* Produits */}
-                  <div className="space-y-2">
-                    {sale.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 rounded-xl bg-neutral-50 border border-neutral-100 px-3 py-2"
-                      >
-                        <div className="h-10 w-10 rounded-lg overflow-hidden bg-neutral-200 shrink-0">
-                          {item.product.photos?.[0] ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={item.product.photos[0]}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center">
-                              <Package className="h-5 w-5 text-neutral-400" />
-                            </div>
-                          )}
+                    {/* Produits */}
+                    <div className="space-y-2">
+                      {sale.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 rounded-xl bg-neutral-50 border border-neutral-100 px-3 py-2"
+                        >
+                          <div className="h-10 w-10 rounded-lg overflow-hidden bg-neutral-200 shrink-0">
+                            {item.product.photos?.[0] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={item.product.photos[0]} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center">
+                                <Package className="h-5 w-5 text-neutral-400" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{item.product.name}</p>
+                            {item.variant && <p className="text-xs text-gray-500">{item.variant.name}</p>}
+                            {item.deliveryType !== "none" && (
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                item.deliveryType === "free"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}>
+                                {item.deliveryType === "free" ? "Livraison offerte" : "Livraison payante"} · {formatFCFA(item.deliveryFee)}/u
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-semibold text-gray-700">
+                              {item.quantity} × {formatFCFA(item.unitPrice)}
+                            </p>
+                            {item.deliveryType !== "none" ? (
+                              <>
+                                <p className="text-xs text-gray-400 line-through">{formatFCFA(item.totalPrice)}</p>
+                                <p className="text-xs font-bold text-blue-600">Net : {formatFCFA(item.netTotalPrice)}</p>
+                              </>
+                            ) : (
+                              <p className="text-xs font-bold text-green-600">= {formatFCFA(item.totalPrice)}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {item.product.name}
-                          </p>
-                          {item.variant && (
-                            <p className="text-xs text-gray-500">{item.variant.name}</p>
-                          )}
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-semibold text-gray-700">
-                            {item.quantity} × {formatFCFA(item.unitPrice)}
-                          </p>
-                          <p className="text-xs font-bold text-green-600">
-                            = {formatFCFA(item.totalPrice)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* Note */}
-                  {sale.notes && (
-                    <p className="mt-3 text-xs text-gray-500 italic border-t border-neutral-100 pt-3">
-                      « {sale.notes} »
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    {/* Note */}
+                    {sale.notes && (
+                      <p className="text-xs text-gray-500 italic border-t border-neutral-100 pt-3">
+                        « {sale.notes} »
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
