@@ -136,10 +136,12 @@ export function StoreDetailsSheet({
       <SheetContent className="w-full sm:max-w-5xl p-0 flex flex-col gap-0 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
+            <SheetTitle className="sr-only">Chargement du magasin</SheetTitle>
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           </div>
         ) : !store ? (
           <div className="flex flex-col items-center justify-center py-20">
+            <SheetTitle className="sr-only">Magasin introuvable</SheetTitle>
             <Store className="h-12 w-12 text-gray-400 mb-4" />
             <p className="text-gray-500">Magasin introuvable</p>
           </div>

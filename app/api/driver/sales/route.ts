@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
               select: { id: true, name: true, sku: true },
             },
           },
+          orderBy: { id: "asc" },
         },
       },
     })
@@ -82,6 +83,8 @@ export async function POST(req: NextRequest) {
         variantId?: string | null
         quantity: number
         unitPrice: number
+        deliveryFee?: number
+        deliveryType?: "none" | "free" | "paid"
       }>
       notes?: string
     }
@@ -139,6 +142,17 @@ export async function POST(req: NextRequest) {
     }
 
     const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0)
+    const totalDeliveryFees = items.reduce((sum, i) => {
+      const fee = i.deliveryFee ?? 0
+      const type = i.deliveryType ?? "none"
+      return sum + (type !== "none" ? i.quantity * fee : 0)
+    }, 0)
+    const netTotalAmount = items.reduce((sum, i) => {
+      const fee = i.deliveryFee ?? 0
+      const type = i.deliveryType ?? "none"
+      const netUnit = type === "free" ? i.unitPrice - fee : i.unitPrice
+      return sum + i.quantity * netUnit
+    }, 0)
 
     // Transaction : créer la vente + décrémenter le stock
     const sale = await prisma.$transaction(async (tx) => {
@@ -148,15 +162,26 @@ export async function POST(req: NextRequest) {
           deliveryPersonId: deliveryPerson.id,
           storeId: deliveryPerson.storeId,
           totalAmount,
+          totalDeliveryFees,
+          netTotalAmount,
           notes: notes ?? null,
           items: {
-            create: items.map((i) => ({
-              productId: i.productId,
-              variantId: i.variantId ?? null,
-              quantity: i.quantity,
-              unitPrice: i.unitPrice,
-              totalPrice: i.quantity * i.unitPrice,
-            })),
+            create: items.map((i) => {
+              const fee = i.deliveryFee ?? 0
+              const type = i.deliveryType ?? "none"
+              const netUnit = type === "free" ? i.unitPrice - fee : i.unitPrice
+              return {
+                productId: i.productId,
+                variantId: i.variantId ?? null,
+                quantity: i.quantity,
+                unitPrice: i.unitPrice,
+                totalPrice: i.quantity * i.unitPrice,
+                deliveryFee: fee,
+                deliveryType: type,
+                netUnitPrice: netUnit,
+                netTotalPrice: i.quantity * netUnit,
+              }
+            }),
           },
         },
         include: {

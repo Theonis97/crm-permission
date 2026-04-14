@@ -31,13 +31,16 @@ import {
   ShoppingBag,
   Receipt,
   CheckCircle2,
+  RotateCcw,
+  ArrowLeft,
+  MinusCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 const ORANGE = "#FF8C00"
 
-type MainTab = "accueil" | "magasin" | "stock" | "ventes"
+type MainTab = "accueil" | "magasin" | "stock" | "ventes" | "retours"
 
 type StoreRow = { id: string; name: string; address: string | null }
 type StaffDriverOption = { id: string; name: string; phone: string; storeName: string }
@@ -85,6 +88,8 @@ type StockLineRow = {
 type SaleRow = {
   id: string
   totalAmount: number
+  totalDeliveryFees: number
+  netTotalAmount: number
   declaredAt: string
   notes?: string | null
   store: { id: string; name: string }
@@ -93,13 +98,22 @@ type SaleRow = {
     quantity: number
     unitPrice: number
     totalPrice: number
+    deliveryFee: number
+    deliveryType: string
+    netUnitPrice: number
+    netTotalPrice: number
     product: { id: string; name: string; sku: string | null; photos: string[] }
     variant?: { id: string; name: string; sku: string | null } | null
   }>
 }
 
-// Panier de ventes : clé = productId, valeur = { qty, unitPrice }
-type SaleCart = Record<string, { qty: number; unitPrice: number }>
+// Panier de ventes : clé = productId
+type SaleCart = Record<string, {
+  qty: number
+  unitPrice: number
+  deliveryFee: number
+  deliveryType: "none" | "free" | "paid"
+}>
 
 /** Petit carreau produit générique (photo + badge + texte) */
 function ProductTile({
@@ -219,6 +233,16 @@ export default function LivreurReapprovisionnementPage() {
   const [saleNotes, setSaleNotes] = useState("")
   const [saleSubmitting, setSaleSubmitting] = useState(false)
 
+  // États pour l'onglet Retours
+  const [retourItem, setRetourItem] = useState<StockLineRow | null>(null)
+  const [retourQty, setRetourQty] = useState(1)
+  const [retourNotes, setRetourNotes] = useState("")
+  const [retourStoreId, setRetourStoreId] = useState<string>("")
+  const [retourSubmitting, setRetourSubmitting] = useState(false)
+  const [retourStep, setRetourStep] = useState<"list" | "form" | "confirm">("list")
+  const [retourRequests, setRetourRequests] = useState<any[]>([])
+  const [retourRequestsLoading, setRetourRequestsLoading] = useState(false)
+
   const canQueryDriver = Boolean(
     selectedDeliveryPersonId && (portalMode === "driver" || portalMode === "staff"),
   )
@@ -286,12 +310,32 @@ export default function LivreurReapprovisionnementPage() {
       .filter(([, v]) => v.qty > 0)
       .map(([productId, v]) => {
         const stock = stockLines.find((s) => s.product.id === productId)
-        return { productId, qty: v.qty, unitPrice: v.unitPrice, stock }
+        const netUnit = v.deliveryType === "free" ? v.unitPrice - v.deliveryFee : v.unitPrice
+        return {
+          productId,
+          qty: v.qty,
+          unitPrice: v.unitPrice,
+          deliveryFee: v.deliveryFee,
+          deliveryType: v.deliveryType,
+          netUnitPrice: netUnit,
+          stock,
+        }
       }),
     [saleCart, stockLines]
   )
   const saleTotalAmount = useMemo(
     () => saleCartLines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0),
+    [saleCartLines]
+  )
+  const saleNetTotalAmount = useMemo(
+    () => saleCartLines.reduce((sum, l) => sum + l.qty * l.netUnitPrice, 0),
+    [saleCartLines]
+  )
+  const saleTotalDeliveryFees = useMemo(
+    () => saleCartLines.reduce((sum, l) => {
+      if (l.deliveryType === "none") return sum
+      return sum + l.qty * l.deliveryFee
+    }, 0),
     [saleCartLines]
   )
   const formatPrice = (n: number) =>
@@ -309,6 +353,8 @@ export default function LivreurReapprovisionnementPage() {
             productId: l.productId,
             quantity: l.qty,
             unitPrice: l.unitPrice,
+            deliveryFee: l.deliveryFee,
+            deliveryType: l.deliveryType,
           })),
           notes: saleNotes || null,
         }),
@@ -414,6 +460,15 @@ export default function LivreurReapprovisionnementPage() {
     if (stockLines.length === 0) loadStock()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab, bootError, loading, canQueryDriver, loadSales])
+
+  useEffect(() => {
+    if (bootError || loading) return
+    if (mainTab !== "retours") return
+    if (!canQueryDriver) return
+    loadStock()
+    loadRetourRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab, bootError, loading, canQueryDriver, loadStock])
 
   const loadProducts = async (store: StoreRow) => {
     if (portalMode === "staff" && !selectedDeliveryPersonId) {
@@ -527,6 +582,54 @@ export default function LivreurReapprovisionnementPage() {
     }
   }
 
+  const loadRetourRequests = async () => {
+    if (!selectedDeliveryPersonId) return
+    setRetourRequestsLoading(true)
+    try {
+      const params = portalMode === "staff" ? `?deliveryPersonId=${selectedDeliveryPersonId}` : ""
+      const res = await fetch(`/api/driver/restock/return-requests${params}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setRetourRequests(data.data || [])
+    } catch {
+      // silencieux
+    } finally {
+      setRetourRequestsLoading(false)
+    }
+  }
+
+  const submitRetour = async () => {
+    if (!retourItem || !selectedDeliveryPersonId) return
+    setRetourSubmitting(true)
+    try {
+      const res = await fetch(`/api/driver/restock/return-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(portalMode === "staff" ? { deliveryPersonId: selectedDeliveryPersonId } : {}),
+          stockItemId: retourItem.id,
+          quantity: retourQty,
+          notes: retourNotes || undefined,
+          storeId: retourStoreId || undefined,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(json.error || "Erreur lors de la demande de retour")
+        return
+      }
+      toast.success(json.message || "Demande de retour envoyée — en attente de validation")
+      setRetourStep("list")
+      setRetourItem(null)
+      setRetourQty(1)
+      setRetourNotes("")
+      setRetourStoreId("")
+      await loadRetourRequests()
+    } finally {
+      setRetourSubmitting(false)
+    }
+  }
+
   const goBack = () => {
     if (mainTab === "magasin") {
       if (step === "confirm") {
@@ -559,7 +662,7 @@ export default function LivreurReapprovisionnementPage() {
 
   if (status === "loading" || (loading && step === "store" && stores.length === 0 && !bootError && !noDriverProfile)) {
     return (
-      <HomeLayout>
+      <HomeLayout compact>
         <div className="min-h-[70dvh] flex items-center justify-center px-4">
           <Loader2 className="h-10 w-10 animate-spin" style={{ color: ORANGE }} />
         </div>
@@ -570,7 +673,7 @@ export default function LivreurReapprovisionnementPage() {
   // Rôle livreur présent mais aucune fiche DeliveryPerson liée à cet email
   if (noDriverProfile) {
     return (
-      <HomeLayout>
+      <HomeLayout compact>
         <div className="max-w-lg mx-auto px-4 py-8 min-h-[70dvh] flex flex-col items-center justify-center gap-6">
           <div
             className="h-20 w-20 rounded-3xl flex items-center justify-center"
@@ -599,7 +702,7 @@ export default function LivreurReapprovisionnementPage() {
 
   if (bootError) {
     return (
-      <HomeLayout>
+      <HomeLayout compact>
         <div className="max-w-lg mx-auto px-4 py-8 min-h-[70dvh] flex flex-col justify-center">
           <p className="text-center text-gray-700 text-base leading-relaxed">{bootError}</p>
           <p className="text-center text-sm text-gray-500 mt-4">
@@ -616,24 +719,41 @@ export default function LivreurReapprovisionnementPage() {
   }
 
   return (
-    <HomeLayout>
+    <HomeLayout compact>
       <div className="max-w-lg mx-auto min-h-[100dvh] bg-neutral-100 pb-28 px-3 sm:px-4 pt-0 relative">
-        {/* En-tête orange — Accueil & Stock */}
-        {(mainTab === "accueil" || mainTab === "stock") && (
+        {/* En-tête orange — Accueil, Stock & Retours */}
+        {(mainTab === "accueil" || mainTab === "stock" || mainTab === "retours") && (
           <header
             className="sticky top-0 z-20 -mx-3 sm:-mx-4 px-4 pt-4 pb-4 text-white shadow-md rounded-b-2xl"
-            style={{ backgroundColor: ORANGE }}
+            style={{ backgroundColor: mainTab === "retours" ? "#dc2626" : ORANGE }}
           >
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-                <Truck className="h-6 w-6 text-white" />
+                {mainTab === "retours" ? (
+                  <RotateCcw className="h-6 w-6 text-white" />
+                ) : (
+                  <Truck className="h-6 w-6 text-white" />
+                )}
               </div>
-              <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight">Livreur</h1>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-bold leading-tight">
+                  {mainTab === "accueil" ? "Livreur" : mainTab === "stock" ? "Mon stock" : "Retours en magasin"}
+                </h1>
                 <p className="text-sm text-white/90">
-                  {mainTab === "accueil" ? "Demandes aux magasins" : "Mon stock"}
+                  {mainTab === "accueil" ? "Demandes aux magasins" :
+                   mainTab === "stock" ? "Produits en ma possession" :
+                   "Rendre des produits au magasin"}
                 </p>
               </div>
+              {mainTab === "retours" && retourStep !== "list" && (
+                <button
+                  type="button"
+                  onClick={() => { setRetourStep("list"); setRetourItem(null) }}
+                  className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center shrink-0 touch-manipulation"
+                >
+                  <ArrowLeft className="h-5 w-5 text-white" />
+                </button>
+              )}
             </div>
           </header>
         )}
@@ -837,6 +957,308 @@ export default function LivreurReapprovisionnementPage() {
               </div>
             )}
           </section>
+        )}
+
+        {/* Onglet Retours */}
+        {mainTab === "retours" && retourStep === "list" && (
+          <section className="mt-4 space-y-3 pb-4">
+            {portalMode === "staff" && staffDrivers.length > 0 ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 space-y-2">
+                <Label className="text-amber-950 font-medium">Livreur</Label>
+                <Select value={selectedDeliveryPersonId || undefined} onValueChange={setSelectedDeliveryPersonId}>
+                  <SelectTrigger className="h-12 rounded-xl text-base bg-white">
+                    <SelectValue placeholder="Choisir un livreur…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {staffDrivers.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-base py-3">
+                        <span className="font-medium">{d.name}</span>
+                        <span className="block text-xs text-muted-foreground">{d.storeName}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            {/* Demandes en cours */}
+            {canQueryDriver && retourRequests.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-neutral-500 px-1 uppercase tracking-wide">Demandes récentes</p>
+                <ul className="space-y-2">
+                  {retourRequests.slice(0, 5).map((req: any) => (
+                    <li key={req.id} className="rounded-2xl border bg-white p-3.5 shadow-sm flex items-center gap-3">
+                      <div className={cn(
+                        "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
+                        req.status === "PENDING" && "bg-amber-100",
+                        req.status === "APPROVED" && "bg-green-100",
+                        req.status === "REJECTED" && "bg-red-100",
+                      )}>
+                        {req.status === "PENDING" && <Loader2 className="h-4 w-4 text-amber-600 animate-spin" />}
+                        {req.status === "APPROVED" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                        {req.status === "REJECTED" && <MinusCircle className="h-4 w-4 text-red-500" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-neutral-900 truncate">{req.product?.name}</p>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          {req.requestedQuantity} unité{req.requestedQuantity > 1 ? "s" : ""} ·{" "}
+                          {new Date(req.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                      <span className={cn(
+                        "text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0",
+                        req.status === "PENDING" && "bg-amber-100 text-amber-700",
+                        req.status === "APPROVED" && "bg-green-100 text-green-700",
+                        req.status === "REJECTED" && "bg-red-100 text-red-700",
+                      )}>
+                        {req.status === "PENDING" && "En attente"}
+                        {req.status === "APPROVED" && "Approuvé"}
+                        {req.status === "REJECTED" && "Rejeté"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!canQueryDriver ? (
+              <p className="text-center text-neutral-500 py-8 text-sm">Sélectionnez un livreur pour voir le stock.</p>
+            ) : stockLoading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="h-9 w-9 animate-spin text-neutral-400" />
+              </div>
+            ) : stockLines.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <RotateCcw className="h-12 w-12 mx-auto text-neutral-300 mb-3" />
+                <p className="text-neutral-500 text-sm font-medium">Aucun produit à retourner</p>
+                <p className="text-neutral-400 text-xs mt-2">Votre stock est vide.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-500 px-1">
+                  Sélectionnez un produit pour soumettre une demande de retour au gestionnaire.
+                </p>
+                <ul className="space-y-2">
+                  {stockLines.map((row) => {
+                    const img = firstPhoto(row)
+                    const label = row.variant
+                      ? `${row.product.name} · ${row.variant.name}`
+                      : row.product.name
+                    const dispo = row.quantity - (row.reserved || 0)
+                    // Masquer si une demande PENDING existe déjà pour cet item
+                    const hasPending = retourRequests.some(
+                      (r: any) => r.stockItemId === row.id && r.status === "PENDING"
+                    )
+                    return (
+                      <li key={row.id}>
+                        <button
+                          type="button"
+                          disabled={hasPending || dispo <= 0}
+                          className={cn(
+                            "w-full text-left rounded-2xl border border-neutral-200 bg-white p-3.5 shadow-sm flex items-center gap-3 active:scale-[0.99] transition-transform touch-manipulation",
+                            (hasPending || dispo <= 0) && "opacity-50 cursor-not-allowed"
+                          )}
+                          onClick={() => {
+                            if (hasPending || dispo <= 0) return
+                            setRetourItem(row)
+                            setRetourQty(1)
+                            setRetourNotes("")
+                            setRetourStoreId(driverHomeStoreId || (stores[0]?.id ?? ""))
+                            setRetourStep("form")
+                          }}
+                        >
+                          <div className="h-14 w-14 rounded-xl overflow-hidden bg-neutral-100 shrink-0">
+                            {img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={img} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center">
+                                <Package className="h-6 w-6 text-neutral-300" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-neutral-900 leading-snug line-clamp-2">{label}</p>
+                            {row.product.sku && (
+                              <p className="text-[10px] text-neutral-400 font-mono mt-0.5">{row.product.sku}</p>
+                            )}
+                            <p className="text-xs text-neutral-500 mt-1">
+                              En stock : <span className="font-semibold text-neutral-700">{row.quantity}</span>
+                              {row.reserved ? <span className="text-amber-600"> · rés. {row.reserved}</span> : ""}
+                              {" · "}Dispo : <span className="font-semibold">{dispo}</span>
+                            </p>
+                            {hasPending && (
+                              <p className="text-[11px] text-amber-600 mt-0.5 font-medium">⏳ Demande en attente</p>
+                            )}
+                          </div>
+                          <div className={cn(
+                            "shrink-0 h-9 w-9 rounded-full flex items-center justify-center border",
+                            hasPending ? "bg-amber-50 border-amber-100" : "bg-red-50 border-red-100"
+                          )}>
+                            {hasPending
+                              ? <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
+                              : <RotateCcw className="h-4 w-4 text-red-500" />
+                            }
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
+        {/* Onglet Retours — Formulaire */}
+        {mainTab === "retours" && retourStep === "form" && retourItem && (
+          <section className="mt-4 space-y-5 pb-4">
+            {/* Produit sélectionné */}
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 flex items-center gap-3 shadow-sm">
+              <div className="h-14 w-14 rounded-xl overflow-hidden bg-neutral-100 shrink-0">
+                {firstPhoto(retourItem) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={firstPhoto(retourItem)!} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <Package className="h-6 w-6 text-neutral-300" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-neutral-900 leading-snug line-clamp-2">
+                  {retourItem.variant ? `${retourItem.product.name} · ${retourItem.variant.name}` : retourItem.product.name}
+                </p>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Stock disponible : <span className="font-bold text-neutral-700">{retourItem.quantity - (retourItem.reserved || 0)}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Magasin de retour */}
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm space-y-3">
+              <Label className="text-sm font-semibold text-neutral-800">Magasin de destination</Label>
+              {stores.length === 0 ? (
+                <p className="text-sm text-neutral-400">Aucun magasin disponible</p>
+              ) : (
+                <div className="space-y-2">
+                  {stores.map((s) => {
+                    const isHome = s.id === driverHomeStoreId
+                    const selected = retourStoreId === s.id
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setRetourStoreId(s.id)}
+                        className={cn(
+                          "w-full text-left rounded-xl border p-3 flex items-center gap-3 transition-colors touch-manipulation",
+                          selected
+                            ? "border-red-400 bg-red-50"
+                            : "border-neutral-200 bg-neutral-50"
+                        )}
+                      >
+                        <div className={cn(
+                          "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                          selected ? "bg-red-600" : "bg-neutral-300"
+                        )}>
+                          <StoreIcon className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-neutral-900 truncate">{s.name}</p>
+                          {isHome && (
+                            <span className="text-[10px] font-bold text-red-600">Mon magasin</span>
+                          )}
+                          {s.address && !isHome && (
+                            <p className="text-[10px] text-neutral-400 truncate">{s.address}</p>
+                          )}
+                        </div>
+                        {selected && (
+                          <div className="h-5 w-5 rounded-full bg-red-600 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="h-3 w-3 text-white" />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Quantité */}
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm space-y-3">
+              <Label className="text-sm font-semibold text-neutral-800">Quantité à retourner</Label>
+              <div className="flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  className="h-11 w-11 rounded-full border-2 border-neutral-200 flex items-center justify-center touch-manipulation active:bg-neutral-100 disabled:opacity-40"
+                  onClick={() => setRetourQty(q => Math.max(1, q - 1))}
+                  disabled={retourQty <= 1}
+                >
+                  <Minus className="h-5 w-5 text-neutral-700" />
+                </button>
+                <div className="flex-1 text-center">
+                  <span className="text-4xl font-bold text-neutral-900">{retourQty}</span>
+                  <p className="text-xs text-neutral-400 mt-1">sur {retourItem.quantity} en stock</p>
+                </div>
+                <button
+                  type="button"
+                  className="h-11 w-11 rounded-full border-2 border-neutral-200 flex items-center justify-center touch-manipulation active:bg-neutral-100 disabled:opacity-40"
+                  onClick={() => setRetourQty(q => Math.min(retourItem.quantity - (retourItem.reserved || 0), q + 1))}
+                  disabled={retourQty >= retourItem.quantity - (retourItem.reserved || 0)}
+                >
+                  <Plus className="h-5 w-5 text-neutral-700" />
+                </button>
+              </div>
+              {retourQty >= retourItem.quantity - (retourItem.reserved || 0) && (
+                <p className="text-xs text-amber-600 text-center">⚠ Tout le stock disponible sera retourné</p>
+              )}
+            </div>
+
+            {/* Note */}
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm space-y-2">
+              <Label className="text-sm font-semibold text-neutral-800">Note (optionnel)</Label>
+              <Textarea
+                value={retourNotes}
+                onChange={(e) => setRetourNotes(e.target.value)}
+                placeholder="Ex : produit défectueux, invendu…"
+                rows={3}
+                className="rounded-xl text-base resize-none"
+              />
+            </div>
+
+            {/* Info retour */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+              <StoreIcon className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Votre demande sera envoyée au gestionnaire de{" "}
+                <strong>{stores.find(s => s.id === retourStoreId)?.name ?? "magasin sélectionné"}</strong> pour validation.
+                Le stock ne sera modifié qu'après approbation.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* Onglet Retours — Bouton confirmer */}
+        {mainTab === "retours" && retourStep === "form" && retourItem && (
+          <div
+            className="fixed left-0 right-0 px-3 max-w-lg mx-auto z-50"
+            style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom, 0px))" }}
+          >
+            <Button
+              type="button"
+              className="w-full h-14 text-base font-semibold rounded-2xl touch-manipulation text-white border-0 shadow-lg"
+              style={{ backgroundColor: "#dc2626" }}
+              disabled={retourSubmitting || retourQty <= 0 || !retourStoreId}
+              onClick={submitRetour}
+            >
+              {retourSubmitting ? (
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              ) : (
+                <RotateCcw className="h-5 w-5 mr-2" />
+              )}
+              Soumettre la demande · {retourQty} unité{retourQty > 1 ? "s" : ""}
+            </Button>
+          </div>
         )}
 
         {/* Onglet Magasin */}
@@ -1214,34 +1636,58 @@ export default function LivreurReapprovisionnementPage() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {sales.map((sale) => (
-                        <div key={sale.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-gray-500">{new Date(sale.declaredAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-                            <span className="text-sm font-bold" style={{ color: ORANGE }}>
-                              {formatPrice(sale.totalAmount)}
-                            </span>
+                      {sales.map((sale) => {
+                        const hasDelivery = (sale.totalDeliveryFees ?? 0) > 0
+                        return (
+                          <div key={sale.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm space-y-3">
+                            {/* En-tête */}
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs text-gray-500">{new Date(sale.declaredAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold" style={{ color: ORANGE }}>{formatPrice(sale.totalAmount)}</p>
+                                {hasDelivery && (
+                                  <p className="text-xs text-green-700 font-semibold">
+                                    Net : {formatPrice(sale.netTotalAmount ?? sale.totalAmount)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            {/* Produits */}
+                            <div className="flex flex-wrap gap-2">
+                              {sale.items.map((item) => (
+                                <div key={item.id} className="flex flex-col items-center gap-0.5">
+                                  <ProductTile
+                                    photo={item.product.photos?.[0] ?? null}
+                                    name={item.product.name}
+                                    badge={item.quantity}
+                                    badgeBg={ORANGE}
+                                    sub={formatPrice(item.unitPrice)}
+                                    size="sm"
+                                  />
+                                  {item.deliveryType !== "none" && (
+                                    <span className={cn(
+                                      "text-[9px] px-1.5 py-px rounded-full font-semibold",
+                                      item.deliveryType === "free" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                                    )}>
+                                      {item.deliveryType === "free" ? "Livraison offerte" : "Livraison payante"}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {/* Pied */}
+                            <div className="flex items-center justify-between text-xs text-gray-400 border-t border-neutral-100 pt-2">
+                              <span>{sale.items.length} article{sale.items.length > 1 ? "s" : ""}</span>
+                              {hasDelivery && (
+                                <span className="text-green-700 font-medium">
+                                  Livraison : {formatPrice(sale.totalDeliveryFees)}
+                                </span>
+                              )}
+                              {sale.notes && <span className="italic truncate max-w-[50%]">« {sale.notes} »</span>}
+                            </div>
                           </div>
-                          {/* Produits en carreaux */}
-                          <div className="flex flex-wrap gap-2">
-                            {sale.items.map((item) => (
-                              <ProductTile
-                                key={item.id}
-                                photo={item.product.photos?.[0] ?? null}
-                                name={item.product.name}
-                                badge={item.quantity}
-                                badgeBg={ORANGE}
-                                sub={formatPrice(item.unitPrice)}
-                                size="sm"
-                              />
-                            ))}
-                          </div>
-                          <div className="flex items-center justify-between text-xs text-gray-400 border-t border-neutral-100 pt-2">
-                            <span>{sale.items.length} article{sale.items.length > 1 ? "s" : ""}</span>
-                            {sale.notes && <span className="italic truncate max-w-[60%]">« {sale.notes} »</span>}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -1271,8 +1717,10 @@ export default function LivreurReapprovisionnementPage() {
                   <div className="space-y-3">
                     {stockLines.map((s) => {
                       const key = s.product.id
-                      const entry = saleCart[key] || { qty: 0, unitPrice: s.product.prixVente ?? 0 }
+                      const defaultEntry = { qty: 0, unitPrice: s.product.prixVente ?? 0, deliveryFee: 0, deliveryType: "none" as const }
+                      const entry = saleCart[key] || defaultEntry
                       const inCart = entry.qty > 0
+                      const netUnit = entry.deliveryType === "free" ? entry.unitPrice - entry.deliveryFee : entry.unitPrice
                       return (
                         <div
                           key={s.id}
@@ -1281,8 +1729,8 @@ export default function LivreurReapprovisionnementPage() {
                             inCart ? "border-orange-300 bg-orange-50" : "border-neutral-200 bg-white",
                           )}
                         >
+                          {/* Ligne produit */}
                           <div className="flex gap-3 items-center">
-                            {/* Photo */}
                             <div className="h-14 w-14 rounded-xl overflow-hidden bg-neutral-100 shrink-0">
                               {firstPhoto(s) ? (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -1299,14 +1747,14 @@ export default function LivreurReapprovisionnementPage() {
                               <p className="text-xs text-neutral-400">Stock : {s.quantity}</p>
                             </div>
                           </div>
-                          {/* Qté + Prix */}
+
+                          {/* Qté + Prix de vente */}
                           <div className="mt-3 flex gap-2 items-center">
-                            {/* Contrôles quantité */}
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setSaleCart((c) => {
-                                  const prev = c[key] || { qty: 0, unitPrice: s.product.prixVente ?? 0 }
+                                  const prev = c[key] || defaultEntry
                                   if (prev.qty <= 0) return c
                                   return { ...c, [key]: { ...prev, qty: prev.qty - 1 } }
                                 })}
@@ -1318,7 +1766,7 @@ export default function LivreurReapprovisionnementPage() {
                               <button
                                 type="button"
                                 onClick={() => setSaleCart((c) => {
-                                  const prev = c[key] || { qty: 0, unitPrice: s.product.prixVente ?? 0 }
+                                  const prev = c[key] || defaultEntry
                                   if (prev.qty >= s.quantity) return c
                                   return { ...c, [key]: { ...prev, qty: prev.qty + 1 } }
                                 })}
@@ -1328,17 +1776,16 @@ export default function LivreurReapprovisionnementPage() {
                                 <Plus className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                            {/* Prix unitaire */}
                             <div className="flex-1">
                               <Input
                                 type="number"
                                 min="0"
                                 value={entry.unitPrice}
                                 onChange={(e) => setSaleCart((c) => {
-                                  const prev = c[key] || { qty: 0, unitPrice: s.product.prixVente ?? 0 }
+                                  const prev = c[key] || defaultEntry
                                   return { ...c, [key]: { ...prev, unitPrice: Number(e.target.value) || 0 } }
                                 })}
-                                placeholder="Prix unitaire"
+                                placeholder="Prix de vente"
                                 className="h-9 text-sm rounded-xl"
                               />
                             </div>
@@ -1348,6 +1795,65 @@ export default function LivreurReapprovisionnementPage() {
                               </p>
                             )}
                           </div>
+
+                          {/* Livraison — visible seulement si article sélectionné */}
+                          {inCart && (
+                            <div className="mt-3 space-y-2">
+                              {/* Toggle livraison */}
+                              <div className="flex gap-2">
+                                {(["none", "free", "paid"] as const).map((t) => (
+                                  <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => setSaleCart((c) => {
+                                      const prev = c[key] || defaultEntry
+                                      return { ...c, [key]: { ...prev, deliveryType: t, deliveryFee: t === "none" ? 0 : prev.deliveryFee } }
+                                    })}
+                                    className={cn(
+                                      "flex-1 py-1.5 rounded-xl text-xs font-medium border transition-colors",
+                                      entry.deliveryType === t
+                                        ? t === "free" ? "bg-green-600 text-white border-green-600"
+                                          : t === "paid" ? "bg-blue-600 text-white border-blue-600"
+                                          : "bg-neutral-700 text-white border-neutral-700"
+                                        : "bg-white text-neutral-500 border-neutral-200"
+                                    )}
+                                  >
+                                    {t === "none" ? "Sans livraison" : t === "free" ? "Livraison gratuite" : "Livraison payante"}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Frais de livraison */}
+                              {entry.deliveryType !== "none" && (
+                                <div className="flex gap-2 items-center">
+                                  <div className="flex-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={entry.deliveryFee}
+                                      onChange={(e) => setSaleCart((c) => {
+                                        const prev = c[key] || defaultEntry
+                                        return { ...c, [key]: { ...prev, deliveryFee: Number(e.target.value) || 0 } }
+                                      })}
+                                      placeholder="Frais de livraison"
+                                      className="h-9 text-sm rounded-xl"
+                                    />
+                                  </div>
+                                  <div className="text-xs text-neutral-500 shrink-0 max-w-[45%]">
+                                    {entry.deliveryType === "free" ? (
+                                      <span className="text-green-700 font-medium">
+                                        Net magasin : {formatPrice(netUnit)}/u
+                                      </span>
+                                    ) : (
+                                      <span className="text-blue-700 font-medium">
+                                        Client paie : {formatPrice(entry.unitPrice + entry.deliveryFee)}/u
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -1365,38 +1871,64 @@ export default function LivreurReapprovisionnementPage() {
                 >
                   <ChevronLeft className="h-4 w-4" /> Modifier
                 </button>
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 space-y-1">
+                {/* Récapitulatif financier */}
+                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 space-y-2">
                   <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Récapitulatif</p>
-                  <p className="text-2xl font-bold" style={{ color: ORANGE }}>{formatPrice(saleTotalAmount)}</p>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs text-orange-700">Total encaissé client</span>
+                    <span className="text-xl font-bold" style={{ color: ORANGE }}>{formatPrice(saleTotalAmount)}</span>
+                  </div>
+                  {saleTotalDeliveryFees > 0 && (
+                    <div className="flex justify-between items-baseline border-t border-orange-200 pt-2">
+                      <span className="text-xs text-orange-700">Frais de livraison</span>
+                      <span className="text-sm font-semibold text-orange-600">− {formatPrice(saleTotalDeliveryFees)}</span>
+                    </div>
+                  )}
+                  {saleTotalDeliveryFees > 0 && (
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs font-semibold text-green-800">Net à reverser au magasin</span>
+                      <span className="text-lg font-bold text-green-700">{formatPrice(saleNetTotalAmount)}</span>
+                    </div>
+                  )}
                   <p className="text-xs text-orange-700">{saleCartLines.length} article{saleCartLines.length > 1 ? "s" : ""}</p>
                 </div>
-                {/* Carreaux produits */}
-                <div className="grid grid-cols-4 gap-2">
-                  {saleCartLines.map((l) => (
-                    <ProductTile
-                      key={l.productId}
-                      photo={l.stock ? firstPhoto(l.stock) : null}
-                      name={l.stock?.product.name ?? l.productId}
-                      badge={l.qty}
-                      badgeBg={ORANGE}
-                      sub={formatPrice(l.unitPrice)}
-                      size="md"
-                    />
-                  ))}
-                </div>
+
                 {/* Détail ligne par ligne */}
                 <div className="rounded-2xl border border-neutral-200 bg-white divide-y divide-neutral-100">
                   {saleCartLines.map((l) => (
-                    <div key={l.productId} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <span className="text-neutral-700 truncate flex-1">{l.stock?.product.name ?? l.productId}</span>
-                      <span className="text-neutral-500 shrink-0 ml-2">{l.qty} × {formatPrice(l.unitPrice)}</span>
-                      <span className="font-semibold ml-3 shrink-0" style={{ color: ORANGE }}>{formatPrice(l.qty * l.unitPrice)}</span>
+                    <div key={l.productId} className="px-4 py-3 text-sm space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-700 truncate flex-1">{l.stock?.product.name ?? l.productId}</span>
+                        <span className="font-semibold ml-3 shrink-0" style={{ color: ORANGE }}>{formatPrice(l.qty * l.unitPrice)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-neutral-400">
+                        <span>{l.qty} × {formatPrice(l.unitPrice)}</span>
+                        {l.deliveryType !== "none" && (
+                          <span className={cn(
+                            "px-1.5 py-0.5 rounded-full font-medium",
+                            l.deliveryType === "free" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                          )}>
+                            {l.deliveryType === "free"
+                              ? `Livraison gratuite (−${formatPrice(l.deliveryFee)}/u)`
+                              : `Livraison payante (+${formatPrice(l.deliveryFee)}/u)`}
+                          </span>
+                        )}
+                      </div>
+                      {l.deliveryType === "free" && (
+                        <p className="text-xs text-green-700">Net magasin : {formatPrice(l.qty * l.netUnitPrice)}</p>
+                      )}
                     </div>
                   ))}
                   <div className="flex items-center justify-between px-4 py-3 font-bold text-sm">
-                    <span>Total</span>
+                    <span>Total encaissé</span>
                     <span style={{ color: ORANGE }}>{formatPrice(saleTotalAmount)}</span>
                   </div>
+                  {saleTotalDeliveryFees > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3 font-bold text-sm bg-green-50 rounded-b-2xl">
+                      <span className="text-green-800">Net magasin</span>
+                      <span className="text-green-700">{formatPrice(saleNetTotalAmount)}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600">Note (optionnel)</label>
@@ -1514,13 +2046,25 @@ export default function LivreurReapprovisionnementPage() {
               type="button"
               onClick={() => { setMainTab("ventes"); setSaleStep("history") }}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4.5rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[4rem] py-1 touch-manipulation",
                 mainTab === "ventes" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "ventes" ? { color: ORANGE } : undefined}
             >
               <ShoppingBag className={cn("h-6 w-6", mainTab !== "ventes" && "opacity-70")} />
               <span className="text-[11px]">Ventes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMainTab("retours"); setRetourStep("list"); setRetourItem(null) }}
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 min-w-[4rem] py-1 touch-manipulation",
+                mainTab === "retours" ? "font-semibold" : "text-neutral-400",
+              )}
+              style={mainTab === "retours" ? { color: "#dc2626" } : undefined}
+            >
+              <RotateCcw className={cn("h-6 w-6", mainTab !== "retours" && "opacity-70")} />
+              <span className="text-[11px]">Retours</span>
             </button>
           </div>
         </nav>

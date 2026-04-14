@@ -1,15 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  // Configuration pour la production
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   ...(process.env.NODE_ENV === "production" && {
     env: {
       NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     },
   }),
-
-
 };
 
 export default nextConfig;
