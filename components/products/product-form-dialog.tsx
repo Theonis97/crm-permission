@@ -403,7 +403,7 @@ export function ProductFormDialog({
                     <SelectTrigger id="categoryId" className="h-12">
                       <SelectValue placeholder="Sélectionner une catégorie" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[2100]">
                       {categories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.name}
@@ -428,7 +428,7 @@ export function ProductFormDialog({
                     <SelectTrigger id="brandId" className="h-12">
                       <SelectValue placeholder="Sélectionner une marque (optionnel)" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[2100]">
                       <SelectItem value="none">Aucune marque</SelectItem>
                       {brands.map((brand) => (
                         <SelectItem key={brand.id} value={brand.id}>
