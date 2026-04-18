@@ -1013,7 +1013,7 @@ export default function RevenuesPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un magasin" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[2100]">
                   {stores.map((store) => (
                     <SelectItem key={store.id} value={store.id}>
                       {store.name}
@@ -1032,7 +1032,7 @@ export default function RevenuesPage() {
                     {format(createDate, "dd/MM/yyyy")}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
+                <PopoverContent className="w-auto p-0 z-[2100]">
                   <Calendar
                     mode="single"
                     selected={createDate}

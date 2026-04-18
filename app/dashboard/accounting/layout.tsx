@@ -9,13 +9,11 @@ export default function AccountingLayout({
   children: React.ReactNode
 }) {
   return (
-    <AccountingAccessGuard>
       <div className="flex h-screen bg-gray-50">
         <AccountingSidebar />
         <main className="flex-1 overflow-auto">
           {children}
         </main>
       </div>
-    </AccountingAccessGuard>
   )
 }
