@@ -1,9 +1,19 @@
-import { randomBytes } from "crypto"
+import { randomUUID } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ProductReturnReason, ProductCondition } from "@prisma/client"
+import { Prisma, ProductReturnReason, ProductCondition } from "@prisma/client"
+
+/** Numéros RET-/SAV- uniques (contrainte globale sur `number` et `tracking_number`). */
+function generateSavReturnNumbers() {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+  const unique = randomUUID().replace(/-/g, "")
+  return {
+    returnNumber: `RET-${dateStr}-${unique}`,
+    trackingNumber: `SAV-${dateStr}-${unique}`,
+  }
+}
 
 // GET - Liste des retours de produits d'un magasin
 export async function GET(
@@ -163,14 +173,6 @@ export async function POST(
       }
     }
 
-    // Numéros uniques (contrainte @unique globale sur `number` / `tracking_number`).
-    // L’ancien compteur « par magasin + jour » recréait le même RET-…-001 sur chaque magasin → erreur au 2ᵉ magasin.
-    // Ajout d’entropie pour éviter aussi les courses entre deux créations le même jour.
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "")
-    const entropy = randomBytes(4).toString("hex").toUpperCase()
-    const returnNumber = `RET-${dateStr}-${entropy}`
-    const trackingNumber = `SAV-${dateStr}-${entropy}`
-
     const createdByUser = session.user.email
       ? await prisma.user.findUnique({
           where: { email: session.user.email },
@@ -253,66 +255,84 @@ export async function POST(
       })
     )
 
-    // Créer le retour avec ses items - Statut PENDING par défaut
-    const productReturn = await prisma.productReturn.create({
-      data: {
-        number: returnNumber,
-        trackingNumber,
-        storeId,
-        storeOrderId: storeOrderId || null,
-        customerName: customerName || storeOrder?.customerName || null,
-        customerPhone: customerPhone || storeOrder?.customerPhone || null,
-        totalRefundAmount: 0,
-        totalCustomerAddition: 0,
-        totalDiscount: 0,
-        status: "PENDING", // En attente de traitement SAV
-        notes,
-        createdById,
-        items: {
-          create: itemsData
-        }
+    // Créer le retour avec ses items - Statut PENDING par défaut (retry si collision rare sur number / tracking_number)
+    const createInclude = {
+      storeOrder: {
+        select: {
+          id: true,
+          number: true,
+        },
       },
-      include: {
-        storeOrder: {
-          select: {
-            id: true,
-            number: true,
-          }
-        },
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                photos: true,
-                prixVente: true,
-              }
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              photos: true,
+              prixVente: true,
             },
-            variant: {
-              select: {
-                id: true,
-                name: true,
-                sku: true,
-              }
-            }
-          }
+          },
+          variant: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+            },
+          },
         },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          }
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    } as const
+
+    let productReturn!: Awaited<ReturnType<typeof prisma.productReturn.create>>
+    const maxAttempts = 5
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const nums = generateSavReturnNumbers()
+      try {
+        productReturn = await prisma.productReturn.create({
+          data: {
+            number: nums.returnNumber,
+            trackingNumber: nums.trackingNumber,
+            storeId,
+            storeOrderId: storeOrderId || null,
+            customerName: customerName || storeOrder?.customerName || null,
+            customerPhone: customerPhone || storeOrder?.customerPhone || null,
+            totalRefundAmount: 0,
+            totalCustomerAddition: 0,
+            totalDiscount: 0,
+            status: "PENDING",
+            notes,
+            createdById,
+            items: {
+              create: itemsData,
+            },
+          },
+          include: createInclude,
+        })
+        break
+      } catch (err) {
+        const isUnique =
+          err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"
+        if (!isUnique || attempt === maxAttempts - 1) {
+          throw err
         }
       }
-    })
+    }
 
     // NOTE: Le stock n'est PAS modifié à la création du retour
     // Le stock du produit d'échange sera décrémenté uniquement lors de la validation par la caisse
     // Cela permet au SAV de préparer la demande sans impacter le stock immédiatement
-    
-    console.log(`[SAV] Retour ${returnNumber} créé avec ${itemsData.length} articles - En attente de traitement`)
+
+    console.log(
+      `[SAV] Retour ${productReturn.number} créé avec ${itemsData.length} articles - En attente de traitement`
+    )
 
     return NextResponse.json(productReturn, { status: 201 })
   } catch (error: any) {

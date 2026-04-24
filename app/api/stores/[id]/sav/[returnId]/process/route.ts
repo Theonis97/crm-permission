@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import {
   assertExchangeProductsAvailableInStore,
   decrementStoreStockForExchangeOut,
+  isCrossCatalogExchange,
 } from "@/lib/sav-exchange-stock"
 import {
   recordStoreReturnedGoodsLines,
@@ -161,6 +162,10 @@ export async function POST(
               exchangeProductId: p.exchangeProductId ?? null,
               quantity: ri?.quantity ?? 0,
               productName: ri?.exchangeProductName ?? ri?.productName,
+              returnedProductId: ri?.productId ?? null,
+              returnedVariantId: ri?.variantId ?? null,
+              exchangeVariantId:
+                p.exchangeProductVariantId ?? ri?.exchangeProductVariantId ?? null,
             }
           })
         )
@@ -210,11 +215,18 @@ export async function POST(
 
         if (processItem.exchangeProductId) {
           await prisma.$transaction(async (tx) => {
+            const cross = isCrossCatalogExchange(
+              returnItem.productId,
+              processItem.exchangeProductId,
+              returnItem.variantId,
+              processItem.exchangeProductVariantId ?? null
+            )
             await decrementStoreStockForExchangeOut(tx, {
               storeId,
               productId: processItem.exchangeProductId!,
               quantity: returnItem.quantity,
               labelForError: exchangeProductName ?? undefined,
+              allowInsufficientStock: cross,
             })
 
             await tx.stockMovement.create({

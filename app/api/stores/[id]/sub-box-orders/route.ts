@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { decrementStoreStockForExchangeOut } from "@/lib/sav-exchange-stock"
+import {
+  decrementStoreStockForExchangeOut,
+  isCrossCatalogExchange,
+} from "@/lib/sav-exchange-stock"
 import {
   recordStoreReturnedGoodsLines,
   RETURNED_GOODS_SOURCE,
@@ -151,6 +154,30 @@ export async function PATCH(
       if (!linkedProductReturn) {
         linkedProductReturn = await prisma.productReturn.findFirst({
           where: { savSubBoxOrderId: orderId },
+          include: {
+            items: {
+              select: {
+                productId: true,
+                variantId: true,
+                exchangeProductId: true,
+                exchangeProductVariantId: true,
+              },
+            },
+          },
+        })
+      } else {
+        linkedProductReturn = await prisma.productReturn.findUnique({
+          where: { id: linkedProductReturn.id },
+          include: {
+            items: {
+              select: {
+                productId: true,
+                variantId: true,
+                exchangeProductId: true,
+                exchangeProductVariantId: true,
+              },
+            },
+          },
         })
       }
 
@@ -169,11 +196,22 @@ export async function PATCH(
         const skipStock = stockAlreadyDebited === true
         if (!skipStock) {
           for (const item of orderWithDetails?.items || []) {
+            const returnLine = linkedProductReturn?.items?.find(
+              (i: { exchangeProductId: string | null }) =>
+                i.exchangeProductId === item.productId
+            )
+            const cross = isCrossCatalogExchange(
+              returnLine?.productId,
+              item.productId,
+              returnLine?.variantId,
+              returnLine?.exchangeProductVariantId
+            )
             await decrementStoreStockForExchangeOut(tx, {
               storeId,
               productId: item.productId,
               quantity: item.quantity,
               labelForError: item.name,
+              allowInsufficientStock: cross,
             })
 
             await tx.product.update({

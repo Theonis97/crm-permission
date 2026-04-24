@@ -153,8 +153,11 @@ export default function StorePage({ params }: StorePageProps) {
       const data = await response.json().catch(() => null)
 
       if (!response.ok) {
-        const body = data && typeof data === "object" ? (data as { message?: string; error?: string }) : {}
-        const msg =
+        const body =
+          data && typeof data === "object"
+            ? (data as { message?: string; error?: string; debugMessage?: string })
+            : {}
+        const base =
           body.error ||
           body.message ||
           (response.status === 401
@@ -162,6 +165,7 @@ export default function StorePage({ params }: StorePageProps) {
             : response.status === 403
               ? "Vous n'avez pas la permission d'accéder aux statistiques de ce magasin."
               : `Erreur ${response.status} lors du chargement`)
+        const msg = body.debugMessage ? `${base} — ${body.debugMessage}` : base
         throw new Error(msg)
       }
 

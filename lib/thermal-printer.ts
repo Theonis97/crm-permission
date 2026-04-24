@@ -237,45 +237,98 @@ export class ThermalPrinterService {
   }
 
   /**
+   * HTML complet pour impression / prévisualisation (ticket en corps monospace).
+   */
+  private buildTicketHtmlDocument(data: TicketData, titleSuffix: string): string {
+    const content = this.generateTicketContent(data)
+    const logoSection = data.storeLogo
+      ? `<div style="text-align: center; margin-bottom: 10px;"><img src="${data.storeLogo}" alt="Logo" style="max-width: 50mm; max-height: 20mm; object-fit: contain;" /></div>`
+      : ''
+
+    return [
+      '<!DOCTYPE html>',
+      '<html>',
+      '<head>',
+      `<title>Ticket ${data.ticketNumber}${titleSuffix}</title>`,
+      '<style>',
+      '@page { size: 58mm auto; margin: 0; }',
+      'body { font-family: "Courier New", monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 2mm; white-space: pre-wrap; }',
+      '@media print { body { font-size: 10px; } }',
+      '</style>',
+      '</head>',
+      '<body>',
+      logoSection,
+      content.replace(/\n/g, '<br>'),
+      '</body>',
+      '</html>',
+    ].join('')
+  }
+
+  /**
+   * Impression sans nouvelle fenêtre (contournement du blocage des pop-ups
+   * quand window.open n'est plus dans la chaîne du geste utilisateur, ex. après await).
+   */
+  private printViaHiddenIframe(printContent: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute(
+        'style',
+        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none'
+      )
+      document.body.appendChild(iframe)
+
+      const win = iframe.contentWindow
+      const doc = iframe.contentDocument
+      if (!win || !doc) {
+        iframe.remove()
+        reject(
+          new Error(
+            "Impossible d'imprimer : iframe indisponible. Utilisez la boîte d'impression du POS ou autorisez les pop-ups."
+          )
+        )
+        return
+      }
+
+      doc.open()
+      doc.write(printContent)
+      doc.close()
+
+      const cleanup = () => {
+        iframe.remove()
+      }
+
+      setTimeout(() => {
+        try {
+          win.focus()
+          win.print()
+          resolve()
+        } catch (e) {
+          console.error("Erreur lors de l'impression (iframe):", e)
+          reject(e)
+        } finally {
+          setTimeout(cleanup, 500)
+        }
+      }, 150)
+    })
+  }
+
+  /**
    * Imprime le ticket via l'API Web Print
    */
   async printTicket(data: TicketData): Promise<boolean> {
     try {
-      const content = this.generateTicketContent(data)
-      
-      // Créer un élément pour l'impression
-      const printWindow = window.open('', '_blank', 'width=400,height=600')
-      if (!printWindow) {
-        throw new Error('Impossible d\'ouvrir la fenêtre d\'impression')
-      }
+      const printContent = this.buildTicketHtmlDocument(data, '')
 
-      // Générer le contenu HTML simple
-      const logoSection = data.storeLogo ? 
-        `<div style="text-align: center; margin-bottom: 10px;"><img src="${data.storeLogo}" alt="Logo" style="max-width: 50mm; max-height: 20mm; object-fit: contain;" /></div>` : ''
-      
-      // HTML simplifié pour éviter les erreurs
-      const printContent = [
-        '<!DOCTYPE html>',
-        '<html>',
-        '<head>',
-        `<title>Ticket ${data.ticketNumber}</title>`,
-        '<style>',
-        '@page { size: 58mm auto; margin: 0; }',
-        'body { font-family: "Courier New", monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 2mm; white-space: pre-wrap; }',
-        '@media print { body { font-size: 10px; } }',
-        '</style>',
-        '</head>',
-        '<body>',
-        logoSection,
-        content.replace(/\n/g, '<br>'),
-        '</body>',
-        '</html>'
-      ].join('')
+      const printWindow = window.open('', '_blank', 'width=400,height=600')
+
+      if (!printWindow) {
+        await this.printViaHiddenIframe(printContent)
+        return true
+      }
 
       printWindow.document.write(printContent)
       printWindow.document.close()
 
-      // Attendre que le contenu soit chargé puis imprimer
       setTimeout(() => {
         try {
           printWindow.print()
@@ -303,7 +356,9 @@ export class ThermalPrinterService {
     
     const previewWindow = window.open('', '_blank', 'width=400,height=600')
     if (!previewWindow) {
-      throw new Error('Impossible d\'ouvrir la fenêtre de prévisualisation')
+      throw new Error(
+        "Impossible d'ouvrir la prévisualisation (pop-up bloquée). Autorisez les fenêtres contextuelles pour ce site."
+      )
     }
     
     // Générer le logo pour la prévisualisation

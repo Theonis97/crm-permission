@@ -177,6 +177,9 @@ export async function POST(
             exchangeProductId: i.exchangeProductId,
             quantity: i.quantity,
             productName: i.exchangeProductName ?? i.productName,
+            returnedProductId: i.productId ?? null,
+            returnedVariantId: i.variantId ?? null,
+            exchangeVariantId: i.exchangeProductVariantId ?? null,
           }))
         )
       } catch (e: unknown) {

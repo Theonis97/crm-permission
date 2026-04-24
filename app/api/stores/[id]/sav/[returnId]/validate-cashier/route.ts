@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { decrementStoreStockForExchangeOut } from "@/lib/sav-exchange-stock"
+import {
+  assertExchangeProductsAvailableInStore,
+  decrementStoreStockForExchangeOut,
+  isCrossCatalogExchange,
+} from "@/lib/sav-exchange-stock"
 import {
   recordStoreReturnedGoodsLines,
   RETURNED_GOODS_SOURCE,
@@ -57,6 +61,27 @@ export async function POST(
     // Déterminer le nouveau statut selon le type de résolution
     const newStatus = productReturn.resolutionType === "REFUND" ? "REFUNDED" : "EXCHANGED"
 
+    if (productReturn.resolutionType === "EXCHANGE") {
+      try {
+        await assertExchangeProductsAvailableInStore(
+          storeId,
+          productReturn.items
+            .filter((i) => i.exchangeProductId)
+            .map((i) => ({
+              exchangeProductId: i.exchangeProductId,
+              quantity: i.quantity,
+              productName: i.exchangeProductName ?? i.productName,
+              returnedProductId: i.productId,
+              returnedVariantId: i.variantId,
+              exchangeVariantId: i.exchangeProductVariantId,
+            }))
+        )
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Vérification stock impossible"
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
+    }
+
     // Transaction pour mettre à jour le retour et le stock
     const result = await prisma.$transaction(async (tx) => {
       // 1. Mettre à jour le statut du retour
@@ -76,11 +101,18 @@ export async function POST(
       // 2. Gérer le stock selon le type de résolution
       for (const item of productReturn.items) {
         if (productReturn.resolutionType === "EXCHANGE" && item.exchangeProductId) {
+          const cross = isCrossCatalogExchange(
+            item.productId,
+            item.exchangeProductId,
+            item.variantId,
+            item.exchangeProductVariantId
+          )
           await decrementStoreStockForExchangeOut(tx, {
             storeId,
             productId: item.exchangeProductId,
             quantity: item.quantity,
             labelForError: item.exchangeProduct?.name ?? undefined,
+            allowInsufficientStock: cross,
           })
 
           await tx.stockMovement.create({

@@ -23,7 +23,8 @@
     "permissions:product": "node scripts/add-product-permissions.js",
     "permissions:sales": "node scripts/add-sales-permissions.js",
     "permissions:task": "node scripts/add-task-permissions.js",
-    "permissions:opportunity": "node scripts/add-opportunity-permissions.js"
+    "permissions:opportunity": "node scripts/add-opportunity-permissions.js",
+    "delete-test-sales": "npx tsx scripts/delete-test-store-orders.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
