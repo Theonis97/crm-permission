@@ -35,7 +35,7 @@ export async function GET(
       },
     })
 
-    if (!user || !hasPermission(user, "stores.view")) {
+    if (!user || !(await hasPermission(user, "stores.view"))) {
       return NextResponse.json(
         { error: "Permission refusée" },
         { status: 403 }
@@ -75,8 +75,10 @@ export async function GET(
     const lowStockProducts = storeProducts.filter(sp => sp.stock <= sp.minStock).length
     const outOfStockProducts = storeProducts.filter(sp => sp.stock === 0).length
     const stockValue = storeProducts.reduce((sum, sp) => {
-      const price = sp.prixVente || sp.product.prixVente
-      return sum + (price * sp.stock)
+      if (!sp.product) return sum
+      const price = sp.prixVente ?? sp.product.prixVente ?? 0
+      const qty = Number(sp.stock) || 0
+      return sum + price * qty
     }, 0)
 
     // === STATISTIQUES DES COMMANDES CLIENTS (StoreOrder) ===
@@ -204,15 +206,18 @@ export async function GET(
       revenue: number
     }>()
 
-    orderItemsThisMonth.forEach(item => {
+    orderItemsThisMonth.forEach((item) => {
       const productId = item.productId
+      const product = item.product
+      if (!productId || !product) return
+
       if (productSales.has(productId)) {
         const stats = productSales.get(productId)!
         stats.quantity += item.quantity
         stats.revenue += item.total
       } else {
         productSales.set(productId, {
-          product: item.product,
+          product,
           quantity: item.quantity,
           revenue: item.total,
         })
@@ -220,10 +225,12 @@ export async function GET(
     })
 
     const topProductsByQuantity = Array.from(productSales.values())
+      .filter((v) => v.product != null)
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 10)
 
     const topProductsByRevenue = Array.from(productSales.values())
+      .filter((v) => v.product != null)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 4)
 
@@ -342,20 +349,30 @@ export async function GET(
         createdAt: order.createdAt,
       })),
       topProducts: {
-        byQuantity: topProductsByQuantity.map(item => ({
-          id: item.product.id,
-          name: item.product.name,
-          sku: item.product.sku,
-          quantity: item.quantity,
-          revenue: item.revenue,
-          categoryName: item.product.category?.name,
-        })),
-        byRevenue: topProductsByRevenue.map(item => ({
-          id: item.product.id,
-          name: item.product.name,
-          quantity: item.quantity,
-          revenue: item.revenue,
-        })),
+        byQuantity: topProductsByQuantity
+          .filter((item) => item.product != null)
+          .map((item) => {
+            const p = item.product!
+            return {
+              id: p.id,
+              name: p.name,
+              sku: p.sku,
+              quantity: item.quantity,
+              revenue: item.revenue,
+              categoryName: p.category?.name,
+            }
+          }),
+        byRevenue: topProductsByRevenue
+          .filter((item) => item.product != null)
+          .map((item) => {
+            const p = item.product!
+            return {
+              id: p.id,
+              name: p.name,
+              quantity: item.quantity,
+              revenue: item.revenue,
+            }
+          }),
       },
       charts: {
         monthlyRevenue,
@@ -364,8 +381,12 @@ export async function GET(
     })
   } catch (error) {
     console.error("Error fetching store stats:", error)
+    const debug =
+      process.env.NODE_ENV !== "production" && error instanceof Error
+        ? { debugMessage: error.message }
+        : {}
     return NextResponse.json(
-      { error: "Erreur lors de la récupération des statistiques" },
+      { error: "Erreur lors de la récupération des statistiques", ...debug },
       { status: 500 }
     )
   }

@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Upload, X, FileIcon, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { formatFileSize, GED_MAX_FILE_SIZE, GED_ALLOWED_MIME_TYPES } from "@/lib/s3"
 
 interface GedUploadModalProps {

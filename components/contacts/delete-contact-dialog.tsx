@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { AlertTriangle } from "lucide-react"
 import type { Contact } from "@/types/contacts"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface DeleteContactDialogProps {
   open: boolean

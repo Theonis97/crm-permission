@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession, hasAnyPermission } from "@/lib/auth-helpers"
-
-const DEFAULT_PAYROLL_ACCESS_EMAIL = "gabinmoundziegou@gmail.com"
+import { payrollCodeRecipientEmail } from "@/lib/secure-module-code-email"
 
 // GET /api/payroll/access/config - Récupérer la config
 export async function GET() {
@@ -20,7 +19,7 @@ export async function GET() {
     })
 
     return NextResponse.json({
-      recipientEmail: config?.recipientEmail || DEFAULT_PAYROLL_ACCESS_EMAIL,
+      recipientEmail: payrollCodeRecipientEmail(config?.recipientEmail),
       isDefault: !config,
       updatedBy: config?.updatedBy || null,
       updatedAt: config?.updatedAt || null,

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Printer, Mail, Download, ArrowLeft, Loader2, Trash2 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 export default function InvoiceViewPage() {
   const params = useParams()

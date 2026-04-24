@@ -34,7 +34,7 @@ import {
   ImageIcon,
   MinusCircle,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface StockItem {
   id: string

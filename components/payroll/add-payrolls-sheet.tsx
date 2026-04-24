@@ -21,7 +21,7 @@ import {
   CheckCircle,
   AlertCircle,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface EmployeeProfile {
   id: string

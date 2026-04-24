@@ -19,7 +19,7 @@ import {
   Edit
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { CreateTaskSheet } from "@/components/tasks/create-task-sheet"
 import { EditTaskSheet } from "@/components/tasks/edit-task-sheet"
 import { useSession } from "next-auth/react"

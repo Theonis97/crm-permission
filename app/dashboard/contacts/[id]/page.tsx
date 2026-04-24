@@ -38,7 +38,7 @@ import {
 import type { Contact } from "@/types/contacts"
 import { EditContactSheet } from "@/components/contacts/edit-contact-sheet"
 import { DeleteContactDialog } from "@/components/contacts/delete-contact-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Save, Loader2, ShieldCheck, X } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface StorePermission {
   id: string

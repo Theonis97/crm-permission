@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Printer } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import JsBarcode from "jsbarcode"
 
 export default function BarcodePrintPage() {

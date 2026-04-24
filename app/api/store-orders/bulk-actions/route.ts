@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import { sendOrderCancellationEmail, sendOrderDeliveredEmail } from "@/lib/email-service"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 // POST - Actions groupées sur les commandes
 export async function POST(request: NextRequest) {
@@ -177,6 +178,12 @@ export async function POST(request: NextRequest) {
                   })
                 }
 
+                await adjustPackAssembledForProxyProduct(tx, {
+                  storeId: order.storeId,
+                  productId: item.productId,
+                  deltaPackUnits: item.quantity,
+                })
+
                 // Créer le mouvement de stock
                 await tx.stockMovement.create({
                   data: {
@@ -279,6 +286,12 @@ export async function POST(request: NextRequest) {
                   } else {
                     throw new Error(`Produit ${item.name} non trouvé dans le stock du magasin`)
                   }
+
+                  await adjustPackAssembledForProxyProduct(tx, {
+                    storeId: order.storeId,
+                    productId: item.productId,
+                    deltaPackUnits: -item.quantity,
+                  })
 
                   // Créer le mouvement de stock (SALE)
                   await tx.stockMovement.create({

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Loader2, Folder, FolderInput, Copy, ChevronRight, Home } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface GedFile {

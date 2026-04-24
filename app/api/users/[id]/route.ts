@@ -100,7 +100,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await prisma.attendanceLog.deleteMany({ where: { userId: id } })
     await prisma.attendanceDevice.deleteMany({ where: { OR: [{ userId: id }, { approvedBy: id }] } })
     await prisma.attendanceQRToken.deleteMany({ where: { usedBy: id } })
-    await prisma.pWAPushSubscription.deleteMany({ where: { userId: id } })
     await prisma.dayClose.deleteMany({ where: { userId: id } })
 
     // Paie - Dissocier les relations optionnelles

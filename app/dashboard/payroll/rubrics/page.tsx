@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { CreateRubricSheet } from "@/components/payroll/create-rubric-sheet"
 import { EditRubricSheet } from "@/components/payroll/edit-rubric-sheet"
 import { RubricEmployeesSheet } from "@/components/payroll/rubric-employees-sheet"

@@ -21,9 +21,32 @@ interface ChangeCalculatorProps {
 export function ChangeCalculator({ totalToPay }: ChangeCalculatorProps) {
     const [amountReceived, setAmountReceived] = useState<string>("")
 
-    const parsedAmount = parseInt(amountReceived || "0")
-    const changeDue = Math.max(0, parsedAmount - totalToPay)
-    const isSufficient = parsedAmount >= totalToPay
+    const refundDue = totalToPay < 0 ? Math.abs(totalToPay) : 0
+    const collectDue = totalToPay > 0 ? totalToPay : 0
+
+    const parsedAmount = parseInt(amountReceived || "0", 10)
+    const changeDue =
+        collectDue > 0 ? Math.max(0, parsedAmount - collectDue) : 0
+    const isSufficient = collectDue === 0 || parsedAmount >= collectDue
+
+    if (refundDue > 0) {
+        return (
+            <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Calculator className="h-4 w-4" />
+                    Remboursement
+                </div>
+                <div className="rounded-md border bg-white px-3 py-2 text-right">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                        À rendre
+                    </div>
+                    <div className="text-lg font-bold tabular-nums text-gray-900">
+                        {formatFCFA(refundDue)}
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-200">

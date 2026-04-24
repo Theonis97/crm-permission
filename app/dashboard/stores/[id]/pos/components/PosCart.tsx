@@ -19,13 +19,20 @@ interface PosCartProps {
   storeId: string
   setShowPrinterSettings: (show: boolean) => void
   cartItemsCount: number
-  updateItemDiscountAmount: (productId: string, discount: number) => void
-  updateQuantity: (productId: string, quantity: number) => void
-  removeFromCart: (productId: string) => void
+  updateItemDiscountAmount: (lineId: string, discount: number) => void
+  updateQuantity: (lineId: string, quantity: number) => void
+  removeFromCart: (lineId: string) => void
   cartTotal: number
   cartSubtotal: number
   globalDiscountApplied: number
   setIsCheckoutOpen: (open: boolean) => void
+  /** Sous-caisse (ex. remboursement sans ligne) : garde le pied du panier actif */
+  activeSubBoxOrder?: {
+    clientCode?: string
+    subtotal?: number
+    totalDiscount?: number
+    items?: unknown[]
+  } | null
 }
 
 export function PosCart({
@@ -39,8 +46,19 @@ export function PosCart({
   cartTotal,
   cartSubtotal,
   globalDiscountApplied,
-  setIsCheckoutOpen
+  setIsCheckoutOpen,
+  activeSubBoxOrder = null,
 }: PosCartProps) {
+  const isSavRefundOnly =
+    !!activeSubBoxOrder &&
+    String(activeSubBoxOrder.clientCode || "").startsWith("SAV-") &&
+    !activeSubBoxOrder.items?.length &&
+    (Number(activeSubBoxOrder.subtotal) || 0) -
+      (Number(activeSubBoxOrder.totalDiscount) || 0) <
+      0
+
+  const showCartFooter = cart.length > 0 || isSavRefundOnly
+
   return (
     <div className="w-92 bg-white border-l flex flex-col h-full">
       {/* Header Panier */}
@@ -75,7 +93,7 @@ export function PosCart({
         ) : (
           <div className="p-3 space-y-2">
             {cart.map((item) => (
-              <div key={item.product.id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+              <div key={item.lineId} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
                 {item.product.photos && item.product.photos.length > 0 ? (
                   <img
                     src={item.product.photos[0]}
@@ -102,7 +120,7 @@ export function PosCart({
                       type="number"
                       placeholder="Remise FCFA"
                       value={item.discountAmount || ''}
-                      onChange={(e) => updateItemDiscountAmount(item.product.id, Number(e.target.value))}
+                      onChange={(e) => updateItemDiscountAmount(item.lineId, Number(e.target.value))}
                       className="h-7 text-xs w-24"
                       min="0"
                     />
@@ -112,7 +130,7 @@ export function PosCart({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        updateQuantity(item.product.id, item.quantity - 1)
+                        updateQuantity(item.lineId, item.quantity - 1)
                       }}
                       className="w-5 h-5 bg-white border rounded flex items-center justify-center hover:bg-gray-50"
                     >
@@ -126,7 +144,7 @@ export function PosCart({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        updateQuantity(item.product.id, item.quantity + 1)
+                        updateQuantity(item.lineId, item.quantity + 1)
                       }}
                       disabled={item.quantity >= item.product.stock}
                       className="w-5 h-5 bg-blue-500 text-white rounded flex items-center justify-center hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -166,7 +184,7 @@ export function PosCart({
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      removeFromCart(item.product.id)
+                      removeFromCart(item.lineId)
                     }}
                     className="text-red-500 hover:text-red-600 mt-1"
                   >
@@ -180,7 +198,7 @@ export function PosCart({
       </div>
 
       {/* Footer Panier - Total */}
-      {cart.length > 0 && (
+      {showCartFooter && (
         <div className="border-t p-3 space-y-3">
           {/* Calculateur de monnaie (Remplace la remise globale) */}
           <ChangeCalculator totalToPay={cartTotal} />
@@ -188,23 +206,36 @@ export function PosCart({
           <Separator />
 
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Sous-total</span>
-              <span className="font-medium">{cartSubtotal.toLocaleString()} F</span>
-            </div>
+            {!isSavRefundOnly && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Sous-total</span>
+                  <span className="font-medium">{cartSubtotal.toLocaleString()} F</span>
+                </div>
 
-            {/* Afficher la remise globale si applicable */}
-            {globalDiscountApplied > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Remise globale</span>
-                <span>-{globalDiscountApplied.toLocaleString()} F</span>
-              </div>
+                {globalDiscountApplied > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Remise globale</span>
+                    <span>-{globalDiscountApplied.toLocaleString()} F</span>
+                  </div>
+                )}
+                <Separator />
+              </>
             )}
-
-            <Separator />
             <div className="flex justify-between text-lg font-bold pt-1">
-              <span>Total</span>
-              <span className="text-blue-600">{cartTotal.toLocaleString()} F</span>
+              <span>
+                {cartTotal < 0 ? "À rendre" : "Total"}
+              </span>
+              <span
+                className={
+                  cartTotal < 0 ? "text-emerald-700" : "text-blue-600"
+                }
+              >
+                {cartTotal < 0
+                  ? Math.abs(cartTotal).toLocaleString("fr-FR")
+                  : cartTotal.toLocaleString("fr-FR")}{" "}
+                F
+              </span>
             </div>
           </div>
 

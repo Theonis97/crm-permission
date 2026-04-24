@@ -18,7 +18,7 @@ import {
   Play,
   RefreshCw 
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
 import { useStorePermissions } from "@/hooks/use-store-permissions"
 import { STORE_PERMISSIONS } from "@/types/store-auth"

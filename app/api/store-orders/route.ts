@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import { ExpoPushService } from "@/lib/notifications/expo-push-service"
-import { pwaPushNotificationService } from "@/lib/pwa-push-notifications"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 export async function POST(request: NextRequest) {
   try {
@@ -275,9 +275,8 @@ export async function POST(request: NextRequest) {
           data: stockMovements,
         })
 
-        // 3. Batch mise à jour des stocks du magasin
-        const stockUpdates = stockValidations.map(item => 
-          tx.storeProduct.update({
+        for (const item of stockValidations) {
+          await tx.storeProduct.update({
             where: { id: item.storeProductId },
             data: {
               stock: {
@@ -285,9 +284,12 @@ export async function POST(request: NextRequest) {
               },
             },
           })
-        )
-
-        await Promise.all(stockUpdates)
+          await adjustPackAssembledForProxyProduct(tx, {
+            storeId,
+            productId: item.productId,
+            deltaPackUnits: -item.quantity,
+          })
+        }
       } else {
         console.log('🚚 Livreur assigné - Le stock sera débité du livreur lors de la livraison');
       }
@@ -359,46 +361,6 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.log('⚠️ Pas de notification FCM envoyée - Aucune zone ni livreur assigné')
-    }
-
-    // 🔔 NOUVEAU : Envoyer notification PWA à tous les abonnés
-    try {
-      console.log('📱 Envoi notification PWA à tous les abonnés...')
-      
-      const notificationResult = await pwaPushNotificationService.sendNotificationToAllDrivers({
-        title: '🛒 Nouvelle commande POS !',
-        body: `${storeOrder.number} - ${storeOrder.total.toLocaleString()} FCFA - ${storeOrder.customerName}`,
-        icon: '/icons/icon-192x192.png',
-        badge: '/icons/badge-72x72.png',
-        data: {
-          type: 'NEW_POS_ORDER',
-          orderId: storeOrder.id,
-          orderNumber: storeOrder.number,
-          customerName: storeOrder.customerName,
-          total: storeOrder.total.toString(),
-          storeId: storeOrder.storeId,
-          storeName: storeOrder.store.name,
-          url: '/dashboard',
-          timestamp: new Date().toISOString()
-        },
-        actions: [
-          {
-            action: 'view',
-            title: 'Voir la commande',
-            icon: '/icons/view-icon.png'
-          },
-          {
-            action: 'dismiss',
-            title: 'Ignorer',
-            icon: '/icons/dismiss-icon.png'
-          }
-        ]
-      })
-      
-      console.log(`✅ Notification PWA envoyée à ${notificationResult} abonné(s)`)
-    } catch (pwaNotificationError) {
-      // Ne pas faire échouer la création de commande si la notification PWA échoue
-      console.error('❌ Erreur envoi notification PWA:', pwaNotificationError)
     }
 
     return NextResponse.json(storeOrder, { status: 201 })

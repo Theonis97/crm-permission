@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { usePermissions } from "@/hooks/use-permissions"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import type { SalesStats } from "@/types/sales"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { SalesHeader } from "@/components/sales/sales-header"

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import {
+  calculateGrossSalary,
+  calculateWorkingDaysInPeriod,
+} from "@/lib/payroll-calculator"
 
 // GET - Récupérer un bulletin de paie spécifique
 export async function GET(
@@ -228,6 +232,56 @@ export async function PUT(
       shouldRecalculateContributions = true
     }
 
+    // Brut (donc net et net à payer) depuis jours / heures / heures sup. — sans brut manuel
+    const mergedDays = daysWorked !== undefined ? daysWorked : existing.daysWorked
+    const mergedHours = hoursWorked !== undefined ? hoursWorked : existing.hoursWorked
+    const mergedOT = overtimeHours !== undefined ? overtimeHours : existing.overtimeHours
+    const hoursWorkloadChanged =
+      grossSalary === undefined &&
+      ((daysWorked !== undefined && daysWorked !== existing.daysWorked) ||
+        (hoursWorked !== undefined && hoursWorked !== existing.hoursWorked) ||
+        (overtimeHours !== undefined && overtimeHours !== existing.overtimeHours))
+
+    if (hoursWorkloadChanged) {
+      const [employeeProfileHw, periodHw] = await Promise.all([
+        prisma.employeePayrollProfile.findUnique({
+          where: { id: existing.employeeProfileId },
+        }),
+        prisma.payrollPeriod.findUnique({ where: { id: existing.periodId } }),
+      ])
+      if (employeeProfileHw && periodHw) {
+        const expectedWorkingDays = calculateWorkingDaysInPeriod(
+          periodHw.startDate,
+          periodHw.endDate,
+          employeeProfileHw.workingDaysPattern,
+        )
+        const newGrossFromHours = calculateGrossSalary(
+          {
+            contractType: employeeProfileHw.contractType,
+            baseSalary: employeeProfileHw.baseSalary,
+            dailyRate: employeeProfileHw.dailyRate,
+            hourlyRate: employeeProfileHw.hourlyRate,
+            workingDaysPattern: employeeProfileHw.workingDaysPattern,
+            workingHoursPerDay: employeeProfileHw.workingHoursPerDay,
+          },
+          mergedDays,
+          mergedHours,
+          mergedOT,
+          employeeProfileHw.overtimeRate,
+          expectedWorkingDays,
+        )
+        if (Math.round(newGrossFromHours * 100) !== Math.round(existing.grossSalary * 100)) {
+          updateData.grossSalary = newGrossFromHours
+          changes.push({
+            field: "grossSalary",
+            oldValue: String(existing.grossSalary),
+            newValue: String(newGrossFromHours),
+          })
+          shouldRecalculateContributions = true
+        }
+      }
+    }
+
     if (totalBonuses !== undefined && totalBonuses !== existing.totalBonuses) {
       changes.push({
         field: "totalBonuses",
@@ -248,7 +302,12 @@ export async function PUT(
 
     // Recalculer les cotisations si le salaire brut a changé
     if (shouldRecalculateContributions) {
-      const newGrossSalary = grossSalary || existing.grossSalary
+      const newGrossSalary =
+        updateData.grossSalary !== undefined
+          ? updateData.grossSalary
+          : grossSalary !== undefined
+            ? grossSalary
+            : existing.grossSalary
 
       // Récupérer le profil employé avec ses cotisations
       const employeeProfile = await prisma.employeePayrollProfile.findUnique({
@@ -275,15 +334,16 @@ export async function PUT(
 
         for (const ec of employeeProfile.contributions) {
           const contribution = ec.contribution
+          const appliedRate = ec.customRate ?? contribution.rate
           const baseAmount = newGrossSalary
-          const amount = Math.round((baseAmount * contribution.rate / 100) * 100) / 100
+          const amount = Math.round((baseAmount * appliedRate) / 100 * 100) / 100
 
           await prisma.payrollContributionLine.create({
             data: {
               payrollId: id,
               contributionId: contribution.id,
               baseAmount,
-              appliedRate: contribution.rate,
+              appliedRate,
               amount,
             },
           })
@@ -300,10 +360,23 @@ export async function PUT(
         updateData.totalDeductions = totalEmployeeDeductions
         updateData.employerCharges = totalEmployerCharges
 
-        // Recalculer le salaire net
-        const finalGrossSalary = updateData.grossSalary || existing.grossSalary
-        const finalBonuses = updateData.totalBonuses !== undefined ? updateData.totalBonuses : existing.totalBonuses
-        updateData.netSalary = Math.max(0, finalGrossSalary + finalBonuses - totalEmployeeDeductions)
+        // Primes / indemnités déjà sur le bulletin (lignes de rubriques)
+        const rubricSum = await prisma.payrollRubricLine.aggregate({
+          where: { payrollId: id },
+          _sum: { amount: true },
+        })
+        const rubricsTotal = rubricSum._sum.amount ?? 0
+
+        // Recalculer le salaire net (brut − cotisations salariales + rubriques)
+        const finalGrossSalary = newGrossSalary
+        updateData.netSalary = Math.max(
+          0,
+          finalGrossSalary + rubricsTotal - totalEmployeeDeductions,
+        )
+
+        // Reste à payer = net − déjà versé (inclut l’impact des heures sup. dans le net)
+        const paid = existing.paidAmount ?? 0
+        updateData.remainingAmount = Math.max(0, updateData.netSalary - paid)
 
         // Ajouter les changements de cotisations à l'audit
         if (totalEmployeeDeductions !== existing.totalDeductions) {
@@ -350,6 +423,10 @@ export async function PUT(
         const finalGrossSalary = updateData.grossSalary !== undefined ? updateData.grossSalary : existing.grossSalary
         const finalDeductions = updateData.totalDeductions !== undefined ? updateData.totalDeductions : existing.totalDeductions
         updateData.netSalary = Math.max(0, finalGrossSalary + totalRubrics - finalDeductions)
+        updateData.remainingAmount = Math.max(
+          0,
+          updateData.netSalary - (existing.paidAmount ?? 0),
+        )
 
         changes.push({
           field: "rubricLines",
@@ -362,6 +439,10 @@ export async function PUT(
         const finalGrossSalary = updateData.grossSalary !== undefined ? updateData.grossSalary : existing.grossSalary
         const finalDeductions = updateData.totalDeductions !== undefined ? updateData.totalDeductions : existing.totalDeductions
         updateData.netSalary = Math.max(0, finalGrossSalary - finalDeductions)
+        updateData.remainingAmount = Math.max(
+          0,
+          updateData.netSalary - (existing.paidAmount ?? 0),
+        )
       }
     }
 

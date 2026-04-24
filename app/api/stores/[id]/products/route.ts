@@ -42,12 +42,19 @@ export async function GET(
     }
 
     const { id: storeId } = await params
+    const { searchParams } = new URL(request.url)
+    const includePackProxies =
+      searchParams.get("includePackProxies") === "true" ||
+      searchParams.get("forPos") === "1"
 
     // Récupérer les produits du magasin avec leurs informations complètes
     const storeProducts = await prisma.storeProduct.findMany({
       where: {
         storeId,
         isActive: true,
+        ...(includePackProxies
+          ? {}
+          : { product: { linkedStorePackId: null } }),
       },
       include: {
         product: {
@@ -161,6 +168,16 @@ export async function POST(
 
     if (!product) {
       return NextResponse.json({ error: "Produit introuvable" }, { status: 404 })
+    }
+
+    if (product.linkedStorePackId) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce produit est lié à un pack (caisse). Gérez-le depuis l’écran Packs, pas depuis l’inventaire produits.",
+        },
+        { status: 400 }
+      )
     }
 
     // Vérifier si le produit n'est pas déjà dans le magasin

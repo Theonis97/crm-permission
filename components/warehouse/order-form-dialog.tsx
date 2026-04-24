@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { ShoppingCart, Loader2, X, Plus, Search, AlertTriangle, Package } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface Store {

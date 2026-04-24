@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
@@ -41,6 +41,8 @@ import {
  Calendar,
   RotateCcw,
   Receipt,
+  Layers,
+  PackageSearch,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
@@ -98,6 +100,12 @@ const catalogueItems: MenuItem[] = [
     label: "Marques", 
     href: "/brands",
     permission: STORE_PERMISSIONS.BRANDS_VIEW
+  },
+  {
+    icon: Layers,
+    label: "Packs",
+    href: "/packs",
+    permission: STORE_PERMISSIONS.PRODUCTS_VIEW,
   },
 ]
 
@@ -175,6 +183,12 @@ const menuItems: MenuItem[] = [
     permission: STORE_PERMISSIONS.SAV_VIEW
   },
   { 
+    icon: PackageSearch, 
+    label: "Stock retours SAV", 
+    href: "/sav/returned-goods",
+    permission: STORE_PERMISSIONS.SAV_VIEW
+  },
+  { 
     icon: Receipt, 
     label: "Dépenses", 
     href: "/expenses",
@@ -221,7 +235,10 @@ export function StoreSidebar({
 
       try {
         setPermissionsLoading(true)
-        const response = await fetch(`/api/users/${session.user.id}/permissions`)
+        const response = await fetch(`/api/users/${session.user.id}/permissions`, {
+          credentials: "include",
+          cache: "no-store",
+        })
         if (response.ok) {
           const data = await response.json()
           setUserPermissions(data.permissions || [])

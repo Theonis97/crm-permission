@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { RefreshCw, CheckCircle2, AlertCircle, Package } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 export default function SyncPage() {
   const [syncing, setSyncing] = useState(false)

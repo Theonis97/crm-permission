@@ -54,7 +54,7 @@ import { ExpenseFilters } from "@/components/accounting/expense-filters"
 import { ExpenseForm } from "@/components/accounting/expense-form"
 import { ExpensePaymentForm } from "@/components/accounting/expense-payment-form"
 import { ExpensePrintSheet } from "@/components/accounting/expense-print-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { exportToExcel, exportToPdf } from "@/lib/export-utils"
 
 interface Expense {

@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { EditEmployeeProfileSheet } from "@/components/payroll/edit-employee-profile-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface EmployeeContribution {
   id: string

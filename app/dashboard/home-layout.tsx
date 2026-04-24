@@ -15,7 +15,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogOut, Settings, User, Bell, Search, Map, Truck } from "lucide-react"
+import { LogOut, Settings, User, Search, Truck } from "lucide-react"
+import { StaffNotificationBell } from "@/components/layout/staff-notification-bell"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
@@ -154,11 +155,7 @@ export default function HomeLayout({
 
               {/* Actions utilisateur */}
               <div className="flex items-center space-x-4">
-                {/* Notifications */}
-                <Button variant="ghost" size="sm" className="relative">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full text-xs"></span>
-                </Button>
+                <StaffNotificationBell />
 
                 {/* Menu utilisateur */}
                 <DropdownMenu>

@@ -30,7 +30,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface OrderDetailsDialogProps {
   open: boolean

@@ -141,10 +141,10 @@ export async function GET(request: NextRequest) {
         itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
         items: order.items.map(item => ({
           id: item.id,
-          productName: item.product.name,
+          productName: item.product?.name ?? "Produit",
           productImage: (item.variant?.images && item.variant.images.length > 0)
             ? item.variant.images[0]
-            : (item.product.photos && item.product.photos.length > 0)
+            : (item.product?.photos && item.product.photos.length > 0)
               ? item.product.photos[0]
               : null,
           variant: item.variant ? {

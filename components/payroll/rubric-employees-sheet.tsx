@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Loader2, Plus, Trash2, UserPlus } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface PayrollRubric {
   id: string
@@ -68,12 +68,20 @@ export function RubricEmployeesSheet({ open, onOpenChange, rubric, onSuccess }: 
     if (!rubric) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/payroll/rubrics/${rubric.id}/employees`)
-      if (!res.ok) throw new Error("Erreur")
+      const res = await fetch(`/api/payroll/rubrics/${rubric.id}/employees`, {
+        credentials: "include",
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || `Erreur ${res.status}`)
+      }
       const data = await res.json()
       setEmployeeRubrics(data)
     } catch (error) {
-      toast.error("Erreur lors du chargement")
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors du chargement des assignations",
+      )
     } finally {
       setIsLoading(false)
     }
@@ -81,12 +89,21 @@ export function RubricEmployeesSheet({ open, onOpenChange, rubric, onSuccess }: 
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/payroll/employees")
-      if (!res.ok) throw new Error("Erreur")
+      const res = await fetch("/api/payroll/employees", {
+        credentials: "include",
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || `Erreur ${res.status}`)
+      }
       const data = await res.json()
       setEmployees(data.employees || [])
     } catch (error) {
       console.error("Error fetching employees:", error)
+      toast.error(
+        error instanceof Error ? error.message : "Impossible de charger la liste des employés",
+      )
     }
   }
 
@@ -100,6 +117,8 @@ export function RubricEmployeesSheet({ open, onOpenChange, rubric, onSuccess }: 
     try {
       const res = await fetch(`/api/payroll/rubrics/${rubric.id}/employees`, {
         method: "POST",
+        credentials: "include",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employeeProfileId: selectedEmployee,
@@ -133,6 +152,8 @@ export function RubricEmployeesSheet({ open, onOpenChange, rubric, onSuccess }: 
     try {
       const res = await fetch(`/api/payroll/employee-rubrics/${employeeRubricId}`, {
         method: "DELETE",
+        credentials: "include",
+        cache: "no-store",
       })
 
       if (!res.ok) throw new Error("Erreur")

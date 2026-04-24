@@ -24,6 +24,7 @@ import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { StoreProductDetailsSheet } from "@/components/stores/store-product-details-sheet"
 import { RestockingRequestDialog } from "@/components/stores/restocking-request-dialog"
 import { RestockingOrdersSheet } from "@/components/stores/restocking-orders-sheet"
+import { CreateStorePackDialog } from "@/components/stores/create-store-pack-dialog"
 import { BarcodePrintDialog } from "@/components/products/barcode-print-dialog"
 import {
   Package,
@@ -45,8 +46,9 @@ import {
   ClipboardList,
   ImageIcon,
   Barcode,
+  Layers,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
@@ -104,6 +106,7 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [barcodePrintDialogOpen, setBarcodePrintDialogOpen] = useState(false)
+  const [createPackDialogOpen, setCreatePackDialogOpen] = useState(false)
   const [selectedProductForBarcode, setSelectedProductForBarcode] = useState<{
     id: string
     name: string
@@ -315,6 +318,15 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                 Voir les demandes
               </Button>
             </ButtonGroup>
+            {(hasPermission("products.create") ||
+              hasPermission("products.edit") ||
+              hasStorePermission(STORE_PERMISSIONS.PRODUCTS_CREATE) ||
+              hasStorePermission(STORE_PERMISSIONS.PRODUCTS_STOCK)) && (
+              <Button onClick={() => setCreatePackDialogOpen(true)} variant="outline">
+                <Layers className="h-4 w-4 mr-2" />
+                Créer un pack
+              </Button>
+            )}
             <StorePermissionGuard 
               storeId={storeId} 
               permission={STORE_PERMISSIONS.PRODUCTS_CREATE}
@@ -668,6 +680,13 @@ export default function ProductsPage({ params }: ProductsPageProps) {
           )}
         </div>
       </main>
+
+      <CreateStorePackDialog
+        open={createPackDialogOpen}
+        onOpenChange={setCreatePackDialogOpen}
+        storeId={storeId}
+        onSuccess={() => loadProducts(storeId)}
+      />
 
       <RestockingRequestDialog
         open={restockingDialogOpen}

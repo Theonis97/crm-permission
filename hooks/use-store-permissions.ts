@@ -36,7 +36,10 @@ export function useStorePermissions(storeId: string): StorePermissionsHook {
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/stores/${storeId}/users/${session.user.id}/permissions`)
+      const response = await fetch(`/api/stores/${storeId}/users/${session.user.id}/permissions`, {
+        credentials: "include",
+        cache: "no-store",
+      })
       
       if (response.ok) {
         const data = await response.json()
@@ -51,7 +54,14 @@ export function useStorePermissions(storeId: string): StorePermissionsHook {
         setRoles([])
         setHasStoreAccess(false)
       } else {
-        console.error("Error fetching store permissions:", response.statusText)
+        let detail = response.statusText
+        try {
+          const errBody = await response.json()
+          if (errBody?.error) detail = `${response.status} — ${errBody.error}`
+        } catch {
+          /* ignore */
+        }
+        console.error("Error fetching store permissions:", detail)
         setPermissions([])
         setRoles([])
         setHasStoreAccess(false)

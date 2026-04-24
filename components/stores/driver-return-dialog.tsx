@@ -30,7 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Truck, Loader2, CheckCircle2, AlertCircle, Search, X, Package } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface DeliveryPerson {

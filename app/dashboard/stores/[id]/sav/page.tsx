@@ -12,18 +12,40 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RotateCcw, Search, Plus, Package, Loader2, Eye, CheckCircle, XCircle, MoreHorizontal, Clock, ArrowLeftRight, Banknote, Minus, Trash2, User, X, Image as ImageIcon } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { StorePageHeader } from "@/components/stores/store-page-header"
+import { cn } from "@/lib/utils"
 
 interface SAVPageProps { params: Promise<{ id: string }> }
 
 type ReturnReason = "DEFECTIVE" | "BROKEN" | "NOT_SATISFIED" | "NON_FUNCTIONAL" | "WRONG_PRODUCT" | "EXPIRED" | "QUALITY_ISSUE" | "OTHER"
 type ProductCondition = "NEW" | "GOOD" | "USED" | "DAMAGED" | "DEFECTIVE"
+
+type ReturnLineDraft = {
+  localId: string
+  productId: string
+  productName: string
+  productSku: string | null
+  unitPrice: number
+  quantity: number
+  reason: ReturnReason
+  reasonDetails: string
+  condition: ProductCondition
+  photos: string[]
+  exchangeProduct?: {
+    productId: string
+    productName: string
+    productSku: string | null
+    unitPrice: number
+    quantity: number
+    photos: string[]
+  } | null
+}
 
 const RETURN_REASONS = [
   { value: "DEFECTIVE", label: "Défectueux" }, { value: "BROKEN", label: "Cassé" },
@@ -79,8 +101,8 @@ export default function SAVPage({ params }: SAVPageProps) {
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [productSearch, setProductSearch] = useState("")
   
-  const [returnedProduct, setReturnedProduct] = useState<any>(null)
-  const [exchangeProduct, setExchangeProduct] = useState<any>(null)
+  const [returnLines, setReturnLines] = useState<ReturnLineDraft[]>([])
+  const [exchangeTargetLineId, setExchangeTargetLineId] = useState<string | null>(null)
   const [returnNotes, setReturnNotes] = useState("")
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
@@ -117,16 +139,36 @@ export default function SAVPage({ params }: SAVPageProps) {
   const loadStoreProducts = async () => {
     try {
       setLoadingProducts(true)
-      const res = await fetch(`/api/stores/${storeId}/products`)
-      if (res.ok) {
-        const data = await res.json()
-        setStoreProducts((data.products || data || []).map((p: any) => ({
-          id: p.id, productId: p.productId || p.id, name: p.product?.name || p.name,
-          sku: p.product?.sku || p.sku, prixVente: p.product?.prixVente || p.prixVente,
-          stock: p.stock, photos: p.product?.photos || p.photos || [],
-        })))
+      const res = await fetch(
+        `/api/stores/${storeId}/products?includePackProxies=true`
+      )
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        toast.error(
+          (data && data.error) ||
+            "Impossible de charger le catalogue de ce magasin (droits ou réseau)."
+        )
+        setStoreProducts([])
+        return
       }
-    } catch (e) { toast.error("Erreur produits") } finally { setLoadingProducts(false) }
+      const list = Array.isArray(data) ? data : data?.products || []
+      setStoreProducts(
+        list.map((p: any) => ({
+          id: p.id,
+          productId: p.productId || p.id,
+          name: p.product?.name || p.name,
+          sku: p.product?.sku || p.sku,
+          prixVente: p.product?.prixVente ?? p.prixVente,
+          stock: p.stock,
+          photos: p.product?.photos || p.photos || [],
+        }))
+      )
+    } catch (e) {
+      toast.error("Erreur produits")
+      setStoreProducts([])
+    } finally {
+      setLoadingProducts(false)
+    }
   }
 
   useEffect(() => { loadReturns() }, [storeId])
@@ -141,61 +183,209 @@ export default function SAVPage({ params }: SAVPageProps) {
 
   const filteredProducts = storeProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku?.toLowerCase().includes(productSearch.toLowerCase()))
 
+  const returnHasExchange = (r: any) =>
+    Boolean(r.items?.some((i: any) => i.exchangeProductId))
+
   const handleProcess = async (id: string, action: string) => {
     try {
       setProcessingId(id)
-      const res = await fetch(`/api/stores/${storeId}/sav/${id}/process`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) })
-      if (res.ok) { toast.success(action === "APPROVED" ? "Approuvé" : "Rejeté"); loadReturns() }
-    } catch (e) { toast.error("Erreur") } finally { setProcessingId(null) }
+      const res = await fetch(`/api/stores/${storeId}/sav/${id}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      if (res.ok) {
+        const labels: Record<string, string> = {
+          APPROVED: "Retour approuvé",
+          REJECTED: "Retour rejeté",
+          EXCHANGED:
+            "Échange clôturé au SAV — stock magasin débité, retours enregistrés (sans caisse)",
+          REFUNDED: "Remboursement enregistré au SAV (sans caisse)",
+        }
+        toast.success(labels[action] || "Mis à jour")
+        loadReturns()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Erreur")
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Erreur")
+    } finally {
+      setProcessingId(null)
+    }
   }
 
+  const newLocalId = () =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
   const openCreateSheet = () => {
-    setReturnedProduct(null); setExchangeProduct(null); setReturnNotes(""); setCustomerName(""); setCustomerPhone("")
-    setProductSearch(""); setSelectionMode("return"); loadStoreProducts(); setShowCreateSheet(true)
+    setReturnLines([])
+    setExchangeTargetLineId(null)
+    setReturnNotes("")
+    setCustomerName("")
+    setCustomerPhone("")
+    setProductSearch("")
+    setSelectionMode("return")
+    loadStoreProducts()
+    setShowCreateSheet(true)
   }
 
   const selectProduct = (product: any) => {
-    const item = { productId: product.productId, productName: product.name, productSku: product.sku, unitPrice: product.prixVente, quantity: 1, reason: "DEFECTIVE" as ReturnReason, reasonDetails: "", condition: "GOOD" as ProductCondition, photos: product.photos }
-    if (selectionMode === "return") { setReturnedProduct(item); toast.success("Produit retourné sélectionné") }
-    else { setExchangeProduct(item); toast.success("Produit d'échange sélectionné") }
+    if (selectionMode === "exchange") {
+      if (!exchangeTargetLineId) {
+        toast.error("Choisissez d’abord une ligne de retour, puis « Échange pour cette ligne ».")
+        setSelectionMode("return")
+        return
+      }
+      const ex = {
+        productId: product.productId,
+        productName: product.name,
+        productSku: product.sku,
+        unitPrice: product.prixVente,
+        quantity: 1,
+        photos: product.photos || [],
+      }
+      setReturnLines((lines) =>
+        lines.map((l) =>
+          l.localId === exchangeTargetLineId
+            ? { ...l, exchangeProduct: ex }
+            : l
+        )
+      )
+      setExchangeTargetLineId(null)
+      setSelectionMode("return")
+      toast.success("Produit d’échange associé à la ligne")
+      return
+    }
+
+    const line: ReturnLineDraft = {
+      localId: newLocalId(),
+      productId: product.productId,
+      productName: product.name,
+      productSku: product.sku,
+      unitPrice: product.prixVente,
+      quantity: 1,
+      reason: "DEFECTIVE",
+      reasonDetails: "",
+      condition: "GOOD",
+      photos: product.photos || [],
+      exchangeProduct: null,
+    }
+    setReturnLines((prev) => [...prev, line])
+    toast.success("Produit ajouté au retour — vous pouvez en ajouter d’autres pour le même client.")
+  }
+
+  const removeReturnLine = (localId: string) => {
+    setReturnLines((prev) => prev.filter((l) => l.localId !== localId))
+    if (exchangeTargetLineId === localId) {
+      setExchangeTargetLineId(null)
+      setSelectionMode("return")
+    }
+  }
+
+  const updateReturnLine = (localId: string, patch: Partial<ReturnLineDraft>) => {
+    setReturnLines((lines) =>
+      lines.map((l) => (l.localId === localId ? { ...l, ...patch } : l))
+    )
+  }
+
+  const updateLineExchangeQty = (localId: string, qty: number) => {
+    setReturnLines((lines) =>
+      lines.map((l) => {
+        if (l.localId !== localId || !l.exchangeProduct) return l
+        return {
+          ...l,
+          exchangeProduct: { ...l.exchangeProduct, quantity: Math.max(1, qty) },
+        }
+      })
+    )
+  }
+
+  const startExchangeForLine = (localId: string) => {
+    setExchangeTargetLineId(localId)
+    setSelectionMode("exchange")
+    toast.message("Sélectionnez dans la grille le produit d’échange pour cette ligne.")
+  }
+
+  const clearExchangeForLine = (localId: string) => {
+    updateReturnLine(localId, { exchangeProduct: null })
+    if (exchangeTargetLineId === localId) {
+      setExchangeTargetLineId(null)
+      setSelectionMode("return")
+    }
   }
 
   const createReturn = async () => {
-    if (!returnedProduct) { toast.error("Sélectionnez un produit"); return }
+    if (returnLines.length === 0) {
+      toast.error("Ajoutez au moins un produit retourné")
+      return
+    }
     try {
       setCreatingReturn(true)
-      // Préparer l'item avec les données d'échange si présent
-      const itemData: any = {
-        productId: returnedProduct.productId,
-        quantity: returnedProduct.quantity,
-        unitPrice: returnedProduct.unitPrice,
-        reason: returnedProduct.reason,
-        reasonDetails: returnedProduct.reasonDetails,
-        condition: returnedProduct.condition,
-      }
-      // Ajouter le produit d'échange si sélectionné
-      if (exchangeProduct) {
-        itemData.exchangeProductId = exchangeProduct.productId
-        itemData.exchangeDiscount = 0 // Remise par défaut
-      }
-      const res = await fetch(`/api/stores/${storeId}/sav`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: [itemData], notes: returnNotes, customerName, customerPhone })
+      const itemsPayload = returnLines.map((line) => {
+        const itemData: Record<string, unknown> = {
+          productId: line.productId,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          reason: line.reason,
+          reasonDetails: line.reasonDetails || undefined,
+          condition: line.condition,
+        }
+        if (line.exchangeProduct) {
+          itemData.exchangeProductId = line.exchangeProduct.productId
+          itemData.exchangeDiscount = 0
+        }
+        return itemData
       })
-      if (res.ok) { toast.success("Retour créé"); setShowCreateSheet(false); loadReturns() }
-      else { const err = await res.json(); throw new Error(err.error) }
-    } catch (e: any) { toast.error(e.message || "Erreur") } finally { setCreatingReturn(false) }
+      const res = await fetch(`/api/stores/${storeId}/sav`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: itemsPayload,
+          notes: returnNotes,
+          customerName,
+          customerPhone,
+        }),
+      })
+      if (res.ok) {
+        toast.success(
+          returnLines.length > 1
+            ? `Retour créé — ${returnLines.length} articles pour ce client`
+            : "Retour créé"
+        )
+        setShowCreateSheet(false)
+        loadReturns()
+      } else {
+        const err = await res.json()
+        throw new Error(err.error)
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erreur")
+    } finally {
+      setCreatingReturn(false)
+    }
   }
 
-  const calcTotal = () => returnedProduct ? returnedProduct.quantity * returnedProduct.unitPrice : 0
-  const calcDiff = () => { if (!returnedProduct || !exchangeProduct) return 0; return (exchangeProduct.quantity * exchangeProduct.unitPrice) - (returnedProduct.quantity * returnedProduct.unitPrice) }
+  const calcTotal = () =>
+    returnLines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
+
+  const calcDiff = () =>
+    returnLines.reduce((s, l) => {
+      if (!l.exchangeProduct) return s
+      return (
+        s +
+        (l.exchangeProduct.quantity * l.exchangeProduct.unitPrice -
+          l.quantity * l.unitPrice)
+      )
+    }, 0)
 
   // Fonction pour envoyer à la caisse
   const handleSendToCashier = async () => {
     if (!selectedReturn) return
     try {
       setSendingToCashier(true)
-      const returnItem = selectedReturn.items?.[0]
       const items = selectedReturn.items?.map((item: any) => ({
         itemId: item.id,
         refundAmount: resolutionType === "REFUND" ? item.quantity * item.unitPrice : 0,
@@ -234,23 +424,29 @@ export default function SAVPage({ params }: SAVPageProps) {
   // Calcul du montant à payer/rendre pour un échange
   // Retourne un objet avec le montant et le type (payer ou rendre)
   const calcExchangeAmount = () => {
-    if (!selectedReturn) return { amount: 0, type: "none" as const }
-    const returnItem = selectedReturn.items?.[0]
-    if (!returnItem) return { amount: 0, type: "none" as const }
-    
-    // Valeur de reprise = prix du produit retourné
-    const returnValue = returnItem.quantity * returnItem.unitPrice
-    // Valeur du produit d'échange
-    const exchangeValue = (returnItem.exchangeProduct?.prixVente || returnItem.exchangeProductPrice || returnItem.unitPrice) * returnItem.quantity
-    // Différence = prix échange - valeur reprise - remise additionnelle
-    const difference = exchangeValue - returnValue - discountAmount
-    
-    if (difference > 0) {
-      return { amount: difference, type: "pay" as const } // Client paie
-    } else if (difference < 0) {
-      return { amount: Math.abs(difference), type: "refund" as const } // Caisse rend
+    if (!selectedReturn?.items?.length) return { amount: 0, type: "none" as const }
+
+    /** Écart par ligne pour les échanges uniquement (lignes sans échange = hors ce calcul). */
+    let diffSum = 0
+    for (const item of selectedReturn.items) {
+      if (!item.exchangeProductId) continue
+      const ret = item.quantity * item.unitPrice
+      const exUnit =
+        item.exchangeProduct?.prixVente ??
+        item.exchangeProductPrice ??
+        item.unitPrice
+      diffSum += item.quantity * Number(exUnit) - ret
     }
-    return { amount: 0, type: "none" as const } // Même valeur
+
+    const difference = diffSum - discountAmount
+
+    if (difference > 0) {
+      return { amount: difference, type: "pay" as const }
+    }
+    if (difference < 0) {
+      return { amount: Math.abs(difference), type: "refund" as const }
+    }
+    return { amount: 0, type: "none" as const }
   }
   
   // Calcul du montant à rembourser (pour REFUND)
@@ -282,13 +478,93 @@ export default function SAVPage({ params }: SAVPageProps) {
           {loading ? <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin" /></div> : filteredReturns.length === 0 ? <div className="text-center py-8 text-muted-foreground"><RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-20" /><p>Aucun retour</p></div> : (
             <Table><TableHeader><TableRow><TableHead>N°</TableHead><TableHead>Client</TableHead><TableHead>Produit retourné</TableHead><TableHead>Produit échangé</TableHead><TableHead>État</TableHead><TableHead>Statut</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredReturns.map((r) => {
-                const returnedItem = r.items?.[0]
-                const exchangedItem = r.items?.find((i: any) => i.exchangeProductId || i.exchangeProductName)
+                const items = r.items || []
+                const returnedItem = items[0]
+                const exchangedItems = items.filter((i: any) => i.exchangeProductId || i.exchangeProductName)
+                const returnedCell =
+                  items.length === 0 ? (
+                    "-"
+                  ) : items.length === 1 ? (
+                    <>
+                      <div className="font-medium text-sm">{returnedItem?.productName || "-"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {returnedItem?.quantity || 0} × {returnedItem?.unitPrice?.toLocaleString() || 0} F
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-medium text-sm">{items.length} articles</div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">
+                        {items.map((i: any) => `${i.quantity}× ${i.productName}`).join(" · ")}
+                      </div>
+                    </>
+                  )
+                const exchangeCell =
+                  exchangedItems.length === 0 ? (
+                    <span className="text-muted-foreground text-xs">-</span>
+                  ) : exchangedItems.length === 1 ? (
+                    <>
+                      <div className="font-medium text-sm text-purple-600">
+                        {exchangedItems[0].exchangeProductName}
+                      </div>
+                      {exchangedItems[0].exchangeDiscount > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Remise: {exchangedItems[0].exchangeDiscount?.toLocaleString()} F
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-xs text-purple-700 space-y-0.5">
+                      {exchangedItems.map((i: any) => (
+                        <div key={i.id}>→ {i.exchangeProductName}</div>
+                      ))}
+                    </div>
+                  )
                 return (
-                <TableRow key={r.id}><TableCell className="font-medium text-xs">{r.number}</TableCell><TableCell><div className="font-medium text-sm">{r.customerName || "-"}</div><div className="text-xs text-muted-foreground">{r.customerPhone || "-"}</div></TableCell><TableCell><div className="font-medium text-sm">{returnedItem?.productName || "-"}</div><div className="text-xs text-muted-foreground">{returnedItem?.quantity || 0} x {returnedItem?.unitPrice?.toLocaleString() || 0} F</div></TableCell><TableCell>{exchangedItem?.exchangeProductName ? <><div className="font-medium text-sm text-purple-600">{exchangedItem.exchangeProductName}</div>{exchangedItem.exchangeDiscount > 0 && <div className="text-xs text-muted-foreground">Remise: {exchangedItem.exchangeDiscount?.toLocaleString()} F</div>}</> : <span className="text-muted-foreground text-xs">-</span>}</TableCell><TableCell>{returnedItem?.condition ? getConditionBadge(returnedItem.condition) : "-"}</TableCell><TableCell>{getStatusBadge(r.status)}</TableCell><TableCell className="text-xs">{format(new Date(r.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
+                <TableRow key={r.id}><TableCell className="font-medium text-xs">{r.number}</TableCell><TableCell><div className="font-medium text-sm">{r.customerName || "-"}</div><div className="text-xs text-muted-foreground">{r.customerPhone || "-"}</div></TableCell><TableCell>{returnedCell}</TableCell><TableCell>{exchangeCell}</TableCell><TableCell>{returnedItem?.condition ? getConditionBadge(returnedItem.condition) : items.length > 1 ? <Badge variant="outline" className="text-[10px]">Mixte</Badge> : "-"}</TableCell><TableCell>{getStatusBadge(r.status)}</TableCell><TableCell className="text-xs">{format(new Date(r.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
                   <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => { setSelectedReturn(r); setDiscountAmount(0); setShowDetailsDialog(true) }}><Eye className="h-4 w-4 mr-2" />Détails</DropdownMenuItem>
                     {r.status === "PENDING" && <><DropdownMenuItem onClick={() => handleProcess(r.id, "APPROVED")}><CheckCircle className="h-4 w-4 mr-2" />Approuver</DropdownMenuItem><DropdownMenuItem onClick={() => handleProcess(r.id, "REJECTED")} className="text-red-600"><XCircle className="h-4 w-4 mr-2" />Rejeter</DropdownMenuItem></>}
+                    {r.status === "PENDING" && returnHasExchange(r) && (
+                      <DropdownMenuItem
+                        disabled={processingId === r.id}
+                        onClick={() => handleProcess(r.id, "EXCHANGED")}
+                        className="text-purple-700"
+                      >
+                        <ArrowLeftRight className="h-4 w-4 mr-2" />
+                        Clôturer l&apos;échange ici (sans caisse)
+                      </DropdownMenuItem>
+                    )}
+                    {r.status === "PENDING" && (
+                      <DropdownMenuItem
+                        disabled={processingId === r.id}
+                        onClick={() => handleProcess(r.id, "REFUNDED")}
+                        className="text-emerald-700"
+                      >
+                        <Banknote className="h-4 w-4 mr-2" />
+                        Remboursement SAV seul (sans caisse)
+                      </DropdownMenuItem>
+                    )}
+                    {r.status === "APPROVED" && returnHasExchange(r) && (
+                      <DropdownMenuItem
+                        disabled={processingId === r.id}
+                        onClick={() => handleProcess(r.id, "EXCHANGED")}
+                        className="text-purple-700"
+                      >
+                        <ArrowLeftRight className="h-4 w-4 mr-2" />
+                        Clôturer l&apos;échange ici (sans caisse)
+                      </DropdownMenuItem>
+                    )}
+                    {r.status === "APPROVED" && (
+                      <DropdownMenuItem
+                        disabled={processingId === r.id}
+                        onClick={() => handleProcess(r.id, "REFUNDED")}
+                        className="text-emerald-700"
+                      >
+                        <Banknote className="h-4 w-4 mr-2" />
+                        Remboursement SAV seul (sans caisse)
+                      </DropdownMenuItem>
+                    )}
                     {(r.status === "PENDING" || r.status === "APPROVED") && <><DropdownMenuItem onClick={() => { setSelectedReturn(r); setResolutionType("EXCHANGE"); setDiscountAmount(0); setShowSendToCashierDialog(true) }} className="text-purple-600"><ArrowLeftRight className="h-4 w-4 mr-2" />Échange → Caisse</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedReturn(r); setResolutionType("REFUND"); setDiscountAmount(0); setShowSendToCashierDialog(true) }} className="text-green-600"><Banknote className="h-4 w-4 mr-2" />Remboursement → Caisse</DropdownMenuItem></>}
                   </DropdownMenuContent></DropdownMenu></TableCell></TableRow>
               )})}</TableBody></Table>
@@ -402,25 +678,73 @@ export default function SAVPage({ params }: SAVPageProps) {
         </DialogContent>
       </Dialog>
 
-      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}><SheetContent side="right" className="w-full sm:max-w-[100vw] p-0">
+      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
+        <SheetContent side="right" className="w-full sm:max-w-[100vw] p-0">
+        <SheetTitle className="sr-only">Nouveau retour SAV</SheetTitle>
         <div className="flex h-screen bg-gray-50">
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-w-0">
             <div className="bg-white border-b p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3"><Button variant="ghost" size="icon" onClick={() => setShowCreateSheet(false)}><X className="h-5 w-5" /></Button><div><h2 className="text-lg font-semibold">Nouveau Retour SAV</h2><p className="text-sm text-muted-foreground">{selectionMode === "return" ? "Sélectionnez le produit retourné" : "Sélectionnez le produit d'échange"}</p></div></div>
-                {returnedProduct && <div className="flex gap-2"><Button variant={selectionMode === "return" ? "default" : "outline"} size="sm" onClick={() => setSelectionMode("return")}><RotateCcw className="h-4 w-4 mr-1" />Retourné</Button><Button variant={selectionMode === "exchange" ? "default" : "outline"} size="sm" onClick={() => setSelectionMode("exchange")}><ArrowLeftRight className="h-4 w-4 mr-1" />Échange</Button></div>}
+              <div className="flex items-center justify-between mb-4 gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Button variant="ghost" size="icon" onClick={() => setShowCreateSheet(false)}><X className="h-5 w-5" /></Button>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold">Nouveau retour SAV</h2>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {selectionMode === "exchange" && exchangeTargetLineId
+                        ? "Choisissez le produit d’échange (ligne surlignée à droite)"
+                        : "Ajoutez plusieurs produits pour le même client — un clic = une ligne de retour"}
+                    </p>
+                  </div>
+                </div>
+                {exchangeTargetLineId ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setExchangeTargetLineId(null)
+                      setSelectionMode("return")
+                    }}
+                  >
+                    Annuler l’échange
+                  </Button>
+                ) : null}
               </div>
-              <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Rechercher un produit..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} className="pl-9" /></div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher un produit…"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
-              {loadingProducts ? <div className="flex justify-center py-16"><Loader2 className="h-12 w-12 animate-spin text-blue-600" /></div> : (
+              {loadingProducts ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+                </div>
+              ) : (
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {filteredProducts.map((p) => (
-                    <div key={p.id} className="bg-white rounded-lg border p-3 hover:shadow-md hover:border-blue-300 cursor-pointer group" onClick={() => selectProduct(p)}>
-                      {p.photos?.[0] ? <img src={p.photos[0]} alt={p.name} className="w-full h-16 object-contain mb-2" /> : <div className="w-full h-16 bg-gray-100 rounded flex items-center justify-center mb-2"><Package className="h-8 w-8 text-gray-300" /></div>}
+                    <div
+                      key={p.id}
+                      className="relative bg-white rounded-lg border p-3 hover:shadow-md hover:border-blue-300 cursor-pointer group"
+                      onClick={() => selectProduct(p)}
+                    >
+                      {p.photos?.[0] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.photos[0]} alt={p.name} className="w-full h-16 object-contain mb-2" />
+                      ) : (
+                        <div className="w-full h-16 bg-gray-100 rounded flex items-center justify-center mb-2">
+                          <Package className="h-8 w-8 text-gray-300" />
+                        </div>
+                      )}
                       <h3 className="font-medium text-xs line-clamp-2">{p.name}</h3>
-                      <div className="flex justify-between mt-1"><span className="text-blue-600 font-bold text-sm">{p.prixVente?.toLocaleString()} F</span><span className="text-[10px] text-gray-500">Stock: {p.stock}</span></div>
-                      <div className="absolute top-1 right-1 w-6 h-6 bg-blue-500 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 hidden group-hover:flex"><Plus className="h-3 w-3" /></div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-blue-600 font-bold text-sm">{p.prixVente?.toLocaleString()} F</span>
+                        <span className="text-[10px] text-gray-500">Stock: {p.stock}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -428,43 +752,286 @@ export default function SAVPage({ params }: SAVPageProps) {
             </div>
           </div>
 
-          <div className="w-96 bg-white border-l flex flex-col shadow-xl">
-            <div className="p-4 border-b bg-gray-50"><h3 className="font-semibold">Détails du retour</h3></div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><User className="h-4 w-4" />Client</h4><Input placeholder="Nom" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /><Input placeholder="Téléphone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} /></div>
-              <Separator />
-              <div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><RotateCcw className="h-4 w-4 text-red-500" />Produit retourné</h4>
-                {!returnedProduct ? <div className="border-2 border-dashed rounded-lg p-6 text-center"><Package className="h-8 w-8 mx-auto mb-2 text-gray-300" /><p className="text-sm text-gray-500">Sélectionnez un produit</p></div> : (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-3">
-                    <div className="flex items-start gap-3">{returnedProduct.photos?.[0] ? <img src={returnedProduct.photos[0]} className="w-12 h-12 object-contain bg-white rounded" /> : <div className="w-12 h-12 bg-white rounded flex items-center justify-center"><Package className="h-6 w-6 text-gray-300" /></div>}<div className="flex-1"><h4 className="font-medium text-sm truncate">{returnedProduct.productName}</h4><p className="text-sm font-semibold text-red-600">{returnedProduct.unitPrice?.toLocaleString()} F</p></div><Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => { setReturnedProduct(null); setExchangeProduct(null) }}><Trash2 className="h-4 w-4" /></Button></div>
-                    <div className="flex items-center gap-2"><Label className="text-xs w-16">Qté</Label><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setReturnedProduct((p: any) => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}><Minus className="h-3 w-3" /></Button><span className="w-8 text-center">{returnedProduct.quantity}</span><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setReturnedProduct((p: any) => ({ ...p, quantity: p.quantity + 1 }))}><Plus className="h-3 w-3" /></Button></div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><Label className="text-xs">État</Label><Select value={returnedProduct.condition} onValueChange={(v) => setReturnedProduct((p: any) => ({ ...p, condition: v }))}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent className="z-[9999]">{PRODUCT_CONDITIONS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></div>
-                      <div><Label className="text-xs">Motif *</Label><Select value={returnedProduct.reason} onValueChange={(v) => setReturnedProduct((p: any) => ({ ...p, reason: v }))}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent className="z-[9999]">{RETURN_REASONS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent></Select></div>
-                    </div>
-                    <div><Label className="text-xs">Détails</Label><Textarea value={returnedProduct.reasonDetails} onChange={(e) => setReturnedProduct((p: any) => ({ ...p, reasonDetails: e.target.value }))} placeholder="Précisions..." rows={2} className="text-xs" /></div>
-                  </div>
-                )}
-              </div>
-              {returnedProduct && <><Separator /><div className="space-y-2"><h4 className="text-sm font-medium flex items-center gap-2"><ArrowLeftRight className="h-4 w-4 text-purple-500" />Échange (optionnel)</h4>
-                {!exchangeProduct ? <div className="border-2 border-dashed border-purple-200 rounded-lg p-4 text-center cursor-pointer hover:bg-purple-50" onClick={() => setSelectionMode("exchange")}><ArrowLeftRight className="h-6 w-6 mx-auto mb-2 text-purple-300" /><p className="text-xs text-purple-500">Sélectionner produit d'échange</p></div> : (
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                    <div className="flex items-start gap-3">{exchangeProduct.photos?.[0] ? <img src={exchangeProduct.photos[0]} className="w-12 h-12 object-contain bg-white rounded" /> : <div className="w-12 h-12 bg-white rounded flex items-center justify-center"><Package className="h-6 w-6 text-gray-300" /></div>}<div className="flex-1"><h4 className="font-medium text-sm truncate">{exchangeProduct.productName}</h4><p className="text-sm font-semibold text-purple-600">{exchangeProduct.unitPrice?.toLocaleString()} F</p></div><Button variant="ghost" size="icon" className="h-6 w-6 text-purple-500" onClick={() => setExchangeProduct(null)}><Trash2 className="h-4 w-4" /></Button></div>
-                    <div className="flex items-center gap-2 mt-2"><Label className="text-xs w-16">Qté</Label><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setExchangeProduct((p: any) => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}><Minus className="h-3 w-3" /></Button><span className="w-8 text-center">{exchangeProduct.quantity}</span><Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setExchangeProduct((p: any) => ({ ...p, quantity: p.quantity + 1 }))}><Plus className="h-3 w-3" /></Button></div>
-                  </div>
-                )}
-              </div></>}
-              {returnedProduct && <><Separator /><div><Label className="text-xs">Notes</Label><Textarea value={returnNotes} onChange={(e) => setReturnNotes(e.target.value)} placeholder="Notes..." rows={2} className="text-xs" /></div></>}
+          <div className="w-[420px] max-w-[40vw] shrink-0 bg-white border-l flex flex-col shadow-xl">
+            <div className="p-4 border-b bg-gray-50">
+              <h3 className="font-semibold">Détails du retour</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {returnLines.length} article{returnLines.length > 1 ? "s" : ""} · même client
+              </p>
             </div>
-            {returnedProduct && <div className="border-t p-4 space-y-3 bg-gray-50">
-              <div className="space-y-2 text-sm"><div className="flex justify-between"><span className="text-gray-600">Valeur retour</span><span className="font-medium text-red-600">-{calcTotal().toLocaleString()} F</span></div>
-                {exchangeProduct && <><div className="flex justify-between"><span className="text-gray-600">Valeur échange</span><span className="font-medium text-purple-600">+{(exchangeProduct.quantity * exchangeProduct.unitPrice).toLocaleString()} F</span></div><Separator /><div className="flex justify-between font-semibold"><span>Différence</span><span className={calcDiff() >= 0 ? "text-green-600" : "text-red-600"}>{calcDiff() >= 0 ? "+" : ""}{calcDiff().toLocaleString()} F</span></div></>}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Client
+                </h4>
+                <Input placeholder="Nom" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                <Input placeholder="Téléphone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
               </div>
-              <Button className="w-full" onClick={createReturn} disabled={creatingReturn}>{creatingReturn ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}Valider le retour</Button>
-            </div>}
+              <Separator />
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4 text-red-500" />
+                  Produits retournés
+                </h4>
+                {returnLines.length === 0 ? (
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-500">
+                      Cliquez sur les produits à gauche pour les ajouter un par un.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {returnLines.map((line) => (
+                      <div
+                        key={line.localId}
+                        className={cn(
+                          "rounded-lg border p-3 space-y-2",
+                          line.localId === exchangeTargetLineId
+                            ? "border-purple-400 bg-purple-50/50 ring-1 ring-purple-300"
+                            : "border-red-200 bg-red-50/40",
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          {line.photos?.[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={line.photos[0]} alt="" className="w-10 h-10 object-contain bg-white rounded shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 bg-white rounded flex items-center justify-center shrink-0">
+                              <Package className="h-5 w-5 text-gray-300" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-xs truncate">{line.productName}</h4>
+                            <p className="text-xs font-semibold text-red-600">{line.unitPrice?.toLocaleString()} F / u.</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-600 shrink-0"
+                            onClick={() => removeReturnLine(line.localId)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-[10px] w-10">Qté</Label>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() =>
+                              updateReturnLine(line.localId, {
+                                quantity: Math.max(1, line.quantity - 1),
+                              })
+                            }
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-6 text-center text-sm">{line.quantity}</span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() =>
+                              updateReturnLine(line.localId, { quantity: line.quantity + 1 })
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px]">État</Label>
+                            <Select
+                              value={line.condition}
+                              onValueChange={(v) =>
+                                updateReturnLine(line.localId, { condition: v as ProductCondition })
+                              }
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="z-[9999]">
+                                {PRODUCT_CONDITIONS.map((c) => (
+                                  <SelectItem key={c.value} value={c.value}>
+                                    {c.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">Motif</Label>
+                            <Select
+                              value={line.reason}
+                              onValueChange={(v) =>
+                                updateReturnLine(line.localId, { reason: v as ReturnReason })
+                              }
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="z-[9999]">
+                                {RETURN_REASONS.map((r) => (
+                                  <SelectItem key={r.value} value={r.value}>
+                                    {r.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-[10px]">Détails</Label>
+                          <Textarea
+                            value={line.reasonDetails}
+                            onChange={(e) =>
+                              updateReturnLine(line.localId, { reasonDetails: e.target.value })
+                            }
+                            placeholder="Précisions…"
+                            rows={2}
+                            className="text-xs"
+                          />
+                        </div>
+                        <div className="pt-1 border-t border-red-100">
+                          {!line.exchangeProduct ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs h-8 text-purple-700 border-purple-200"
+                              onClick={() => startExchangeForLine(line.localId)}
+                            >
+                              <ArrowLeftRight className="h-3 w-3 mr-1" />
+                              Échange pour cette ligne
+                            </Button>
+                          ) : (
+                            <div className="bg-purple-50/80 border border-purple-200 rounded-md p-2 space-y-2">
+                              <div className="flex items-start gap-2">
+                                {line.exchangeProduct.photos?.[0] ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={line.exchangeProduct.photos[0]}
+                                    alt=""
+                                    className="w-8 h-8 object-contain bg-white rounded"
+                                  />
+                                ) : null}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-medium truncate">
+                                    {line.exchangeProduct.productName}
+                                  </p>
+                                  <p className="text-[10px] text-purple-700">
+                                    {line.exchangeProduct.unitPrice?.toLocaleString()} F
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-purple-600"
+                                  onClick={() => clearExchangeForLine(line.localId)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label className="text-[10px] w-8">Qté</Label>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() =>
+                                    updateLineExchangeQty(line.localId, line.exchangeProduct!.quantity - 1)
+                                  }
+                                >
+                                  <Minus className="h-2.5 w-2.5" />
+                                </Button>
+                                <span className="text-xs w-5 text-center">{line.exchangeProduct.quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() =>
+                                    updateLineExchangeQty(line.localId, line.exchangeProduct!.quantity + 1)
+                                  }
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {returnLines.length > 0 ? (
+                <>
+                  <Separator />
+                  <div>
+                    <Label className="text-xs">Notes (tout le dossier)</Label>
+                    <Textarea
+                      value={returnNotes}
+                      onChange={(e) => setReturnNotes(e.target.value)}
+                      placeholder="Notes…"
+                      rows={2}
+                      className="text-xs"
+                    />
+                  </div>
+                </>
+              ) : null}
+            </div>
+            {returnLines.length > 0 ? (
+              <div className="border-t p-4 space-y-3 bg-gray-50">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total valeur retour</span>
+                    <span className="font-medium text-red-600">-{calcTotal().toLocaleString()} F</span>
+                  </div>
+                  {returnLines.some((l) => l.exchangeProduct) ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total échanges (lignes)</span>
+                        <span className="font-medium text-purple-600">
+                          +
+                          {returnLines
+                            .filter((l) => l.exchangeProduct)
+                            .reduce(
+                              (s, l) =>
+                                s + l.exchangeProduct!.quantity * l.exchangeProduct!.unitPrice,
+                              0,
+                            )
+                            .toLocaleString()}{" "}
+                          F
+                        </span>
+                      </div>
+                      <Separator />
+                      <div className="flex justify-between font-semibold">
+                        <span>Différence nette</span>
+                        <span className={calcDiff() >= 0 ? "text-green-600" : "text-red-600"}>
+                          {calcDiff() >= 0 ? "+" : ""}
+                          {calcDiff().toLocaleString()} F
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+                <Button className="w-full" onClick={createReturn} disabled={creatingReturn}>
+                  {creatingReturn ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Valider le retour ({returnLines.length} article{returnLines.length > 1 ? "s" : ""})
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
-      </SheetContent></Sheet>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
 import { usePermissions } from "@/hooks/use-permissions"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface StoreData {
   id: string

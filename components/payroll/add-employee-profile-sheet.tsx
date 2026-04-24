@@ -31,7 +31,7 @@ import {
   UserPlus,
   Plus,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface UserItem {

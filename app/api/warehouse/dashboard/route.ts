@@ -38,8 +38,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Récupérer tous les produits avec leurs informations
+    // Récupérer tous les produits avec leurs informations (hors proxies pack caisse)
     const products = await prisma.product.findMany({
+      where: { linkedStorePackId: null },
       include: {
         category: true,
         brand: true,

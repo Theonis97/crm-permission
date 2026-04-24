@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
 import type { ContactType, ContactStatus, CreateContactData } from "@/types/contacts"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface CreateContactSheetProps {
   open: boolean

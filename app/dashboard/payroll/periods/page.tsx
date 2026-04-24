@@ -50,7 +50,7 @@ import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { CreatePeriodSheet } from "@/components/payroll/create-period-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface PayrollPeriod {
   id: string

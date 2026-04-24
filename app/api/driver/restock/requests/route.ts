@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getActiveDeliveryPersonByUserEmail } from "@/lib/driver-session"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
+import { notifyStoreAndWarehouse } from "@/lib/stock-flow-notifications"
 
 type ItemBody = { productId: string; requestedQuantity: number; variantId?: string | null; notes?: string | null }
 
@@ -217,6 +218,18 @@ export async function POST(req: NextRequest) {
       }
       return request.id
     })
+
+    const dpRow = await prisma.deliveryPerson.findUnique({
+      where: { id: deliveryPersonId },
+      select: { name: true },
+    })
+    const driverName = dpRow?.name?.trim() || "Livreur"
+    const totalQty = normalized.reduce((s, it) => s + it.requestedQuantity, 0)
+    void notifyStoreAndWarehouse(store.id, {
+      title: "Réapprovisionnement (livreur)",
+      body: `${driverName} — ${store.name} · ${normalized.length} réf. · ${totalQty} unité(s)`,
+      data: { type: "DRIVER_RESTOCK", requestId: result, storeId: store.id },
+    }).catch((err) => console.error("[notify DRIVER_RESTOCK]", err))
 
     return NextResponse.json({
       success: true,

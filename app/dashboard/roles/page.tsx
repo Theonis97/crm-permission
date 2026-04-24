@@ -23,7 +23,7 @@ import { EditRoleSheet } from "@/components/roles/edit-role-sheet"
 import { DeleteRoleDialog } from "@/components/roles/delete-role-dialog"
 import { usePermissions } from "@/hooks/use-permissions"
 import { CreateRoleSheet } from "@/components/roles/create-role-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface RoleWithCount extends RoleWithPermissions {
   _count: {

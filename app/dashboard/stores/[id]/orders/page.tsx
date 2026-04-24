@@ -52,7 +52,7 @@ import {
   User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { CancelOrderDialog } from "@/components/stores/cancel-order-dialog"
 import { OrderDetailsSheet } from "@/components/stores/order-details-sheet"
 import {

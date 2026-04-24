@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Save, Loader2, UserPlus, X, Info } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface StoreRole {

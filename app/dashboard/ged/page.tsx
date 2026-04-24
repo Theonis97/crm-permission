@@ -40,7 +40,7 @@ import {
   FolderInput,
   RotateCcw,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { formatFileSize } from "@/lib/s3"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"

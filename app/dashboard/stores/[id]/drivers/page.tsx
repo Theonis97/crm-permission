@@ -60,7 +60,7 @@ import {
 } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { DriverTodayOrders, DriverStock, DriverCloses, DriverRestockingRequests } from "@/components/drivers"
 import { FileText, ShoppingCart } from "lucide-react"
 

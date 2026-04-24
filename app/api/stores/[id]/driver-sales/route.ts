@@ -3,31 +3,60 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import type { Prisma } from "@prisma/client"
 
-// GET — Ventes livreurs pour un magasin (admin/gestionnaire)
+function parseDateBoundary(dateStr: string, endOfDay: boolean): Date {
+  const d = new Date(dateStr + (endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z"))
+  return d
+}
+
+// GET — Ventes livreurs (filtre période, magasin, livreur) + stats + classement
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    const userId =
+      session?.user?.id ||
+      (session?.user?.email
+        ? (await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } }))?.id
+        : undefined)
+    if (!userId) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
     }
 
-    const canView = await hasPermission(session.user.id, "orders.view")
+    const canView = await hasPermission(userId, "orders.view")
     if (!canView) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 })
     }
 
     const { id } = await params
-    const storeId = id
-    void storeId // le storeId identifie le magasin appelant, mais on retourne toutes les ventes livreurs
+    const routeStoreId = id
     const { searchParams } = new URL(req.url)
     const driverIdFilter = searchParams.get("driverId")
+    const storeIdFilter = searchParams.get("storeId")
+    const allStores = searchParams.get("allStores") === "1"
+    const fromStr = searchParams.get("from")
+    const toStr = searchParams.get("to")
 
-    const where: Record<string, unknown> = {}
+    const where: Prisma.DriverSaleWhereInput = {}
     if (driverIdFilter) where.deliveryPersonId = driverIdFilter
+    if (storeIdFilter) {
+      where.storeId = storeIdFilter
+    } else if (!allStores) {
+      where.storeId = routeStoreId
+    }
+
+    if (fromStr || toStr) {
+      where.declaredAt = {}
+      if (fromStr) {
+        where.declaredAt.gte = parseDateBoundary(fromStr, false)
+      }
+      if (toStr) {
+        where.declaredAt.lte = parseDateBoundary(toStr, true)
+      }
+    }
 
     const sales = await prisma.driverSale.findMany({
       where,
@@ -78,15 +107,40 @@ export async function GET(
       grandDeliveryFees += sale.totalDeliveryFees
     }
 
+    const byDriverList = Object.values(byDriver)
+    const rankingByNet = [...byDriverList].sort(
+      (a, b) =>
+        b.netTotal - a.netTotal ||
+        b.total - a.total ||
+        b.count - a.count
+    )
+    const rankingByDeclarations = [...byDriverList].sort(
+      (a, b) => b.count - a.count || b.netTotal - a.netTotal
+    )
+
     return NextResponse.json({
       sales,
       summary: {
-        byDriver: Object.values(byDriver),
+        byDriver: byDriverList,
         grandTotal,
         grandNetTotal,
         grandDeliveryFees,
         totalSales: sales.length,
+        topPerformer:
+          rankingByNet.length > 0
+            ? {
+                ...rankingByNet[0],
+                rank: 1,
+              }
+            : null,
+        rankingByNet: rankingByNet.map((d, i) => ({ ...d, rank: i + 1 })),
+        rankingByDeclarations: rankingByDeclarations.map((d, i) => ({
+          ...d,
+          rank: i + 1,
+        })),
       },
+      period:
+        fromStr || toStr ? { from: fromStr || null, to: toStr || null } : null,
     })
   } catch (err) {
     console.error("[GET /api/stores/[id]/driver-sales]", err)

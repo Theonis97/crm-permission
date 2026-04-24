@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Loader2, MapPin } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { DeliveryZoneMap } from "./delivery-zone-map"
 
 interface Coordinate {

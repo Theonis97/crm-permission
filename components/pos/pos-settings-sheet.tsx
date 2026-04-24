@@ -25,7 +25,7 @@ import {
   CheckCircle,
   ArrowLeft,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { usePrinterSettings } from "@/components/pos/printer-settings-dialog"
 
 interface SubBox {

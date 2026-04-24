@@ -4,7 +4,7 @@ import { useState, useRef } from "react"
 import { Upload, X, Loader2, Image as ImageIcon, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface ImageUploadProps {
   value?: string

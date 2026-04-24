@@ -39,7 +39,7 @@ import {
 import { format, isToday, isYesterday, parseISO } from "date-fns"
 import { fr } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import {
   DropdownMenu,
   DropdownMenuContent,

@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
     const maxPrice = searchParams.get("maxPrice")
     const inStock = searchParams.get("inStock")
 
-    const where: any = {}
+    const where: any = {
+      // Ne pas lister les fiches « proxy » créées pour la caisse (packs = écran Packs)
+      linkedStorePackId: null,
+    }
 
     if (search) {
       where.OR = [

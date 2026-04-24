@@ -43,7 +43,7 @@ import {
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { AddEmployeeProfileSheet } from "@/components/payroll/add-employee-profile-sheet"
 import { EditEmployeeProfileSheet } from "@/components/payroll/edit-employee-profile-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface EmployeeProfile {
   id: string

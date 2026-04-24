@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
 
-// GET - Générer une page HTML imprimable pour les bulletins sélectionnés
 export async function GET(request: NextRequest) {
   try {
     const { session, error } = await getAuthenticatedSession()
@@ -20,7 +19,6 @@ export async function GET(request: NextRequest) {
 
     const ids = idsParam.split(",")
 
-    // Récupérer les bulletins avec leurs détails
     const payrolls = await prisma.payroll.findMany({
       where: {
         id: { in: ids },
@@ -110,7 +108,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Générer le HTML pour l'impression
     const formatCurrency = (amount: number) => {
       return new Intl.NumberFormat("fr-FR", {
         style: "decimal",
@@ -142,7 +139,6 @@ export async function GET(request: NextRequest) {
       FREELANCE: "Freelance",
     }
 
-    // Récupérer les paramètres de l'entreprise
     const companySettings = await prisma.payrollCompanySettings.findFirst()
 
     const payslipsHtml = payrolls.map((payroll: any, index: number) => {
@@ -151,18 +147,26 @@ export async function GET(request: NextRequest) {
       const period = payroll.period
       const hourlyRate = profile.baseSalary / (payroll.expectedWorkingDays * profile.workingHoursPerDay)
 
-      const paidTotal      = Number(payroll.paidAmount)     || 0
-      const cnssDeduction  = Number(payroll.totalDeductions) || 0
-      // netSalary = net après toutes les retenues (CNSS déjà déduite)
-      // NET À PAYER = netSalary − cnss − déjà versé
-      const netSalaryBrut  = Number(payroll.netSalary)       || 0
-      const remainingFromDb = Number(payroll.remainingAmount)
-      const netAPayerRestant =
-        Number.isFinite(remainingFromDb) && payroll.status === "PARTIALLY_PAID"
-          ? Math.max(0, remainingFromDb)
-          : Math.max(0, netSalaryBrut - cnssDeduction - paidTotal)
-      
-      // Utiliser les paramètres entreprise s'ils existent, sinon fallback sur la boutique
+      const salaireNetBulletin = Number(payroll.netSalary) || 0
+      const paidTotal = Number(payroll.paidAmount) || 0
+      const montantHeuresSup =
+        payroll.overtimeHours > 0
+          ? Math.round(Number(payroll.overtimeHours) * hourlyRate * 1.5)
+          : 0
+      const totalPrimes =
+        payroll.rubricLines
+          ?.filter((r: any) => r.rubricType === "PRIME")
+          .reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0) || 0
+      const totalIndemnites =
+        payroll.rubricLines
+          ?.filter((r: any) => r.rubricType === "INDEMNITY")
+          .reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0) || 0
+      const sommeHeuresSupPrimesIndemnites =
+        montantHeuresSup + totalPrimes + totalIndemnites
+      const totalNetAvantVersements =
+        salaireNetBulletin + sommeHeuresSupPrimesIndemnites
+      const netAPayerRestant = Math.max(0, totalNetAvantVersements - paidTotal)
+
       const storeRole = user.storeUserRoles?.[0]
       const store = storeRole?.store
       
@@ -180,7 +184,6 @@ export async function GET(request: NextRequest) {
       
       return `
       <div class="payslip ${index > 0 ? 'page-break' : ''}">
-        <!-- En-tête avec informations employeur et employé -->
         <div class="header-section">
           <div class="employer-box">
             ${companyLogo ? `<img src="${companyLogo}" alt="Logo" class="company-logo" />` : ''}
@@ -212,7 +215,6 @@ export async function GET(request: NextRequest) {
           </div>
         </div>
 
-        <!-- Tableau principal du bulletin -->
         <table class="main-table">
           <thead>
             <tr>
@@ -224,7 +226,6 @@ export async function GET(request: NextRequest) {
             </tr>
           </thead>
           <tbody>
-            <!-- Section Salaire de base -->
             <tr class="section-header">
               <td colspan="5">RÉMUNÉRATION</td>
             </tr>
@@ -237,7 +238,6 @@ export async function GET(request: NextRequest) {
             </tr>
 
             ${payroll.overtimeHours > 0 ? `
-            <!-- Section Heures supplémentaires -->
             <tr class="section-header">
               <td colspan="5">HEURES SUPPLÉMENTAIRES</td>
             </tr>
@@ -251,7 +251,6 @@ export async function GET(request: NextRequest) {
             ` : ''}
 
             ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
-            <!-- Section Primes -->
             <tr class="section-header">
               <td colspan="5">PRIMES</td>
             </tr>
@@ -267,7 +266,6 @@ export async function GET(request: NextRequest) {
             ` : ''}
 
             ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'INDEMNITY').length > 0 ? `
-            <!-- Section Indemnités -->
             <tr class="section-header">
               <td colspan="5">INDEMNITÉS</td>
             </tr>
@@ -281,8 +279,7 @@ export async function GET(request: NextRequest) {
             </tr>
             `).join('')}
             ` : ''}
-            
-            <!-- Ligne Total Brut (mise en évidence verte) -->
+
             <tr class="subtotal-row subtotal-row-brut-gains">
               <td><strong>TOTAL BRUT + HEURES SUP + PRIMES + INDEMNITÉS</strong></td>
               <td></td>
@@ -296,7 +293,6 @@ export async function GET(request: NextRequest) {
             </tr>
 
             ${payroll.contributionLines && payroll.contributionLines.length > 0 ? `
-            <!-- Section Cotisations -->
             <tr class="section-header">
               <td colspan="5">COTISATIONS SOCIALES</td>
             </tr>
@@ -311,7 +307,6 @@ export async function GET(request: NextRequest) {
             `).join('')}
             ` : ''}
 
-            <!-- Ligne Total Retenues -->
             <tr class="subtotal-row">
               <td><strong>TOTAL RETENUES</strong></td>
               <td></td>
@@ -322,7 +317,6 @@ export async function GET(request: NextRequest) {
           </tbody>
         </table>
 
-        <!-- Récapitulatif -->
         <div class="summary-section">
           <div class="summary-left">
             <table class="summary-table">
@@ -391,24 +385,18 @@ export async function GET(request: NextRequest) {
           </div>
         </div>
 
-        <!-- ACCOMPTE : toujours affiché sur le bulletin imprimé -->
         <div class="payment-status-section">
           <h3 class="payment-status-title">ACCOMPTE</h3>
           <div class="payment-summary">
-            <p><strong>Net du bulletin :</strong> ${formatCurrency(netSalaryBrut)}</p>
-            ${cnssDeduction > 0 ? `<p><strong>CNSS Employé :</strong> &minus; ${formatCurrency(cnssDeduction)}</p>` : ''}
-            ${paidTotal > 0 ? `<p><strong>Montant déjà versé :</strong> &minus; ${formatCurrency(paidTotal)}</p>` : ''}
+            <p><strong>Montant versé :</strong> ${formatCurrency(paidTotal)}</p>
+            <p><strong>Montant à verser :</strong> ${formatCurrency(netAPayerRestant)}</p>
           </div>
           <div class="net-restant-box">
             <p class="net-restant-label">NET À PAYER</p>
-            <p class="net-restant-sublabel">Net du bulletin moins CNSS et versements déjà effectués</p>
             <p class="net-restant-amount">${formatCurrency(netAPayerRestant)}</p>
           </div>
         </div>
 
-        <!-- CNSS Employeur supprimé de l'affichage du bulletin -->
-
-        <!-- Pied de page -->
         <div class="footer-section">
           <div class="payment-info">
             <p><strong>Mode de paiement :</strong> ${payroll.payments && payroll.payments.length > 0 ? 'Paiements multiples (voir détail ci-dessus)' : 'Virement bancaire'}</p>
@@ -470,7 +458,6 @@ export async function GET(request: NextRequest) {
           page-break-before: always;
         }
 
-        /* En-tête avec 3 colonnes */
         .header-section {
           display: flex;
           justify-content: space-between;
@@ -544,7 +531,6 @@ export async function GET(request: NextRequest) {
           margin-top: 5px;
         }
 
-        /* Tableau principal */
         .main-table {
           width: 100%;
           border-collapse: collapse;
@@ -587,7 +573,6 @@ export async function GET(request: NextRequest) {
           border-bottom: 2px solid #1e3a5f;
         }
 
-        /* Ligne « salaire brut + primes + indemnités » : effet verre + teinte verte (gains) */
         .main-table .subtotal-row-brut-gains td {
           background: linear-gradient(
             135deg,
@@ -607,7 +592,6 @@ export async function GET(request: NextRequest) {
         .main-table .gain { color: #16a34a; }
         .main-table .retenue { color: #dc2626; }
 
-        /* Section récapitulative */
         .summary-section {
           display: flex;
           justify-content: space-between;
@@ -698,14 +682,7 @@ export async function GET(request: NextRequest) {
         .net-restant-label {
           font-size: 13px;
           font-weight: bold;
-          margin: 0 0 4px 0;
-        }
-
-        .net-restant-sublabel {
-          font-size: 9px;
-          opacity: 0.9;
-          margin: 0 0 8px 0;
-          line-height: 1.3;
+          margin: 0 0 10px 0;
         }
 
         .net-restant-amount {
@@ -721,7 +698,6 @@ export async function GET(request: NextRequest) {
           margin: 10px 0;
         }
 
-        /* Pied de page */
         .footer-section {
           margin-top: 20px;
           padding-top: 15px;
@@ -778,7 +754,6 @@ export async function GET(request: NextRequest) {
           margin: 2px 0;
         }
 
-        /* Section Paiement Partiel */
         .payment-status-section {
           margin: 15px 0;
           border: 1px solid #333;
@@ -829,7 +804,6 @@ export async function GET(request: NextRequest) {
           background: #f9f9f9;
         }
 
-        /* Bouton d'impression */
         .print-button {
           position: fixed;
           top: 20px;
@@ -852,7 +826,6 @@ export async function GET(request: NextRequest) {
           background: #2d4a6f;
         }
 
-        /* Styles d'impression */
         @media print {
           body {
             background: white;
@@ -886,11 +859,6 @@ export async function GET(request: NextRequest) {
       </button>
       
       ${payslipsHtml}
-      
-      <script>
-        // Auto-print si demandé
-        // window.onload = function() { window.print(); }
-      </script>
     </body>
     </html>
     `

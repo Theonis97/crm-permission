@@ -46,7 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { StorePermissionGuard } from "@/components/auth/store-permission-guard"
 import { STORE_PERMISSIONS } from "@/types/store-auth"
 

@@ -32,7 +32,7 @@ import type { Contact, ContactType, ContactStatus, ContactFilters } from "@/type
 import { CreateContactSheet } from "@/components/contacts/create-contact-sheet"
 import { EditContactSheet } from "@/components/contacts/edit-contact-sheet"
 import { DeleteContactDialog } from "@/components/contacts/delete-contact-dialog"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"

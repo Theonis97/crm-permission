@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { DeliveryZoneMap } from "@/components/delivery/delivery-zone-map"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface DeliveryZone {
   id: string
