@@ -245,15 +245,14 @@ export function calculateGrossSalary(
   switch (profile.contractType) {
     case "CDI":
     case "CDD":
-      // Salaire mensuel : prorata des heures travaillées
+      // Salaire mensuel : chaque heure est d'abord payée au taux horaire issu du brut mensuel ;
+      // les heures au-delà du forfait journalier reçoivent en plus la majoration (overtimeRate, ex. 1,5).
       const expectedHours = expectedWorkingDays * profile.workingHoursPerDay
       if (expectedHours > 0) {
-        // Calcul au prorata des heures
-        grossSalary = (profile.baseSalary / expectedHours) * hoursWorked
-        // Ajouter les heures supplémentaires
+        const hourlyRateFromMonthly = profile.baseSalary / expectedHours
+        grossSalary = hourlyRateFromMonthly * hoursWorked
         if (overtimeHours > 0) {
-          const hourlyRate = profile.baseSalary / expectedHours
-          grossSalary += overtimeHours * hourlyRate * (overtimeRate - 1)
+          grossSalary += overtimeHours * hourlyRateFromMonthly * (overtimeRate - 1)
         }
       }
       break
@@ -266,11 +265,14 @@ export function calculateGrossSalary(
       break
 
     case "INTERIM":
-      // Intérim : paiement à la journée ou à l'heure
+      // Intérim : paiement à la journée ou à l'heure (à l'heure : majoration HS comme pour CDI)
       if (profile.dailyRate) {
         grossSalary = profile.dailyRate * daysWorked
       } else if (profile.hourlyRate) {
-        grossSalary = profile.hourlyRate * hoursWorked
+        const normalHours = Math.max(0, hoursWorked - overtimeHours)
+        grossSalary =
+          profile.hourlyRate * normalHours +
+          profile.hourlyRate * overtimeHours * overtimeRate
       } else {
         grossSalary = (profile.baseSalary / expectedWorkingDays) * daysWorked
       }
@@ -279,7 +281,10 @@ export function calculateGrossSalary(
     case "FREELANCE":
       // Freelance : paiement à l'heure ou forfait
       if (profile.hourlyRate) {
-        grossSalary = profile.hourlyRate * hoursWorked
+        const normalHours = Math.max(0, hoursWorked - overtimeHours)
+        grossSalary =
+          profile.hourlyRate * normalHours +
+          profile.hourlyRate * overtimeHours * overtimeRate
       } else if (profile.dailyRate) {
         grossSalary = profile.dailyRate * daysWorked
       } else {
@@ -288,10 +293,14 @@ export function calculateGrossSalary(
       break
 
     default:
-      // Par défaut : prorata des heures
+      // Même logique que CDI : prorata + majoration HS
       const defaultExpectedHours = expectedWorkingDays * profile.workingHoursPerDay
       if (defaultExpectedHours > 0) {
-        grossSalary = (profile.baseSalary / defaultExpectedHours) * hoursWorked
+        const hr = profile.baseSalary / defaultExpectedHours
+        grossSalary = hr * hoursWorked
+        if (overtimeHours > 0) {
+          grossSalary += overtimeHours * hr * (overtimeRate - 1)
+        }
       }
   }
 

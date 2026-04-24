@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { notifyWarehouseStaff } from "@/lib/stock-flow-notifications"
 
 export async function POST(request: NextRequest) {
   try {
@@ -111,6 +112,17 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    void notifyWarehouseStaff({
+      title: "Demande d'approvisionnement (magasin)",
+      body: `${store.name} · ${number} · ${totalQuantity} unité(s)`,
+      data: {
+        type: "STORE_RESTOCKING_ORDER",
+        id: restockingOrder.id,
+        storeId,
+        number,
+      },
+    }).catch((err) => console.error("[notify STORE_RESTOCKING_ORDER]", err))
 
     return NextResponse.json(restockingOrder, { status: 201 })
   } catch (error) {

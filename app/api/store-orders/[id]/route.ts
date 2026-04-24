@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import { sendOrderCancellationEmail, sendOrderDeliveredEmail } from "@/lib/email-service"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 export async function PATCH(
   request: NextRequest,
@@ -122,6 +123,12 @@ export async function PATCH(
             })
           }
 
+          await adjustPackAssembledForProxyProduct(tx, {
+            storeId: existingOrder.storeId,
+            productId: item.productId,
+            deltaPackUnits: item.quantity,
+          })
+
           // Créer le mouvement de stock (RETURN)
           await tx.stockMovement.create({
             data: {
@@ -167,6 +174,12 @@ export async function PATCH(
           } else {
             throw new Error(`Produit ${item.name} non trouvé dans le stock du magasin`)
           }
+
+          await adjustPackAssembledForProxyProduct(tx, {
+            storeId: existingOrder.storeId,
+            productId: item.productId,
+            deltaPackUnits: -item.quantity,
+          })
 
           // Créer le mouvement de stock (SALE)
           await tx.stockMovement.create({

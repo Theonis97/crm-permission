@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 // POST - Annuler une commande et retourner les produits en stock
 export async function POST(
@@ -133,6 +134,12 @@ export async function POST(
             },
           })
         }
+
+        await adjustPackAssembledForProxyProduct(tx, {
+          storeId,
+          productId,
+          deltaPackUnits: quantity,
+        })
 
         // Créer le mouvement de stock (RETURN car annulation = retour en stock)
         const movement = await tx.stockMovement.create({

@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { ShoppingCart, Plus, Trash2, Loader2, Package } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface CreateOrderDialogProps {
   open: boolean

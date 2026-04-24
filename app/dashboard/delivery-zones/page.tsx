@@ -30,7 +30,7 @@ import {
   DollarSign,
   Clock,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { DeliveryZoneDialog } from "@/components/delivery/delivery-zone-dialog"
 import dynamic from "next/dynamic"
 

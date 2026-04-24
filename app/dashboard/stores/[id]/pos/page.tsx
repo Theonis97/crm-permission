@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useParams } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { TicketData } from "@/lib/thermal-printer"
 import { usePrinterSettings } from "@/components/pos/printer-settings-dialog"
 import { PosSettingsSheet } from "@/components/pos/pos-settings-sheet"
@@ -27,6 +27,40 @@ import {
   CartItem,
   StoreContact
 } from "./types"
+
+/** Panier identique aux lignes de la commande sous-caisse SAV (produit, qté, remise). */
+function cartMatchesSavOrder(cart: CartItem[], order: any): boolean {
+  if (!order?.items?.length) return false
+  const fromOrder = [...order.items]
+    .map((it: any) => ({
+      pid: it.productId as string,
+      q: Number(it.quantity) || 0,
+      d: Number(it.discount) || 0,
+    }))
+    .sort(
+      (a, b) =>
+        a.pid.localeCompare(b.pid) || a.q - b.q || a.d - b.d
+    )
+
+  const fromCart = cart
+    .map((line) => ({
+      pid: line.product.id,
+      q: line.quantity,
+      d: Number(line.discountAmount) || 0,
+    }))
+    .sort(
+      (a, b) =>
+        a.pid.localeCompare(b.pid) || a.q - b.q || a.d - b.d
+    )
+
+  if (fromCart.length !== fromOrder.length) return false
+  return fromCart.every(
+    (x, i) =>
+      x.pid === fromOrder[i].pid &&
+      x.q === fromOrder[i].q &&
+      Math.abs(x.d - fromOrder[i].d) < 0.01
+  )
+}
 
 export default function PosPage() {
   const params = useParams()
@@ -128,6 +162,16 @@ export default function PosPage() {
     loadDayCloseSummary() // Charger le résumé au démarrage
   }, [storeId])
 
+  /** Si le panier ne correspond plus au dossier SAV chargé (produit ajouté, qté, remise…), on délie la sous-caisse. */
+  useEffect(() => {
+    if (!selectedSubBoxOrder?.clientCode?.startsWith("SAV-")) return
+    if (!selectedSubBoxOrder.items?.length) return
+    if (cart.length === 0) return
+    if (!cartMatchesSavOrder(cart, selectedSubBoxOrder)) {
+      setSelectedSubBoxOrder(null)
+    }
+  }, [cart, selectedSubBoxOrder])
+
   // --- Scanner Code-barres ---
   useEffect(() => {
     let lastKeyTime = 0
@@ -214,7 +258,9 @@ export default function PosPage() {
   const loadProducts = async () => {
     try {
       setIsLoadingProducts(true)
-      const response = await fetch(`/api/stores/${storeId}/products`)
+      const response = await fetch(
+        `/api/stores/${storeId}/products?includePackProxies=true`
+      )
       if (!response.ok) throw new Error("Erreur chargement produits")
       const data = await response.json()
       setProducts(data)
@@ -318,14 +364,37 @@ export default function PosPage() {
     }
   }
 
-  const loadSubBoxOrderToCart = (order: any) => {
+  const loadSubBoxOrderToCart = async (order: any) => {
+    // Toujours lier la sous-caisse pour que la validation PATCH enregistre le SAV + stock retours
+    setSelectedSubBoxOrder(order)
     setCart([])
+
+    // Remboursement SAV : commande créée sans lignes produit (rien à vendre au POS)
+    if (!order.items?.length) {
+      toast.success(
+        `Dossier ${order.clientCode} — remboursement : validez via « Encaisser » avec panier vide après avoir rendu l'argent.`
+      )
+      return
+    }
+
+    let catalog: Product[] = [...products]
+    try {
+      const res = await fetch(
+        `/api/stores/${storeId}/products?includePackProxies=true`
+      )
+      if (res.ok) {
+        catalog = await res.json()
+      }
+    } catch {
+      /* garder le catalogue déjà chargé */
+    }
+
     const newCartItems: CartItem[] = []
-    
     for (const item of order.items) {
-      const product = products.find(p => p.id === item.productId)
+      const product = catalog.find((p) => p.id === item.productId)
       if (product) {
         newCartItems.push({
+          lineId: newCartLineId(),
           product,
           quantity: item.quantity,
           discountAmount: item.discount > 0 ? item.discount : undefined,
@@ -335,23 +404,45 @@ export default function PosPage() {
 
     if (newCartItems.length > 0) {
       setCart(newCartItems)
-      if (order.totalDiscount > 0) {
-        setGlobalDiscountAmount(order.totalDiscount)
+      const lineDiscountSum = (order.items || []).reduce(
+        (s: number, it: any) => s + (Number(it.discount) || 0),
+        0
+      )
+      const orderTotalDisc = Number(order.totalDiscount) || 0
+      // SAV : remise déjà sur chaque ligne — ne pas rejouer une remise globale (double comptage + TVA orpheline).
+      if (
+        lineDiscountSum > 0 &&
+        Math.abs(lineDiscountSum - orderTotalDisc) < 0.01
+      ) {
+        setGlobalDiscountAmount(0)
+        setGlobalDiscount(0)
+      } else if (orderTotalDisc > 0) {
+        setGlobalDiscountAmount(orderTotalDisc)
       } else {
         setGlobalDiscountAmount(0)
         setGlobalDiscount(0)
       }
-      setSelectedSubBoxOrder(order)
       toast.success(`Commande ${order.clientCode} chargée`)
+    } else {
+      toast.error(
+        "Impossible de charger les articles : produits d'échange introuvables pour ce magasin (catalogue POS). Ajoutez-les au magasin puis rechargez."
+      )
     }
   }
 
-  const validateSubBoxOrder = async (orderId: string) => {
+  const validateSubBoxOrder = async (
+    orderId: string,
+    options?: { stockAlreadyDebited?: boolean }
+  ) => {
     try {
       const response = await fetch(`/api/stores/${storeId}/sub-box-orders`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, action: "validate" }),
+        body: JSON.stringify({
+          orderId,
+          action: "validate",
+          ...(options?.stockAlreadyDebited ? { stockAlreadyDebited: true } : {}),
+        }),
       })
 
       if (!response.ok) {
@@ -388,6 +479,11 @@ export default function PosPage() {
     }
   }
 
+  const newCartLineId = () =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `pos-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
   // --- Gestion Panier & Produits ---
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories(prev =>
@@ -405,27 +501,27 @@ export default function PosPage() {
             : item
         )
       }
-      return [...prev, { product, quantity: 1 }]
+      return [...prev, { lineId: newCartLineId(), product, quantity: 1 }]
     })
     toast.success(`${product.name} ajouté au panier`)
   }
 
-  const updateQuantity = (productId: string, newQuantity: number) => {
+  const updateQuantity = (lineId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
-      removeFromCart(productId)
+      removeFromCart(lineId)
       return
     }
     setCart(prev =>
       prev.map(item =>
-        item.product.id === productId
+        item.lineId === lineId
           ? { ...item, quantity: Math.min(newQuantity, item.product.stock) }
           : item
       )
     )
   }
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.product.id !== productId))
+  const removeFromCart = (lineId: string) => {
+    setCart(prev => prev.filter(item => item.lineId !== lineId))
   }
 
   const clearCart = () => {
@@ -435,9 +531,9 @@ export default function PosPage() {
     setSelectedSubBoxOrder(null)
   }
 
-  const updateItemDiscountAmount = (productId: string, discountAmount: number) => {
+  const updateItemDiscountAmount = (lineId: string, discountAmount: number) => {
     setCart(prev => prev.map(item =>
-      item.product.id === productId
+      item.lineId === lineId
         ? { ...item, discountAmount: Math.max(0, discountAmount), discount: undefined }
         : item
     ))
@@ -455,17 +551,6 @@ export default function PosPage() {
     return sum + discountedTotal
   }, 0)
 
-  const cartTax = cart.reduce((sum, item) => {
-    const itemTotal = item.product.prixVente * item.quantity
-    let discountedTotal = itemTotal
-    if (item.discount && item.discount > 0) {
-      discountedTotal = itemTotal * (1 - item.discount / 100)
-    } else if (item.discountAmount && item.discountAmount > 0) {
-      discountedTotal = Math.max(0, itemTotal - item.discountAmount)
-    }
-    return sum + (discountedTotal * item.product.tva / 100)
-  }, 0)
-
   let finalSubtotal = cartSubtotal
   let globalDiscountApplied = 0
 
@@ -477,7 +562,41 @@ export default function PosPage() {
     finalSubtotal = cartSubtotal - globalDiscountApplied
   }
 
-  const cartTotal = finalSubtotal + cartTax + deliveryFee
+  /** Prix POS = montant encaissé (pas de surcouche TVA sur le prix affiché). */
+  const cartTax = 0
+
+  const isSavSubBoxOrder =
+    selectedSubBoxOrder &&
+    typeof selectedSubBoxOrder.clientCode === "string" &&
+    selectedSubBoxOrder.clientCode.startsWith("SAV-")
+
+  const savOrderNet = isSavSubBoxOrder
+    ? (Number(selectedSubBoxOrder.subtotal) || 0) -
+      (Number(selectedSubBoxOrder.totalDiscount) || 0)
+    : null
+
+  const savCartMatches =
+    !!selectedSubBoxOrder?.items?.length &&
+    cartMatchesSavOrder(cart, selectedSubBoxOrder)
+
+  const isSavRefundOrderOnly =
+    !!isSavSubBoxOrder &&
+    !(selectedSubBoxOrder.items?.length) &&
+    savOrderNet != null &&
+    savOrderNet < 0
+
+  let cartTotal = finalSubtotal + cartTax + deliveryFee
+
+  if (isSavRefundOrderOnly) {
+    cartTotal = savOrderNet!
+  } else if (
+    savCartMatches &&
+    savOrderNet != null &&
+    savOrderNet < 0 &&
+    cart.length > 0
+  ) {
+    cartTotal = savOrderNet!
+  }
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
   // --- Gestion Adresse & Zone ---
@@ -620,8 +739,31 @@ export default function PosPage() {
   }
 
   const handleCreateOrder = async () => {
+    // SAV remboursement : sous-caisse sans lignes → valider le dossier sans vente POS
+    if (selectedSubBoxOrder && !selectedSubBoxOrder.items?.length) {
+      if (cart.length > 0) {
+        toast.error(
+          "Pour un remboursement SAV sans vente, videz le panier puis validez."
+        )
+        return
+      }
+      try {
+        setIsSubmitting(true)
+        await validateSubBoxOrder(selectedSubBoxOrder.id)
+        resetForm()
+        loadProducts()
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
+
     if (cart.length === 0) {
-      toast.error("Panier vide")
+      toast.error(
+        selectedSubBoxOrder
+          ? "Panier vide — cliquez sur la commande sous-caisse pour charger les articles d'échange."
+          : "Panier vide"
+      )
       return
     }
 
@@ -695,13 +837,11 @@ export default function PosPage() {
       const sale = await response.json()
       toast.success(`Vente ${sale.number || 'POS'} enregistrée !`)
 
-      // Validation sous-caisse si nécessaire
+      // Validation sous-caisse : le stock magasin est déjà débité par pos-sale
       if (selectedSubBoxOrder) {
-        try {
-          await validateSubBoxOrder(selectedSubBoxOrder.id)
-        } catch (e) {
-           console.error("Erreur validation auto sous-caisse", e)
-        }
+        await validateSubBoxOrder(selectedSubBoxOrder.id, {
+          stockAlreadyDebited: true,
+        })
       }
 
       // Impression Ticket
@@ -788,7 +928,9 @@ export default function PosPage() {
       toast.success(`Vente ${sale.number || 'POS'} enregistrée !`)
 
       if (selectedSubBoxOrder) {
-         await validateSubBoxOrder(selectedSubBoxOrder.id)
+        await validateSubBoxOrder(selectedSubBoxOrder.id, {
+          stockAlreadyDebited: true,
+        })
       }
 
       handlePrintTicket(sale, saleData)
@@ -959,6 +1101,7 @@ export default function PosPage() {
           setShowPrinterSettings={setShowPrinterSettings}
           cartItemsCount={cartItemsCount}
           updateItemDiscountAmount={updateItemDiscountAmount}
+          activeSubBoxOrder={selectedSubBoxOrder}
         />
       </div>
 

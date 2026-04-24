@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { XCircle, Loader2, AlertTriangle, Package } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface Order {
   id: string

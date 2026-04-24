@@ -44,7 +44,7 @@ import {
   Wallet,
   History,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface PayrollDetail {
@@ -919,8 +919,8 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                         return (
                           <div className="mb-4">
                             <div className="flex items-center justify-between text-sm mb-1.5">
-                              <span className="text-gray-600">Payé: <span className="font-semibold text-gray-900">{formatCurrency(paid)}</span></span>
-                              <span className="text-gray-600">Reste: <span className="font-semibold text-orange-600">{formatCurrency(remaining)}</span></span>
+                              <span className="text-gray-600">Montant versé : <span className="font-semibold text-gray-900">{formatCurrency(paid)}</span></span>
+                              <span className="text-gray-600">Montant à verser : <span className="font-semibold text-orange-600">{formatCurrency(remaining)}</span></span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                               <div className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-green-500" : pct > 0 ? "bg-indigo-500" : "bg-gray-300"}`} style={{ width: `${Math.min(pct, 100)}%` }} />

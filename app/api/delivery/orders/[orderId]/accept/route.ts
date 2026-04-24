@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { reserveDeliveryPersonStock } from '@/lib/delivery-stock-validator';
+import { reserveDeliveryPersonStock, type OrderItem } from '@/lib/delivery-stock-validator';
 
 /**
  * POST /api/delivery/orders/[orderId]/accept
@@ -147,14 +147,18 @@ export async function POST(
       if (driverId && updated.items.length > 0) {
         console.log(`🚚 Réservation du stock du livreur ${driverId} pour la commande ${order.number}`);
         
-        const stockItems = updated.items.map(item => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-        }));
+        const stockItems: OrderItem[] = updated.items
+          .filter((item) => item.productId != null && item.quantity > 0)
+          .map((item) => ({
+            productId: item.productId as string,
+            variantId: item.variantId,
+            quantity: item.quantity,
+          }));
 
         // Réserver le stock du livreur (sans utiliser tx car la fonction a sa propre transaction)
-        await reserveDeliveryPersonStock(driverId, stockItems);
+        if (stockItems.length > 0) {
+          await reserveDeliveryPersonStock(driverId, stockItems);
+        }
       }
 
       return updated;

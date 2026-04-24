@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { fetchDriverStorePackDtos } from '@/lib/driver-store-packs';
 
 /**
  * GET /api/mobile/store-products
@@ -58,7 +59,14 @@ export async function GET(request: NextRequest) {
       },
       include: {
         product: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            description: true,
+            photos: true,
+            prixVente: true,
+            linkedStorePackId: true,
             category: {
               select: {
                 id: true,
@@ -77,8 +85,12 @@ export async function GET(request: NextRequest) {
 
     console.log(`📦 Produits trouvés dans le magasin: ${storeProducts.length}`);
 
-    // 3. Formater les produits pour l'interface
-    const formattedProducts = storeProducts.map((storeProduct) => ({
+    const packs = await fetchDriverStorePackDtos(driver.store.id);
+
+    // 3. Formater les produits pour l'interface (sans doublon proxy pack)
+    const formattedProducts = storeProducts
+      .filter((sp) => !sp.product.linkedStorePackId)
+      .map((storeProduct) => ({
       id: storeProduct.product.id,
       productId: storeProduct.product.id,
       name: storeProduct.product.name,
@@ -115,6 +127,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         products: formattedProducts,
+        packs,
         store: {
           id: driver.store.id,
           name: driver.store.name,

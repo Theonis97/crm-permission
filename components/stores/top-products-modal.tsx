@@ -17,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, TrendingUp, Package, ImageIcon, Trophy, Medal } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface TopProduct {
   rank: number

@@ -21,7 +21,7 @@ import {
   Receipt,
   Settings
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { thermalPrinter, type TicketData } from "@/lib/thermal-printer"
 
 interface ThermalPrinterDialogProps {

@@ -8,7 +8,7 @@ import {
   X, 
   MoreVertical,
   CheckCircle2,
-  Calendar
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,8 +29,11 @@ interface PosSidebarProps {
   setSubBoxOrderSearch: (value: string) => void
   loadSubBoxOrders: (search?: string) => void
   selectedSubBoxOrder: any
-  loadSubBoxOrderToCart: (order: any) => void
-  validateSubBoxOrder: (orderId: string) => void
+  loadSubBoxOrderToCart: (order: any) => void | Promise<void>
+  validateSubBoxOrder: (
+    orderId: string,
+    options?: { stockAlreadyDebited?: boolean }
+  ) => void
   cancelSubBoxOrder: (orderId: string, reason?: string) => void
   dayCloseSummary: any
   handleDayClose: () => void
@@ -121,7 +124,7 @@ export function PosSidebar({
               {/* Zone cliquable principale pour charger la commande */}
               <div 
                 className="cursor-pointer" 
-                onClick={() => loadSubBoxOrderToCart(order)}
+                onClick={() => void loadSubBoxOrderToCart(order)}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-bold text-base text-gray-900">{order.clientCode}</span>

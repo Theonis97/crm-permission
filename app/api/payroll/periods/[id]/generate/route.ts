@@ -142,6 +142,8 @@ export async function POST(
             totalBonuses: calculation.totalBonuses,
             netSalary: calculation.netSalary,
             employerCharges: calculation.employerCharges,
+            paidAmount: 0,
+            remainingAmount: calculation.netSalary,
             status: "DRAFT",
           },
         })

@@ -42,7 +42,7 @@ import {
 import { cn } from "@/lib/utils"
 import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { ProductDetailsSheet } from "@/components/warehouse/product-details-sheet"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface Product {
   id: string

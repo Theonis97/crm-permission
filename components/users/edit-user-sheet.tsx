@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Edit, Save, Loader2, Plus, Trash2, Store } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 const SELECT_IN_SHEET_CLASS = "z-[2100] max-h-[min(280px,var(--radix-select-content-available-height))]"
 

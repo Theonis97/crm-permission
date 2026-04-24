@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { ModuleNavbar } from "@/components/navigation/module-navbar"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +50,13 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CreateMovementSheet } from "@/components/warehouse/create-movement-sheet"
+
+function toISODateLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
 
 const mockMovements = [
   {
@@ -181,41 +189,46 @@ export default function MovementsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
 
-  useEffect(() => {
-    loadMovements()
-  }, [typeFilter, productFilter])
+  const [dateFrom, setDateFrom] = useState(() => {
+    const end = new Date()
+    const start = new Date(end.getFullYear(), end.getMonth(), 1)
+    return toISODateLocal(start)
+  })
+  const [dateTo, setDateTo] = useState(() => toISODateLocal(new Date()))
 
-  const loadMovements = async () => {
+  const loadMovements = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      
+
       if (typeFilter !== "all") {
         params.append("type", typeFilter)
       }
-      
+
       if (productFilter !== "all") {
         params.append("productId", productFilter)
       }
-      
+
+      if (dateFrom) params.append("from", dateFrom)
+      if (dateTo) params.append("to", dateTo)
+
       params.append("page", "1")
-      params.append("limit", "100")
+      params.append("limit", "500")
 
       const response = await fetch(`/api/stock-movements?${params}`)
-      
+
       if (!response.ok) {
         throw new Error("Erreur lors du chargement")
       }
 
       const data = await response.json()
       setMovements(data.movements || [])
-      
-      // Extraire les produits et utilisateurs uniques pour les filtres
+
       const uniqueProducts = Array.from(
         new Map(data.movements.map((m: any) => [m.product.id, m.product])).values()
       )
       setProducts(uniqueProducts as any[])
-      
+
       const uniqueUsers = Array.from(
         new Map(data.movements.map((m: any) => [m.user.id, m.user])).values()
       )
@@ -226,6 +239,36 @@ export default function MovementsPage() {
     } finally {
       setLoading(false)
     }
+  }, [typeFilter, productFilter, dateFrom, dateTo])
+
+  useEffect(() => {
+    loadMovements()
+  }, [loadMovements])
+
+  const applyPreset = (preset: "today" | "7d" | "30d" | "month" | "lastMonth") => {
+    const end = new Date()
+    let start = new Date()
+    if (preset === "today") {
+      start = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+    } else if (preset === "7d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 6)
+    } else if (preset === "30d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 29)
+    } else if (preset === "month") {
+      start = new Date(end.getFullYear(), end.getMonth(), 1)
+    } else if (preset === "lastMonth") {
+      start = new Date(end.getFullYear(), end.getMonth() - 1, 1)
+      const lastDayPrev = new Date(end.getFullYear(), end.getMonth(), 0)
+      setDateFrom(toISODateLocal(start))
+      setDateTo(toISODateLocal(lastDayPrev))
+      setCurrentPage(1)
+      return
+    }
+    setDateFrom(toISODateLocal(start))
+    setDateTo(toISODateLocal(end))
+    setCurrentPage(1)
   }
 
   const filteredMovements = movements.filter((movement) => {
@@ -306,9 +349,17 @@ export default function MovementsPage() {
     setTypeFilter("all")
     setProductFilter("all")
     setSearchTerm("")
+    const end = new Date()
+    const start = new Date(end.getFullYear(), end.getMonth(), 1)
+    setDateFrom(toISODateLocal(start))
+    setDateTo(toISODateLocal(end))
+    setCurrentPage(1)
   }
 
-  const hasActiveFilters = typeFilter !== "all" || productFilter !== "all" || searchTerm !== ""
+  const hasActiveFilters =
+    typeFilter !== "all" ||
+    productFilter !== "all" ||
+    searchTerm !== ""
 
   // Pagination
   const totalPages = Math.ceil(filteredMovements.length / itemsPerPage)
@@ -377,7 +428,61 @@ export default function MovementsPage() {
       />
 
       <div className="py-8">
-        <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-orange-600" />
+                Période
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Du</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="w-[160px]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Au</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => {
+                      setDateTo(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="w-[160px]"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("today")}>
+                    Aujourd&apos;hui
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("7d")}>
+                    7 jours
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("30d")}>
+                    30 jours
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("month")}>
+                    Ce mois
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("lastMonth")}>
+                    Mois dernier
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Tableau des mouvements */}
           <Card className="py-0 gap-0">
             {/* Barre de recherche et filtres */}

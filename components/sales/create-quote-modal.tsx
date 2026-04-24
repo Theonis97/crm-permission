@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Plus, Trash2, Save, X } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface Contact {
   id: string

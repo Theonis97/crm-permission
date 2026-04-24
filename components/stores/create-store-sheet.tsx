@@ -34,7 +34,7 @@ import {
   Building2,
   ShieldCheck,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { ManagerSelector } from "@/components/stores/manager-selector"
 
 interface CreateStoreSheetProps {

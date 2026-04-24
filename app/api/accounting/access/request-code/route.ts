@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { createTransporter } from "@/lib/email-service"
-
-const DEFAULT_ACCOUNTING_ACCESS_EMAIL = "gabinmoundziegou@gmail.com"
+import { accountingCodeRecipientEmail } from "@/lib/secure-module-code-email"
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
@@ -23,7 +22,7 @@ export async function POST() {
     const config = await prisma.moduleAccessConfig.findUnique({
       where: { module: "ACCOUNTING" },
     })
-    const recipientEmail = config?.recipientEmail || DEFAULT_ACCOUNTING_ACCESS_EMAIL
+    const recipientEmail = accountingCodeRecipientEmail(config?.recipientEmail)
 
     // Invalider tous les codes précédents non utilisés
     await prisma.accountingAccessCode.updateMany({
@@ -48,6 +47,12 @@ export async function POST() {
         expiresAt,
       },
     })
+
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        `[Comptabilité — dev] Code à saisir : ${code} (10 min) · email cible : ${recipientEmail}. Variable .env : ACCOUNTING_CODE_RECIPIENT_EMAIL`,
+      )
+    }
 
     // Envoyer l'email
     const transporter = createTransporter()

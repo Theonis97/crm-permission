@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { notifyStoreAndWarehouse } from '@/lib/stock-flow-notifications';
 
 /**
  * POST /api/mobile/restocking-requests
@@ -147,8 +148,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Demande d'approvisionnement créée: ${restockingRequest.id}`);
 
-    // TODO: Envoyer une notification aux gestionnaires du magasin
-    // await notifyStoreManagers(targetStoreId, restockingRequest);
+    const totalQty = restockingRequest.items.reduce((s, i) => s + i.requestedQuantity, 0);
+    void notifyStoreAndWarehouse(restockingRequest.storeId, {
+      title: 'Réapprovisionnement (livreur)',
+      body: `${restockingRequest.deliveryPerson.name} — ${restockingRequest.store.name} · ${restockingRequest.items.length} réf. · ${totalQty} unité(s)`,
+      data: {
+        type: 'DRIVER_RESTOCK',
+        requestId: restockingRequest.id,
+        storeId: restockingRequest.storeId,
+      },
+    }).catch((err) => console.error('[notify DRIVER_RESTOCK mobile]', err));
 
     return NextResponse.json({
       success: true,

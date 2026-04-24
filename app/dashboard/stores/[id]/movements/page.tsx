@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -46,15 +46,24 @@ import {
   XCircle,
   Clock,
   ChevronRight,
+  Calendar,
 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { ReturnMovementDialog } from "@/components/stores/return-movement-dialog"
 import { DriverReturnDialog } from "@/components/stores/driver-return-dialog"
 import { StoreReturnWarehouseDialog } from "@/components/stores/store-return-warehouse-dialog"
+
+function toISODateLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
 
 interface MovementsPageProps {
   params: Promise<{
@@ -146,28 +155,58 @@ export default function MovementsPage({ params }: MovementsPageProps) {
   const [rejectingDriverReturnId, setRejectingDriverReturnId] = useState<string | null>(null)
   const [driverRejectionReason, setDriverRejectionReason] = useState("")
   const [validatingDriverReturnId, setValidatingDriverReturnId] = useState<string | null>(null)
-  
-  useEffect(() => {
-    params.then(p => {
-      setStoreId(p.id)
-      fetchStoreMovements(p.id)
-    })
-  }, [])
-  
-  useEffect(() => {
-    if (storeId && activeTab === "delivery") {
-      fetchDeliveryMovements(storeId)
-    }
-    if (storeId && activeTab === "driver-returns") {
-      loadDriverReturnRequests(storeId)
-    }
-  }, [activeTab, storeId])
+
+  const [dateFrom, setDateFrom] = useState(() => {
+    const end = new Date()
+    const start = new Date(end.getFullYear(), end.getMonth(), 1)
+    return toISODateLocal(start)
+  })
+  const [dateTo, setDateTo] = useState(() => toISODateLocal(new Date()))
 
   useEffect(() => {
-    if (storeId && activeTab === "driver-returns") {
-      loadDriverReturnRequests(storeId)
+    params.then((p) => setStoreId(p.id))
+  }, [params])
+
+  const loadMovementsForPeriod = useCallback(async (id: string) => {
+    if (!id) return
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ limit: "500" })
+      if (dateFrom) qs.set("from", dateFrom)
+      if (dateTo) qs.set("to", dateTo)
+      const qsStr = qs.toString()
+      const [resStore, resDelivery] = await Promise.all([
+        fetch(`/api/stores/${id}/stock/movements?${qsStr}`),
+        fetch(`/api/stores/${id}/delivery-movements?${qsStr}`),
+      ])
+      if (resStore.ok) {
+        const data = await resStore.json()
+        setStoreMovements(data.movements || [])
+      } else {
+        toast.error("Erreur lors du chargement des mouvements magasin")
+      }
+      if (resDelivery.ok) {
+        const data = await resDelivery.json()
+        setDeliveryMovements(data.movements || [])
+      } else {
+        toast.error("Erreur lors du chargement des mouvements livreurs")
+      }
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setLoading(false)
     }
-  }, [driverReturnStatusFilter])
+  }, [dateFrom, dateTo])
+
+  useEffect(() => {
+    if (!storeId) return
+    loadMovementsForPeriod(storeId)
+  }, [storeId, loadMovementsForPeriod])
+
+  useEffect(() => {
+    if (!storeId || activeTab !== "driver-returns") return
+    loadDriverReturnRequests(storeId)
+  }, [activeTab, storeId, driverReturnStatusFilter])
 
   const loadDriverReturnRequests = async (id: string) => {
     setDriverReturnLoading(true)
@@ -212,38 +251,30 @@ export default function MovementsPage({ params }: MovementsPageProps) {
     }
   }
   
-  const fetchStoreMovements = async (id: string) => {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/stores/${id}/stock/movements?limit=100`)
-      if (response.ok) {
-        const data = await response.json()
-        setStoreMovements(data.movements || [])
-      }
-    } catch (error) {
-      console.error("Error fetching store movements:", error)
-      toast.error("Erreur lors du chargement des mouvements")
-    } finally {
-      setLoading(false)
+  const applyPreset = (preset: "today" | "7d" | "30d" | "month" | "lastMonth") => {
+    const end = new Date()
+    let start = new Date()
+    if (preset === "today") {
+      start = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+    } else if (preset === "7d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 6)
+    } else if (preset === "30d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 29)
+    } else if (preset === "month") {
+      start = new Date(end.getFullYear(), end.getMonth(), 1)
+    } else if (preset === "lastMonth") {
+      start = new Date(end.getFullYear(), end.getMonth() - 1, 1)
+      const lastDayPrev = new Date(end.getFullYear(), end.getMonth(), 0)
+      setDateFrom(toISODateLocal(start))
+      setDateTo(toISODateLocal(lastDayPrev))
+      return
     }
+    setDateFrom(toISODateLocal(start))
+    setDateTo(toISODateLocal(end))
   }
-  
-  const fetchDeliveryMovements = async (id: string) => {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/stores/${id}/delivery-movements?limit=100`)
-      if (response.ok) {
-        const data = await response.json()
-        setDeliveryMovements(data.movements || [])
-      }
-    } catch (error) {
-      console.error("Error fetching delivery movements:", error)
-      toast.error("Erreur lors du chargement des mouvements livreurs")
-    } finally {
-      setLoading(false)
-    }
-  }
-  
+
   const filteredStoreMovements = storeMovements.filter(m => {
     const matchesSearch = m.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (m.product.sku && m.product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -297,6 +328,53 @@ export default function MovementsPage({ params }: MovementsPageProps) {
       </div>
 
       <div className="p-8 space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-orange-600" />
+            Période
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Du</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Au</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("today")}>
+                Aujourd&apos;hui
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("7d")}>
+                7 jours
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("30d")}>
+                30 jours
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("month")}>
+                Ce mois
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("lastMonth")}>
+                Mois dernier
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Statistiques */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -774,12 +852,7 @@ export default function MovementsPage({ params }: MovementsPageProps) {
         open={showReturnDialog}
         onOpenChange={setShowReturnDialog}
         storeId={storeId}
-        onSuccess={() => {
-          fetchStoreMovements(storeId)
-          if (activeTab === "delivery") {
-            fetchDeliveryMovements(storeId)
-          }
-        }}
+        onSuccess={() => loadMovementsForPeriod(storeId)}
       />
 
       {/* Modal de retour livreur */}
@@ -787,10 +860,7 @@ export default function MovementsPage({ params }: MovementsPageProps) {
         open={showDriverReturnDialog}
         onOpenChange={setShowDriverReturnDialog}
         storeId={storeId}
-        onSuccess={() => {
-          fetchStoreMovements(storeId)
-          fetchDeliveryMovements(storeId)
-        }}
+        onSuccess={() => loadMovementsForPeriod(storeId)}
       />
 
       {/* Modal de retour entrepôt */}
@@ -798,7 +868,7 @@ export default function MovementsPage({ params }: MovementsPageProps) {
         open={showWarehouseReturnDialog}
         onOpenChange={setShowWarehouseReturnDialog}
         storeId={storeId}
-        onSuccess={() => fetchStoreMovements(storeId)}
+        onSuccess={() => loadMovementsForPeriod(storeId)}
       />
     </>
   )

@@ -52,6 +52,8 @@ export interface DeliveryPerson {
 }
 
 export interface CartItem {
+  /** Identifiant stable par ligne (plusieurs lignes peuvent partager le même produit, ex. sous-caisse SAV). */
+  lineId: string
   product: Product
   quantity: number
   discount?: number // Réduction en pourcentage (0-100)

@@ -31,6 +31,9 @@ export function usePermissions(): UserPermissions & {
   const [permissionsError, setPermissionsError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
     const fetchUserPermissions = async () => {
       if (status === "loading") return
 
@@ -43,7 +46,12 @@ export function usePermissions(): UserPermissions & {
 
       try {
         setPermissionsError(null)
-        const response = await fetch(`/api/users/${session.user.id}/permissions`)
+        const response = await fetch(`/api/users/${session.user.id}/permissions`, {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        if (cancelled) return
         if (response.ok) {
           const data = await response.json()
           setUser(data.user)
@@ -62,14 +70,22 @@ export function usePermissions(): UserPermissions & {
           }
         }
       } catch (error) {
+        if (cancelled || (error instanceof Error && error.name === "AbortError")) return
         console.error("Error fetching permissions:", error)
         setPermissionsError("Impossible de charger vos permissions (réseau ou serveur).")
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
-    fetchUserPermissions()
+    void fetchUserPermissions()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [session, status])
 
   const hasPermission = (permission: string): boolean => {

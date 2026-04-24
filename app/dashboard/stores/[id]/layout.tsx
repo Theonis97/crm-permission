@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react"
 import React from "react"
 import { useRouter } from "next/navigation"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { StoreSidebar } from "@/components/stores/store-sidebar"
 
 interface StoreLayoutProps {

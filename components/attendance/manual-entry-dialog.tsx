@@ -22,7 +22,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Clock, LogIn, LogOut, Loader2, Calendar, Check, ChevronsUpDown, Search } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface ManualEntryDialogProps {
   isOpen: boolean

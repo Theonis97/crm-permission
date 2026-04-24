@@ -23,7 +23,7 @@ import {
   AlertCircle,
   CheckCircle
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface PrinterSettings {
   // Informations du magasin

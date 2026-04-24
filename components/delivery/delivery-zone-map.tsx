@@ -6,7 +6,7 @@ import { useMapEvents } from "react-leaflet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Trash2, Undo, Check, X } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import "leaflet/dist/leaflet.css"
 
 // Import dynamique pour éviter les erreurs SSR avec Leaflet

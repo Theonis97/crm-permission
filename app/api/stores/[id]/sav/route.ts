@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
@@ -162,20 +163,28 @@ export async function POST(
       }
     }
 
-    // Générer le numéro de retour et le numéro de suivi
-    const today = new Date()
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
-    const count = await prisma.productReturn.count({
-      where: {
-        storeId,
-        createdAt: {
-          gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-          lt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1),
-        }
-      }
-    })
-    const returnNumber = `RET-${dateStr}-${String(count + 1).padStart(3, '0')}`
-    const trackingNumber = `SAV-${dateStr}-${String(count + 1).padStart(3, '0')}`
+    // Numéros uniques (contrainte @unique globale sur `number` / `tracking_number`).
+    // L’ancien compteur « par magasin + jour » recréait le même RET-…-001 sur chaque magasin → erreur au 2ᵉ magasin.
+    // Ajout d’entropie pour éviter aussi les courses entre deux créations le même jour.
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+    const entropy = randomBytes(4).toString("hex").toUpperCase()
+    const returnNumber = `RET-${dateStr}-${entropy}`
+    const trackingNumber = `SAV-${dateStr}-${entropy}`
+
+    const createdByUser = session.user.email
+      ? await prisma.user.findUnique({
+          where: { email: session.user.email },
+          select: { id: true },
+        })
+      : null
+    const createdById =
+      createdByUser?.id ?? (session.user as { id?: string }).id
+    if (!createdById) {
+      return NextResponse.json(
+        { error: "Utilisateur non résolu (session)" },
+        { status: 401 }
+      )
+    }
 
     // Préparer les données des items
     const itemsData = await Promise.all(
@@ -258,7 +267,7 @@ export async function POST(
         totalDiscount: 0,
         status: "PENDING", // En attente de traitement SAV
         notes,
-        createdById: session.user.id,
+        createdById,
         items: {
           create: itemsData
         }

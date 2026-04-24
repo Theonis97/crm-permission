@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendDailyPosSalesEmail } from "@/lib/email-service"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 // POST - Créer une vente directe POS (client au magasin)
 export async function POST(
@@ -206,6 +207,12 @@ export async function POST(
               decrement: quantity,
             },
           },
+        })
+
+        await adjustPackAssembledForProxyProduct(tx, {
+          storeId,
+          productId,
+          deltaPackUnits: -quantity,
         })
 
         // Créer le mouvement de stock (SALE = sortie de stock)

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getActiveDeliveryPersonByUserEmail } from "@/lib/driver-session"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
+import { notifyStoreAndWarehouse } from "@/lib/stock-flow-notifications"
 
 async function resolveDeliveryPerson(userId: string, userEmail: string | null | undefined) {
   const byEmail = await getActiveDeliveryPersonByUserEmail(userEmail)
@@ -114,6 +115,16 @@ export async function POST(req: NextRequest) {
         store: { select: { id: true, name: true } },
       },
     })
+
+    const dpRow = await prisma.deliveryPerson.findUnique({
+      where: { id: deliveryPersonId },
+      select: { name: true },
+    })
+    void notifyStoreAndWarehouse(targetStoreId, {
+      title: "Retour livreur",
+      body: `${dpRow?.name?.trim() || "Livreur"} — ${targetStore.name} · ${stockItem.product.name} × ${quantity}`,
+      data: { type: "DRIVER_RETURN", id: returnRequest.id, storeId: targetStoreId },
+    }).catch((err) => console.error("[notify DRIVER_RETURN]", err))
 
     return NextResponse.json({
       success: true,

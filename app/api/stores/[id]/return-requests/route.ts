@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { notifyWarehouseStaff } from "@/lib/stock-flow-notifications"
 
 function generateReturnNumber(): string {
   const now = new Date()
@@ -116,6 +117,17 @@ export async function POST(
         requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     })
+
+    void notifyWarehouseStaff({
+      title: "Retour magasin → entrepôt",
+      body: `${returnRequest.store.name} · ${returnRequest.number} · ${items.length} ligne(s)`,
+      data: {
+        type: "STORE_RETURN_WAREHOUSE",
+        id: returnRequest.id,
+        storeId,
+        number: returnRequest.number,
+      },
+    }).catch((err) => console.error("[notify STORE_RETURN_WAREHOUSE]", err))
 
     return NextResponse.json({
       success: true,

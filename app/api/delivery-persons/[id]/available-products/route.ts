@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { fetchDriverStorePackDtos } from "@/lib/driver-store-packs"
 
 /**
  * GET /api/delivery-persons/[id]/available-products
@@ -40,7 +41,14 @@ export async function GET(
       },
       include: {
         product: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            description: true,
+            photos: true,
+            prixVente: true,
+            linkedStorePackId: true,
             category: {
               select: {
                 id: true,
@@ -100,8 +108,12 @@ export async function GET(
       })
     })
 
-    // Formater les données pour la réponse
-    const availableProducts = storeProducts.map((storeProduct) => {
+    const packs = await fetchDriverStorePackDtos(deliveryPerson.storeId)
+
+    // Formater les données pour la réponse (hors produits proxy pack : listés dans `packs`)
+    const availableProducts = storeProducts
+      .filter((sp) => !sp.product.linkedStorePackId)
+      .map((storeProduct) => {
       const product = storeProduct.product
       const deliveryStockKey = `${product.id}-null`
       const deliveryStock = deliveryStockMap.get(deliveryStockKey) || {
@@ -149,6 +161,7 @@ export async function GET(
           },
         },
         products: availableProducts,
+        packs,
       },
     })
   } catch (error) {

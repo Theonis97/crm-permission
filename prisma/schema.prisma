@@ -183,6 +183,9 @@ model Store {
   // SAV - Retours de produits
   productReturns ProductReturn[]
 
+  /// Lignes de stock « tampon » : produits retournés en magasin (hors vente directe)
+  storeReturnedGoodsLines StoreReturnedGoodsLine[]
+
   // Sous-caisses
   subBoxes SubBox[]
 
@@ -197,6 +200,8 @@ model Store {
 
   // Retours magasin → entrepôt
   storeReturnRequests StoreReturnRequest[]
+
+  storePacks StorePack[]
 
   @@map("stores")
 }
@@ -253,6 +258,9 @@ model Product {
   brandId String? @map("brand_id") // Optionnel
   brand   Brand?  @relation(fields: [brandId], references: [id])
 
+  linkedStorePackId String?   @unique @map("linked_store_pack_id")
+  linkedStorePack   StorePack? @relation("PackProxyProduct", fields: [linkedStorePackId], references: [id], onDelete: Cascade)
+
   quoteItems              QuoteItem[]
   invoiceItems            InvoiceItem[]
   stockMovements          StockMovement[]
@@ -271,11 +279,46 @@ model Product {
   storeReturnRequestItems StoreReturnRequestItem[] // Retours magasin → entrepôt
   driverReturnRequests    DriverReturnRequest[] // Retours livreur → magasin
   exchangeReturnItems     ProductReturnItem[]      @relation("ExchangeProduct") // SAV - Produits donnés en échange
+  storePackItems          StorePackItem[]
+  storeReturnedGoodsLines StoreReturnedGoodsLine[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("products")
+}
+
+model StorePack {
+  id              String   @id @default(cuid())
+  storeId         String   @map("store_id")
+  name            String
+  description     String?
+  salePrice       Float?   @map("sale_price")
+  assembledStock  Int      @default(0) @map("assembled_stock")
+  compositionHash String?  @map("composition_hash")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  store       Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items       StorePackItem[]
+  proxyProduct Product?      @relation("PackProxyProduct")
+
+  @@index([storeId])
+  @@map("store_packs")
+}
+
+model StorePackItem {
+  id        String @id @default(cuid())
+  packId    String @map("pack_id")
+  productId String @map("product_id")
+  quantity  Int
+
+  pack    StorePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  product Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, productId])
+  @@index([productId])
+  @@map("store_pack_items")
 }
 
 // Variantes de produits (ex: iPhone 14 Pro - 128GB - Noir)
@@ -317,6 +360,7 @@ model ProductVariant {
   driverSaleItems        DriverSaleItem[] // Ventes déclarées par livreurs pour cette variante
   returnedItems          ProductReturnItem[]     @relation("ReturnedVariant") // SAV - Variantes retournées
   exchangeReturnItems    ProductReturnItem[]     @relation("ExchangeVariant") // SAV - Variantes données en échange
+  storeReturnedGoodsLines StoreReturnedGoodsLine[]
 
   @@index([productId])
   @@index([sku])
@@ -333,7 +377,7 @@ model StockMovement {
   lotId     String?   @map("lot_id") // Traçabilité par lot
   createdAt DateTime  @default(now()) @map("created_at")
 
-  product Product @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id])
   lot     Lot?    @relation(fields: [lotId], references: [id])
 
@@ -593,7 +637,7 @@ model StoreOrder {
 model StoreOrderItem {
   id                String   @id @default(cuid())
   storeOrderId      String   @map("store_order_id")
-  productId         String   @map("product_id")
+  productId         String?  @map("product_id")
   variantId         String?  @map("variant_id") // Si commande d'une variante spécifique
   name              String // Snapshot du nom au moment de la commande
   sku               String? // Snapshot du SKU
@@ -607,7 +651,7 @@ model StoreOrderItem {
   createdAt         DateTime @default(now()) @map("created_at")
 
   storeOrder StoreOrder      @relation(fields: [storeOrderId], references: [id], onDelete: Cascade)
-  product    Product         @relation(fields: [productId], references: [id])
+  product    Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   // SAV - Items retournés
@@ -959,7 +1003,6 @@ model User {
   approvedOrders          Order[]                  @relation("OrderApprover")
   deliveryStockMovements  DeliveryStockMovement[] // Mouvements de stock des livreurs créés par cet utilisateur
   resolvedFailedOrders    FailedWhatsAppOrder[] // Commandes WhatsApp avec erreurs résolues par cet utilisateur
-  pwaPushSubscription     PWAPushSubscription? // Subscription PWA pour les notifications push
 
   // Relations pour les rôles et permissions magasin
   storeUserRoles     StoreUserRole[]
@@ -1009,6 +1052,9 @@ model User {
   requestedStoreReturns StoreReturnRequest[] @relation("StoreReturnRequestedBy")
   validatedStoreReturns StoreReturnRequest[] @relation("StoreReturnValidatedBy")
 
+  /// Réintégration au stock vendable (lignes stock retours SAV)
+  reintegratedReturnedGoods StoreReturnedGoodsLine[] @relation("ReturnedGoodsReintegratedBy")
+
   // GED - Relations
   gedFolders        GedFolder[]      @relation("GedFolderOwner")
   gedFiles          GedFile[]        @relation("GedFileOwner")
@@ -1017,7 +1063,28 @@ model User {
   gedSharesGiven    GedShare[]       @relation("GedSharedBy")
   gedFavorites      GedFavorite[]    @relation("GedFavorites")
 
+  /// Alertes réappro / retours (affichage dans l’ERP, sans push serveur)
+  staffInAppNotifications StaffInAppNotification[]
+
   @@map("users")
+}
+
+/// Notifications pour gestionnaires (magasin / entrepôt) — stockées en base, lues depuis le navigateur ou le téléphone.
+model StaffInAppNotification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  title     String
+  body      String
+  kind      String? // ex. DRIVER_RESTOCK, STORE_RETURN_WAREHOUSE
+  payload   Json?
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("staff_in_app_notifications")
 }
 
 model VerificationToken {
@@ -1547,26 +1614,6 @@ model DeliveryNotification {
   @@map("delivery_notifications")
 }
 
-// Subscriptions PWA pour les notifications push
-model PWAPushSubscription {
-  id        String   @id @default(cuid())
-  userId    String   @unique @map("user_id") // ID de l'utilisateur (livreur)
-  endpoint  String // URL de l'endpoint push
-  p256dhKey String   @map("p256dh_key") // Clé publique pour le chiffrement
-  authKey   String   @map("auth_key") // Clé d'authentification
-  userAgent String?  @map("user_agent") // Navigateur utilisé
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isActive])
-  @@index([createdAt])
-  @@map("pwa_push_subscriptions")
-}
-
 // ============================================================================
 // DEMANDES D'APPROVISIONNEMENT LIVREURS
 // ============================================================================
@@ -1819,6 +1866,9 @@ model ProductReturn {
   // Items retournés
   items ProductReturnItem[]
 
+  /// Entrées au stock retours (tampon magasin) liées à ce dossier
+  storeReturnedGoodsLines StoreReturnedGoodsLine[]
+
   @@index([storeId])
   @@index([storeOrderId])
   @@index([status])
@@ -1832,7 +1882,7 @@ model ProductReturn {
 model ProductReturnItem {
   id               String  @id @default(cuid())
   productReturnId  String  @map("product_return_id")
-  productId        String  @map("product_id")
+  productId        String? @map("product_id")
   variantId        String? @map("variant_id") // Variante du produit retourné
   storeOrderItemId String? @map("store_order_item_id") // Optionnel - lien vers l'item de la commande originale
 
@@ -1867,16 +1917,53 @@ model ProductReturnItem {
 
   // Relations
   productReturn   ProductReturn   @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
-  product         Product         @relation(fields: [productId], references: [id])
+  product         Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   variant         ProductVariant? @relation("ReturnedVariant", fields: [variantId], references: [id])
   storeOrderItem  StoreOrderItem? @relation(fields: [storeOrderItemId], references: [id])
-  exchangeProduct Product?        @relation("ExchangeProduct", fields: [exchangeProductId], references: [id])
+  exchangeProduct Product?        @relation("ExchangeProduct", fields: [exchangeProductId], references: [id], onDelete: SetNull)
   exchangeVariant ProductVariant? @relation("ExchangeVariant", fields: [exchangeProductVariantId], references: [id])
+
+  /// Une entrée max au stock tampon « retours » par ligne de retour
+  returnedGoodsIntake StoreReturnedGoodsLine?
 
   @@index([productReturnId])
   @@index([productId])
   @@index([exchangeProductId])
   @@map("product_return_items")
+}
+
+/// Produit retourné stocké en magasin hors rayon (tampon SAV), pour examen / réintégration / stats
+model StoreReturnedGoodsLine {
+  id                  String           @id @default(cuid())
+  storeId             String           @map("store_id")
+  productId           String           @map("product_id")
+  variantId           String?          @map("variant_id")
+  quantity            Int
+  condition           ProductCondition @map("product_condition")
+  productReturnId     String           @map("product_return_id")
+  productReturnItemId String           @unique @map("product_return_item_id")
+  /// SAV_PROCESS | CASHIER_VALIDATION | POS_SUB_BOX
+  source              String           @map("source")
+
+  /// Renseigné quand la ligne a été remise en stock vendable magasin après contrôle
+  reintegratedAt   DateTime? @map("reintegrated_at")
+  reintegratedById String?   @map("reintegrated_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store             Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product           Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant           ProductVariant?   @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productReturn     ProductReturn     @relation(fields: [productReturnId], references: [id], onDelete: Cascade)
+  productReturnItem ProductReturnItem @relation(fields: [productReturnItemId], references: [id], onDelete: Cascade)
+  reintegratedBy    User?             @relation("ReturnedGoodsReintegratedBy", fields: [reintegratedById], references: [id], onDelete: SetNull)
+
+  @@index([storeId])
+  @@index([productId])
+  @@index([productReturnId])
+  @@index([createdAt])
+  @@index([storeId, reintegratedAt])
+  @@map("store_returned_goods_lines")
 }
 
 // ============================================================================

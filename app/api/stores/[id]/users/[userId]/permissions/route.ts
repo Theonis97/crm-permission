@@ -64,15 +64,27 @@ const ALL_STORE_PERMISSIONS = [
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string; userId: string }> },
+  context: { params: Promise<{ id: string; userId: string }> | { id: string; userId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id: storeId, userId } = await params
+    const raw = context.params
+    const { id: storeId, userId } = raw instanceof Promise ? await raw : raw
+
+    if (
+      !storeId ||
+      !userId ||
+      typeof storeId !== "string" ||
+      typeof userId !== "string" ||
+      storeId.trim() === "" ||
+      userId.trim() === ""
+    ) {
+      return NextResponse.json({ error: "Identifiant magasin ou utilisateur invalide" }, { status: 400 })
+    }
 
     // ── 1. Vérifier que l'utilisateur existe ─────────────────────────────────
     const user = await prisma.user.findUnique({
@@ -103,14 +115,17 @@ export async function GET(
       })
 
       userRoles.forEach((ur) => {
+        const role = ur.role
+        if (!role) return
         rolesInfo.push({
-          id: ur.role.id,
-          name: ur.role.name,
-          description: ur.role.description,
-          isSystem: ur.role.isSystem,
+          id: role.id,
+          name: role.name,
+          description: role.description,
+          isSystem: role.isSystem,
         })
-        ur.role.storeRolePermissions.forEach((rp) => {
-          permissionsSet.add(rp.permission.name)
+        role.storeRolePermissions?.forEach((rp) => {
+          const name = rp.permission?.name
+          if (name) permissionsSet.add(name)
         })
       })
     } catch {
@@ -138,12 +153,16 @@ export async function GET(
         },
       })
 
-      if (userWithRoles?.userRoles) {
-        const globalPerms = new Set(
-          userWithRoles.userRoles.flatMap((ur) =>
-            ur.role.rolePermissions.map((rp) => rp.permission.name),
-          ),
-        )
+      if (userWithRoles?.userRoles?.length) {
+        const globalPerms = new Set<string>()
+        for (const ur of userWithRoles.userRoles) {
+          const r = ur.role
+          if (!r?.rolePermissions) continue
+          for (const rp of r.rolePermissions) {
+            const n = rp.permission?.name
+            if (n) globalPerms.add(n)
+          }
+        }
         isGlobalAdmin = GLOBAL_ADMIN_PERMS.some((p) => globalPerms.has(p))
 
         if (isGlobalAdmin) {

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import type { Prisma, RestockingRequestStatus } from "@prisma/client"
+import { notifyStoreAndWarehouse } from "@/lib/stock-flow-notifications"
 
 /**
  * GET /api/restocking-requests
@@ -254,6 +255,19 @@ export async function POST(request: NextRequest) {
     })
 
     console.log(`✅ Demande d'approvisionnement créée: ${completeRequest?.id} pour ${deliveryPerson.name}`)
+
+    if (completeRequest) {
+      const totalQty = completeRequest.items.reduce((s, i) => s + i.requestedQuantity, 0)
+      void notifyStoreAndWarehouse(completeRequest.storeId, {
+        title: "Réapprovisionnement (livreur)",
+        body: `${completeRequest.deliveryPerson.name} — ${completeRequest.store.name} · ${completeRequest.items.length} réf. · ${totalQty} unité(s)`,
+        data: {
+          type: "DRIVER_RESTOCK",
+          requestId: completeRequest.id,
+          storeId: completeRequest.storeId,
+        },
+      }).catch((err) => console.error("[notify DRIVER_RESTOCK legacy]", err))
+    }
 
     return NextResponse.json({
       success: true,

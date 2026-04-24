@@ -31,7 +31,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts"
 

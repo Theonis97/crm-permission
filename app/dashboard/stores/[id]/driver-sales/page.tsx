@@ -14,6 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   ShoppingBag,
   Search,
@@ -27,8 +37,10 @@ import {
   Truck,
   ArrowDownCircle,
   Store,
+  Trophy,
+  TrendingUp,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { formatFCFA } from "@/lib/utils"
 import { StorePageHeader } from "@/components/stores/store-page-header"
 
@@ -57,36 +69,63 @@ interface DriverSale {
   items: SaleItem[]
 }
 
+interface DriverAgg {
+  driverId: string
+  driverName: string
+  total: number
+  netTotal: number
+  totalDeliveryFees: number
+  count: number
+  rank?: number
+}
+
 interface Summary {
-  byDriver: Array<{
-    driverId: string
-    driverName: string
-    total: number
-    netTotal: number
-    totalDeliveryFees: number
-    count: number
-  }>
+  byDriver: DriverAgg[]
   grandTotal: number
   grandNetTotal: number
   grandDeliveryFees: number
   totalSales: number
+  topPerformer: (DriverAgg & { rank: number }) | null
+  rankingByNet: Array<DriverAgg & { rank: number }>
+  rankingByDeclarations: Array<DriverAgg & { rank: number }>
+}
+
+function toISODateLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
 }
 
 export default function DriverSalesPage() {
   const params = useParams()
   const storeId = params.id as string
 
+  const today = new Date()
+  const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1)
+
   const [sales, setSales] = useState<DriverSale[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [period, setPeriod] = useState<{ from: string | null; to: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [driverFilter, setDriverFilter] = useState("all")
   const [storeFilter, setStoreFilter] = useState("all")
+  const [dateFrom, setDateFrom] = useState(() => toISODateLocal(defaultFrom))
+  const [dateTo, setDateTo] = useState(() => toISODateLocal(today))
+  const [allStores, setAllStores] = useState(false)
 
   const loadSales = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/stores/${storeId}/driver-sales`)
+      const qs = new URLSearchParams()
+      if (dateFrom) qs.set("from", dateFrom)
+      if (dateTo) qs.set("to", dateTo)
+      if (allStores) qs.set("allStores", "1")
+      if (allStores && storeFilter !== "all") qs.set("storeId", storeFilter)
+      if (driverFilter !== "all") qs.set("driverId", driverFilter)
+
+      const res = await fetch(`/api/stores/${storeId}/driver-sales?${qs.toString()}`)
       if (!res.ok) {
         toast.error("Erreur lors du chargement des ventes livreurs")
         return
@@ -94,18 +133,45 @@ export default function DriverSalesPage() {
       const data = await res.json()
       setSales(data.sales || [])
       setSummary(data.summary || null)
+      setPeriod(data.period ?? null)
     } catch {
       toast.error("Erreur réseau")
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, dateFrom, dateTo, allStores, storeFilter, driverFilter])
 
   useEffect(() => {
     loadSales()
   }, [loadSales])
 
+  const applyPreset = (preset: "today" | "7d" | "30d" | "month" | "lastMonth") => {
+    const end = new Date()
+    let start = new Date()
+    if (preset === "today") {
+      start = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+    } else if (preset === "7d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 6)
+    } else if (preset === "30d") {
+      start = new Date(end)
+      start.setDate(start.getDate() - 29)
+    } else if (preset === "month") {
+      start = new Date(end.getFullYear(), end.getMonth(), 1)
+    } else if (preset === "lastMonth") {
+      start = new Date(end.getFullYear(), end.getMonth() - 1, 1)
+      const lastDayPrev = new Date(end.getFullYear(), end.getMonth(), 0)
+      setDateFrom(toISODateLocal(start))
+      setDateTo(toISODateLocal(lastDayPrev))
+      return
+    }
+    setDateFrom(toISODateLocal(start))
+    setDateTo(toISODateLocal(end))
+  }
+
   const drivers = summary?.byDriver ?? []
+  const ranking = summary?.rankingByNet ?? []
+  const driverOptions = ranking.length > 0 ? ranking : drivers
 
   // Liste unique de magasins extraite des ventes
   const storeList = Array.from(
@@ -113,14 +179,12 @@ export default function DriverSalesPage() {
   )
 
   const filteredSales = sales.filter((s) => {
-    const matchDriver = driverFilter === "all" || s.deliveryPerson.id === driverFilter
-    const matchStore  = storeFilter  === "all" || s.store.id === storeFilter
     const matchSearch =
       searchTerm === "" ||
       s.deliveryPerson.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.items.some((i) => i.product.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    return matchDriver && matchStore && matchSearch
+    return matchSearch
   })
 
   const formatDate = (iso: string) =>
@@ -136,11 +200,160 @@ export default function DriverSalesPage() {
     <>
       <StorePageHeader
         title="Ventes livreurs"
-        description="Déclarations de ventes effectuées par les livreurs"
+        description="Filtrez par période, consultez les totaux et le classement des livreurs (performance sur le net magasin)."
         icon={ShoppingBag}
       />
 
       <div className="p-6 space-y-6">
+        {/* Filtres période & périmètre */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-orange-600" />
+              Période et périmètre
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Du</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-[160px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Au</Label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-[160px]"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("today")}>
+                  Aujourd&apos;hui
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("7d")}>
+                  7 jours
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("30d")}>
+                  30 jours
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("month")}>
+                  Ce mois
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("lastMonth")}>
+                  Mois dernier
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="all-stores"
+                checked={allStores}
+                onCheckedChange={(v) => {
+                  setAllStores(v === true)
+                  if (v !== true) setStoreFilter("all")
+                }}
+              />
+              <Label htmlFor="all-stores" className="text-sm font-normal cursor-pointer">
+                Inclure tous les magasins du réseau (sinon : magasin du tableau de bord uniquement)
+              </Label>
+            </div>
+            {(period?.from || period?.to) && (
+              <p className="text-xs text-muted-foreground">
+                Période appliquée côté serveur :{" "}
+                <strong>
+                  {period.from ?? "…"} → {period.to ?? "…"}
+                </strong>
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Livreur le plus performant (sur la période) */}
+        {summary?.topPerformer && (
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50/80 to-orange-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-amber-900">
+                <Trophy className="h-5 w-5 text-amber-600" />
+                Livreur le plus performant (période sélectionnée)
+              </CardTitle>
+              <p className="text-xs text-amber-800/80">
+                Classement par montant net à reverser au magasin, puis chiffre encaissé, puis nombre de
+                déclarations.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-200 bg-white/70 px-4 py-4">
+                <div>
+                  <p className="text-lg font-bold text-gray-900">{summary.topPerformer.driverName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {summary.topPerformer.count} déclaration
+                    {summary.topPerformer.count > 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-6 text-right">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Net magasin</p>
+                    <p className="text-xl font-bold text-blue-700">{formatFCFA(summary.topPerformer.netTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Encaissé</p>
+                    <p className="text-xl font-bold text-green-700">{formatFCFA(summary.topPerformer.total)}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Classement complet */}
+        {ranking.length > 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-purple-600" />
+                Classement des livreurs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Livreur</TableHead>
+                    <TableHead className="text-right">Déclarations</TableHead>
+                    <TableHead className="text-right">Encaissé</TableHead>
+                    <TableHead className="text-right">Frais livr.</TableHead>
+                    <TableHead className="text-right">Net magasin</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ranking.map((row) => (
+                    <TableRow key={row.driverId}>
+                      <TableCell className="font-semibold text-muted-foreground">{row.rank}</TableCell>
+                      <TableCell className="font-medium">{row.driverName}</TableCell>
+                      <TableCell className="text-right">{row.count}</TableCell>
+                      <TableCell className="text-right text-green-700">{formatFCFA(row.total)}</TableCell>
+                      <TableCell className="text-right text-orange-600">
+                        {row.totalDeliveryFees > 0 ? formatFCFA(row.totalDeliveryFees) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-blue-700">
+                        {formatFCFA(row.netTotal)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Statistiques */}
         {summary && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -151,7 +364,7 @@ export default function DriverSalesPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-green-600">{formatFCFA(summary.grandTotal)}</p>
-                <p className="text-xs text-gray-500 mt-1">Toutes déclarations</p>
+                <p className="text-xs text-gray-500 mt-1">Sur la période filtrée</p>
               </CardContent>
             </Card>
 
@@ -178,7 +391,7 @@ export default function DriverSalesPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{summary.totalSales}</p>
-                <p className="text-xs text-gray-500 mt-1">Au total</p>
+                <p className="text-xs text-gray-500 mt-1">Sur la période</p>
               </CardContent>
             </Card>
 
@@ -196,24 +409,30 @@ export default function DriverSalesPage() {
         )}
 
         {/* Par livreur */}
-        {drivers.length > 0 && (
+        {ranking.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Users className="h-4 w-4 text-purple-600" />
-                Récapitulatif par livreur
+                Récapitulatif par livreur (ordre performance)
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {drivers.map((d) => (
+                {ranking.map((d) => (
                   <div
                     key={d.driverId}
                     className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 space-y-2"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-sm text-gray-900">{d.driverName}</p>
+                        <div className="flex items-center gap-2">
+                          {d.rank === 1 && <Trophy className="h-4 w-4 text-amber-500 shrink-0" />}
+                          <p className="font-semibold text-sm text-gray-900">{d.driverName}</p>
+                          <Badge variant="outline" className="text-[10px]">
+                            #{d.rank}
+                          </Badge>
+                        </div>
                         <p className="text-xs text-gray-500">{d.count} déclaration{d.count > 1 ? "s" : ""}</p>
                       </div>
                       <span className="text-sm font-bold text-green-600">{formatFCFA(d.total)}</span>
@@ -267,10 +486,14 @@ export default function DriverSalesPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <Select value={storeFilter} onValueChange={setStoreFilter}>
+          <Select
+            value={storeFilter}
+            onValueChange={setStoreFilter}
+            disabled={!allStores}
+          >
             <SelectTrigger className="w-48">
               <Store className="h-4 w-4 mr-2 text-gray-400" />
-              <SelectValue placeholder="Tous les magasins" />
+              <SelectValue placeholder={allStores ? "Tous les magasins" : "Magasin actuel"} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les magasins</SelectItem>
@@ -285,7 +508,7 @@ export default function DriverSalesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les livreurs</SelectItem>
-              {drivers.map((d) => (
+              {driverOptions.map((d) => (
                 <SelectItem key={d.driverId} value={d.driverId}>
                   {d.driverName}
                 </SelectItem>

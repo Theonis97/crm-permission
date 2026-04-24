@@ -63,7 +63,7 @@ import {
 } from "lucide-react"
 import { EmployeeHistorySheet, ManualEntryDialog } from "@/components/attendance"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface AttendanceUser {
     id: string

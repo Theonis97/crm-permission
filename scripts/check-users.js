@@ -38,28 +38,6 @@ async function checkUsers() {
       console.log('');
     });
     
-    // Vérifier les subscriptions PWA existantes
-    const subscriptions = await prisma.pWAPushSubscription.findMany({
-      include: {
-        user: {
-          select: {
-            email: true,
-            firstName: true,
-            lastName: true
-          }
-        }
-      }
-    });
-    
-    console.log(`📱 ${subscriptions.length} subscription(s) PWA trouvée(s):`);
-    
-    subscriptions.forEach(sub => {
-      console.log(`- ${sub.user.email}: ${sub.endpoint.substring(0, 50)}...`);
-      console.log(`  Actif: ${sub.isActive}`);
-      console.log(`  Créé: ${sub.createdAt}`);
-      console.log('');
-    });
-    
   } catch (error) {
     console.error('❌ Erreur:', error);
   } finally {

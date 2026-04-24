@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import ReportsSidebar from "@/components/reports/reports-sidebar"
 import ReportsContent from "@/components/reports/reports-content"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 export type Section = "overview" | "sales" | "products" | "customers" | "orders" | "drivers"
 

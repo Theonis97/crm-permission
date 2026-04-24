@@ -33,7 +33,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { usePermissions } from "@/hooks/use-permissions"
 import { useStorePermissions } from "@/hooks/use-store-permissions"
 import { STORE_PERMISSIONS } from "@/types/store-auth"

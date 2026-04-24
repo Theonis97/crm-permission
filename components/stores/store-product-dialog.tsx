@@ -36,7 +36,7 @@ import {
   ArrowLeft,
   CheckCircle,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface StoreProductDialogProps {

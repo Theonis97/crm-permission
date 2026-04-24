@@ -44,7 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface PayrollContribution {
   id: string

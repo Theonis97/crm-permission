@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useState, useRef, useEffect } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { CartItem, DeliveryPerson } from "../types"
 
 interface PosCheckoutDialogProps {
@@ -171,6 +171,10 @@ export function PosCheckoutDialog({
   }
 
   const initiatePayment = async () => {
+    if (cartTotal <= 0) {
+      toast.error("Paiement mobile indisponible pour un remboursement ou un montant nul")
+      return
+    }
     if (!mobilePhone.trim()) {
       toast.error("Veuillez saisir le numéro de téléphone")
       return
@@ -322,7 +326,16 @@ export function PosCheckoutDialog({
                   <button
                     type="button"
                     onClick={() => setPosPaymentMethod("MOBILE")}
-                    disabled={paymentStatus === "waiting" || paymentStatus === "initiating"}
+                    disabled={
+                      paymentStatus === "waiting" ||
+                      paymentStatus === "initiating" ||
+                      cartTotal <= 0
+                    }
+                    title={
+                      cartTotal <= 0
+                        ? "Paiement mobile indisponible (remboursement ou montant nul)"
+                        : undefined
+                    }
                     className={cn(
                       "flex items-center gap-3 p-4 rounded-lg border-2 transition-all",
                       posPaymentMethod === "MOBILE"
@@ -485,14 +498,26 @@ export function PosCheckoutDialog({
                       <span>-{globalDiscountApplied.toLocaleString()} FCFA</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-gray-600">
-                    <span>TVA</span>
-                    <span>{cartTax.toLocaleString()} FCFA</span>
-                  </div>
+                  {cartTax > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>TVA</span>
+                      <span>{cartTax.toLocaleString()} FCFA</span>
+                    </div>
+                  )}
                   <Separator />
                   <div className="flex justify-between text-lg font-bold pt-2">
-                    <span>Total à encaisser</span>
-                    <span className="text-blue-600">{cartTotal.toLocaleString()} FCFA</span>
+                    <span>
+                      {cartTotal < 0 ? "À rendre" : "Total à encaisser"}
+                    </span>
+                    <span
+                      className={
+                        cartTotal < 0 ? "text-emerald-700" : "text-blue-600"
+                      }
+                    >
+                      {cartTotal < 0
+                        ? `${Math.abs(cartTotal).toLocaleString("fr-FR")} FCFA`
+                        : `${cartTotal.toLocaleString()} FCFA`}
+                    </span>
                   </div>
                 </div>
               </div>

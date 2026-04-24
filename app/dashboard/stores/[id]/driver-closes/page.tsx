@@ -32,7 +32,7 @@ import {
   MapPin,
   Loader2
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { formatFCFA } from "@/lib/utils"
 import { StorePageHeader } from "@/components/stores/store-page-header"
 import { DriverCloseInvoiceSheet } from "@/components/driver-closes"

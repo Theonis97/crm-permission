@@ -25,7 +25,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import {
   LineChart,
   Line,

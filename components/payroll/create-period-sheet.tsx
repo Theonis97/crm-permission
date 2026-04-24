@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Calendar, Loader2, Users, Info } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 interface EmployeeProfile {

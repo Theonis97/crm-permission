@@ -45,7 +45,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface StoreDetailsSheetProps {
   open: boolean

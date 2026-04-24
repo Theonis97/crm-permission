@@ -3,6 +3,19 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import type { Prisma, StockType } from "@prisma/client"
+
+function parseDateBoundary(dateStr: string, endOfDay: boolean): Date {
+  return new Date(dateStr + (endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z"))
+}
+
+/** YYYY-MM-DD → bornes journée UTC ; sinon compat. `new Date(iso)` (anciens startDate/endDate). */
+function parseMovementRangeBound(dateStr: string, endOfDay: boolean): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return parseDateBoundary(dateStr, endOfDay)
+  }
+  return new Date(dateStr)
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,35 +55,36 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get("type") // ENTRY, EXIT, ADJUSTMENT, SALE, RETURN
     const productId = searchParams.get("productId")
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "50")
+    const fromStr =
+      searchParams.get("from") || searchParams.get("startDate")
+    const toStr = searchParams.get("to") || searchParams.get("endDate")
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1)
+    const limit = Math.min(
+      500,
+      Math.max(1, parseInt(searchParams.get("limit") || "50", 10) || 50)
+    )
     const skip = (page - 1) * limit
 
-    // Construire le filtre
-    const where: any = {}
+    const dateFilter: Prisma.DateTimeFilter | undefined =
+      fromStr || toStr
+        ? {
+            ...(fromStr ? { gte: parseMovementRangeBound(fromStr, false) } : {}),
+            ...(toStr ? { lte: parseMovementRangeBound(toStr, true) } : {}),
+          }
+        : undefined
+
+    const where: Prisma.StockMovementWhereInput = {}
 
     if (type) {
-      where.type = type
+      where.type = type as StockType
     }
 
     if (productId) {
       where.productId = productId
     }
 
-    if (startDate) {
-      where.createdAt = {
-        ...where.createdAt,
-        gte: new Date(startDate),
-      }
-    }
-
-    if (endDate) {
-      where.createdAt = {
-        ...where.createdAt,
-        lte: new Date(endDate),
-      }
+    if (dateFilter) {
+      where.createdAt = dateFilter
     }
 
     // Récupérer les mouvements avec pagination
@@ -111,6 +125,8 @@ export async function GET(request: NextRequest) {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+      period:
+        fromStr || toStr ? { from: fromStr || null, to: toStr || null } : null,
     })
   } catch (error) {
     console.error("Error fetching stock movements:", error)

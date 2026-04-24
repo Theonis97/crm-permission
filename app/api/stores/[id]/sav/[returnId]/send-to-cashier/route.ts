@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { assertExchangeProductsAvailableInStore } from "@/lib/sav-exchange-stock"
 
 // Générer un code client unique pour la sous-caisse SAV
 function generateSAVClientCode(): string {
@@ -22,6 +23,16 @@ export async function POST(
     if (!session?.user) {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 })
     }
+
+    const actorUser =
+      session.user.email
+        ? await prisma.user.findUnique({
+            where: { email: session.user.email },
+            select: { id: true },
+          })
+        : null
+    const actorUserId =
+      actorUser?.id ?? (session.user as { id?: string }).id ?? null
 
     const { id: storeId, returnId } = await params
     const body = await request.json()
@@ -137,26 +148,56 @@ export async function POST(
       }
     }
 
-    // Trouver ou créer la sous-caisse SAV du magasin
-    let savSubBox = await prisma.subBox.findFirst({
-      where: {
-        storeId,
-        code: "SAV",
-      }
+    // Recharger les lignes : l’échange peut venir d’être écrit en base alors que
+    // `productReturn.items` en mémoire est encore l’ancien snapshot (sinon subBoxItems reste vide).
+    const productReturnFresh = await prisma.productReturn.findFirst({
+      where: { id: returnId, storeId },
+      include: { items: true },
     })
-
-    if (!savSubBox) {
-      // Créer la sous-caisse SAV si elle n'existe pas
-      savSubBox = await prisma.subBox.create({
-        data: {
-          storeId,
-          name: "SAV",
-          code: "SAV",
-          isActive: true,
-        }
-      })
-      console.log(`[SAV] Sous-caisse SAV créée pour le magasin ${storeId}`)
+    if (!productReturnFresh) {
+      return NextResponse.json({ error: "Retour introuvable" }, { status: 404 })
     }
+    const itemsForSubBox = productReturnFresh.items
+
+    if (resolutionType === "EXCHANGE") {
+      const hasExchange = itemsForSubBox.some((i) => i.exchangeProductId)
+      if (!hasExchange) {
+        return NextResponse.json(
+          {
+            error:
+              "Échange impossible : aucun produit d'échange sur ce retour. Créez le retour avec un produit d'échange ou vérifiez les lignes envoyées à la caisse.",
+          },
+          { status: 400 }
+        )
+      }
+      try {
+        await assertExchangeProductsAvailableInStore(
+          storeId,
+          itemsForSubBox.map((i) => ({
+            exchangeProductId: i.exchangeProductId,
+            quantity: i.quantity,
+            productName: i.exchangeProductName ?? i.productName,
+          }))
+        )
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Vérification stock magasin impossible"
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
+    }
+
+    // Sous-caisse SAV du magasin (upsert = pas d’erreur si création en double)
+    const savSubBox = await prisma.subBox.upsert({
+      where: {
+        storeId_code: { storeId, code: "SAV" },
+      },
+      create: {
+        storeId,
+        name: "SAV",
+        code: "SAV",
+        isActive: true,
+      },
+      update: {},
+    })
 
     // Préparer les items pour la commande SubBox
     // Type étendu pour gérer les montants à rendre (refund)
@@ -177,7 +218,7 @@ export async function POST(
     if (resolutionType === "EXCHANGE") {
       // Pour un échange, calculer la différence entre produit retourné et produit d'échange
       // Remise par défaut = valeur du produit retourné (valeur de reprise)
-      for (const item of productReturn.items) {
+      for (const item of itemsForSubBox) {
         if (item.exchangeProductId) {
           const exchangeProduct = await prisma.product.findUnique({
             where: { id: item.exchangeProductId },
@@ -232,10 +273,20 @@ export async function POST(
           }
         }
       }
+
+      if (subBoxItems.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Impossible de préparer l'échange en caisse (lignes vides). Vérifiez que le produit d'échange existe toujours et que les prix sont valides.",
+          },
+          { status: 400 }
+        )
+      }
     } else if (resolutionType === "REFUND") {
       // Pour un remboursement intégral, pas de produit d'échange
       // La caisse doit rendre le montant total des produits retournés
-      for (const item of productReturn.items) {
+      for (const item of itemsForSubBox) {
         const refundAmount = item.quantity * item.unitPrice
         totalCashierRefund += refundAmount
         
@@ -313,7 +364,7 @@ export async function POST(
           status: "PENDING",
           subtotal: 0,
           totalDiscount: totalRefundAmount, // Le montant à rendre est stocké comme "remise"
-          totalItems: productReturn.items.length,
+          totalItems: itemsForSubBox.length,
           notes: orderNotes,
         },
         include: {
@@ -341,8 +392,8 @@ export async function POST(
         totalDiscount: totalDiscount || 0,
         sentToCashier: true,
         sentToCashierAt: new Date(),
-        sentToCashierById: session.user.id,
-        processedById: session.user.id,
+        sentToCashierById: actorUserId,
+        processedById: actorUserId,
         processedAt: new Date(),
         savSubBoxOrderId: subBoxOrder?.id || null,
         resolution: notes || (resolutionType === "REFUND" 

@@ -213,7 +213,7 @@ export async function POST(
         items: updatedOrder.items.map(item => ({
           id: item.id,
           productId: item.productId,
-          productName: item.product.name,
+          productName: item.product?.name ?? "Produit",
           variantId: item.variantId,
           variantName: item.variant?.name,
           quantity: item.quantity,

@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { decrementStoreStockForExchangeOut } from "@/lib/sav-exchange-stock"
+import {
+  recordStoreReturnedGoodsLines,
+  RETURNED_GOODS_SOURCE,
+} from "@/lib/store-returned-goods"
 
 // GET - Liste des commandes sous-caisse en attente pour un magasin
 export async function GET(
@@ -100,7 +105,7 @@ export async function PATCH(
 
     const { id: storeId } = await params
     const body = await request.json()
-    const { orderId, action, cancelReason } = body
+    const { orderId, action, cancelReason, stockAlreadyDebited } = body
 
     if (!orderId || !action) {
       return NextResponse.json(
@@ -138,8 +143,16 @@ export async function PATCH(
         include: {
           items: true,
           productReturn: true,
-        }
+        },
       })
+
+      // Secours : la relation inverse 1-1 ne remonte pas toujours selon la version Prisma / données
+      let linkedProductReturn = orderWithDetails?.productReturn
+      if (!linkedProductReturn) {
+        linkedProductReturn = await prisma.productReturn.findFirst({
+          where: { savSubBoxOrderId: orderId },
+        })
+      }
 
       // Transaction pour valider la commande et gérer le stock
       const result = await prisma.$transaction(async (tx) => {
@@ -152,42 +165,58 @@ export async function PATCH(
           },
         })
 
-        // 2. Décrémenter le stock pour chaque item
-        for (const item of orderWithDetails?.items || []) {
-          // Décrémenter le stock global du produit
-          await tx.product.update({
-            where: { id: item.productId },
-            data: {
-              stock: { decrement: item.quantity }
-            }
-          })
-
-          // Décrémenter le stock du magasin
-          await tx.storeProduct.updateMany({
-            where: {
+        // 2. Stock : après une vente POS (pos-sale), le débit est déjà fait — ne pas débiter deux fois
+        const skipStock = stockAlreadyDebited === true
+        if (!skipStock) {
+          for (const item of orderWithDetails?.items || []) {
+            await decrementStoreStockForExchangeOut(tx, {
               storeId,
               productId: item.productId,
-            },
-            data: {
-              stock: { decrement: item.quantity }
-            }
-          })
+              quantity: item.quantity,
+              labelForError: item.name,
+            })
 
-          console.log(`[SAV] Stock décrémenté: ${item.name} x${item.quantity}`)
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: { decrement: item.quantity },
+              },
+            })
+
+            console.log(`[SAV] Stock décrémenté: ${item.name} x${item.quantity}`)
+          }
         }
 
         // 3. Si c'est une commande SAV, mettre à jour le ProductReturn
-        if (orderWithDetails?.productReturn) {
+        if (linkedProductReturn) {
+          const pr = linkedProductReturn
+          const isRefund = pr.resolutionType === "REFUND"
           await tx.productReturn.update({
-            where: { id: orderWithDetails.productReturn.id },
+            where: { id: pr.id },
             data: {
-              status: "EXCHANGED",
+              status: isRefund ? "REFUNDED" : "EXCHANGED",
               cashierValidated: true,
               cashierValidatedAt: new Date(),
               cashierValidatedById: session.user?.id,
-            }
+            },
           })
-          console.log(`[SAV] Retour ${orderWithDetails.productReturn.number} marqué comme EXCHANGED`)
+          console.log(
+            `[SAV] Retour ${pr.number} marqué comme ${isRefund ? "REFUNDED" : "EXCHANGED"} (stock skip=${skipStock})`
+          )
+
+          try {
+            await recordStoreReturnedGoodsLines(tx, {
+              storeId,
+              productReturnId: pr.id,
+              source: RETURNED_GOODS_SOURCE.POS_SUB_BOX,
+            })
+          } catch (e) {
+            console.error(
+              "[SAV] Stock retours (store_returned_goods_lines) — vérifiez la migration Prisma :",
+              e
+            )
+            throw e
+          }
         }
 
         return updatedOrder
@@ -196,8 +225,10 @@ export async function PATCH(
       return NextResponse.json({
         success: true,
         data: result,
-        message: orderWithDetails?.productReturn 
-          ? "Commande SAV validée - Stock décrémenté" 
+        message: linkedProductReturn
+          ? stockAlreadyDebited
+            ? "Commande SAV validée (stock déjà débité par la vente POS)"
+            : "Commande SAV validée - Stock décrémenté"
           : "Commande validée",
       })
     } else if (action === "cancel") {
@@ -249,11 +280,11 @@ export async function PATCH(
         { status: 400 }
       )
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[STORE_SUB_BOX_ORDER_UPDATE]", error)
-    return NextResponse.json(
-      { error: "Erreur lors de la mise à jour de la commande" },
-      { status: 500 }
-    )
+    const msg = error instanceof Error ? error.message : "Erreur lors de la mise à jour de la commande"
+    const isStock =
+      msg.includes("magasin") || msg.includes("Stock magasin") || msg.includes("inventaire")
+    return NextResponse.json({ error: msg }, { status: isStock ? 400 : 500 })
   }
 }

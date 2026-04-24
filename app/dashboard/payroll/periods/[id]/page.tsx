@@ -53,7 +53,7 @@ import { PermissionGuard } from "@/components/auth/permission-guard"
 import { EditPayrollSheet } from "@/components/payroll/edit-payroll-sheet"
 import { AddPayrollsSheet } from "@/components/payroll/add-payrolls-sheet"
 import { Checkbox } from "@/components/ui/checkbox"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 
 interface PayrollPeriodDetail {
   id: string
@@ -126,6 +126,11 @@ const statusLabels: Record<string, string> = {
   CANCELLED: "Annulé",
 }
 
+/** Routes Paie : envoi des cookies NextAuth (évite 401 / « Failed to fetch » en local). */
+function payrollFetch(url: string, init?: RequestInit) {
+  return fetch(url, { ...init, credentials: "include", cache: "no-store" })
+}
+
 export default function PayrollPeriodDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -151,15 +156,27 @@ export default function PayrollPeriodDetailPage() {
     try {
       setIsLoading(true)
       setIsGeneratingPayrolls(false) // S'assurer que l'état de génération est réinitialisé
-      const res = await fetch(`/api/payroll/periods/${periodId}`)
-      if (!res.ok) throw new Error("Erreur lors du chargement")
+      const res = await payrollFetch(`/api/payroll/periods/${periodId}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({} as { error?: string }))
+        const message =
+          errData.error ||
+          (res.status === 401
+            ? "Non authentifié — reconnectez-vous"
+            : res.status === 404
+              ? "Période introuvable"
+              : `Erreur ${res.status}`)
+        throw new Error(message)
+      }
       const data = await res.json()
       setPeriod(data)
       // Réinitialiser la sélection après mise à jour
       setSelectedPayrolls(new Set())
     } catch (error) {
       console.error("Error fetching period:", error)
-      toast.error("Erreur lors du chargement de la période")
+      const message =
+        error instanceof Error ? error.message : "Erreur lors du chargement de la période"
+      toast.error(message)
     } finally {
       setIsLoading(false)
       setIsGeneratingPayrolls(false) // Double sécurité pour réinitialiser l'état
@@ -169,7 +186,7 @@ export default function PayrollPeriodDetailPage() {
   const handleValidate = async (payrollId: string) => {
     try {
       setActionLoading(payrollId)
-      const res = await fetch(`/api/payroll/${payrollId}/validate`, {
+      const res = await payrollFetch(`/api/payroll/${payrollId}/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -191,7 +208,7 @@ export default function PayrollPeriodDetailPage() {
   const handleApprove = async (payrollId: string) => {
     try {
       setActionLoading(payrollId)
-      const res = await fetch(`/api/payroll/${payrollId}/approve`, {
+      const res = await payrollFetch(`/api/payroll/${payrollId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -213,7 +230,7 @@ export default function PayrollPeriodDetailPage() {
   const handlePay = async (payrollId: string) => {
     try {
       setActionLoading(payrollId)
-      const res = await fetch(`/api/payroll/${payrollId}/pay`, {
+      const res = await payrollFetch(`/api/payroll/${payrollId}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -236,7 +253,7 @@ export default function PayrollPeriodDetailPage() {
     try {
       setIsGeneratingPayrolls(true)
       setActionLoading("generate")
-      const res = await fetch(`/api/payroll/periods/${periodId}/generate`, {
+      const res = await payrollFetch(`/api/payroll/periods/${periodId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -262,7 +279,7 @@ export default function PayrollPeriodDetailPage() {
 
     try {
       setActionLoading(payrollId)
-      const res = await fetch(`/api/payroll/${payrollId}`, { method: "DELETE" })
+      const res = await payrollFetch(`/api/payroll/${payrollId}`, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || "Erreur lors de la suppression")
@@ -307,7 +324,7 @@ export default function PayrollPeriodDetailPage() {
       setActionLoading("regenerate")
       
       // 1. Supprimer les bulletins existants
-      const deleteRes = await fetch(`/api/payroll/periods/${periodId}?deletePayrolls=true`, {
+      const deleteRes = await payrollFetch(`/api/payroll/periods/${periodId}?deletePayrolls=true`, {
         method: "DELETE",
       })
       if (!deleteRes.ok) {
@@ -316,7 +333,7 @@ export default function PayrollPeriodDetailPage() {
       }
       
       // 2. Régénérer les bulletins
-      const generateRes = await fetch(`/api/payroll/periods/${periodId}/generate`, {
+      const generateRes = await payrollFetch(`/api/payroll/periods/${periodId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -417,7 +434,7 @@ export default function PayrollPeriodDetailPage() {
       setActionLoading("bulk")
       let successCount = 0
       for (const id of toValidate) {
-        const res = await fetch(`/api/payroll/${id}/validate`, {
+        const res = await payrollFetch(`/api/payroll/${id}/validate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
@@ -450,7 +467,7 @@ export default function PayrollPeriodDetailPage() {
       setActionLoading("bulk")
       let successCount = 0
       for (const id of toApprove) {
-        const res = await fetch(`/api/payroll/${id}/approve`, {
+        const res = await payrollFetch(`/api/payroll/${id}/approve`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
@@ -483,7 +500,7 @@ export default function PayrollPeriodDetailPage() {
       setActionLoading("bulk")
       let successCount = 0
       for (const id of toPay) {
-        const res = await fetch(`/api/payroll/${id}/pay`, {
+        const res = await payrollFetch(`/api/payroll/${id}/pay`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),

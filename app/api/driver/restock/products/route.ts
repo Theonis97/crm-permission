@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
+import { fetchDriverStorePackDtos } from "@/lib/driver-store-packs"
 
 /** Produits du magasin sélectionné (catalogue boutique) pour composer la demande. */
 export async function GET(req: NextRequest) {
@@ -39,22 +40,30 @@ export async function GET(req: NextRequest) {
             name: true,
             sku: true,
             photos: true,
+            linkedStorePackId: true,
           },
         },
       },
       orderBy: { product: { name: "asc" } },
     })
 
-    const data = rows.map((sp) => ({
-      productId: sp.product.id,
-      name: sp.product.name,
-      sku: sp.product.sku,
-      photo: Array.isArray(sp.product.photos) && sp.product.photos.length > 0 ? sp.product.photos[0] : null,
-      stockMagasin: sp.stock,
-      minStock: sp.minStock,
-    }))
+    const data = rows
+      .filter((sp) => !sp.product.linkedStorePackId)
+      .map((sp) => ({
+        productId: sp.product.id,
+        name: sp.product.name,
+        sku: sp.product.sku,
+        photo:
+          Array.isArray(sp.product.photos) && sp.product.photos.length > 0
+            ? sp.product.photos[0]
+            : null,
+        stockMagasin: sp.stock,
+        minStock: sp.minStock,
+      }))
 
-    return NextResponse.json({ success: true, store, data })
+    const packs = await fetchDriverStorePackDtos(storeId)
+
+    return NextResponse.json({ success: true, store, data, packs })
   } catch (e) {
     console.error("[driver/restock/products]", e)
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 })

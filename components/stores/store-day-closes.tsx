@@ -32,7 +32,7 @@ import {
   MoreHorizontal,
   Receipt
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { formatFCFA } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 

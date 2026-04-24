@@ -34,8 +34,9 @@ import {
   RotateCcw,
   ArrowLeft,
   MinusCircle,
+  Layers,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
 
 const ORANGE = "#FF8C00"
@@ -50,6 +51,30 @@ type ProductRow = {
   sku: string | null
   photo: string | null
   stockMagasin: number
+}
+
+type StorePackRow = {
+  packId: string
+  name: string
+  description: string | null
+  salePrice: number | null
+  assembledStock: number
+  unitsAvailable: number
+  assembleableExtraUnits: number
+  proxyProductId: string | null
+  proxySku: string | null
+  proxyName: string | null
+  proxyPhotos: string[]
+  prixVente: number | null
+  items: Array<{
+    productId: string
+    name: string
+    sku: string | null
+    photos: string[]
+    quantityPerPack: number
+    storeStock: number
+  }>
+  kind: "pack"
 }
 
 type RestockRequestRow = {
@@ -212,6 +237,7 @@ export default function LivreurReapprovisionnementPage() {
   const [driverHomeStoreId, setDriverHomeStoreId] = useState<string>("")
   const [selectedStore, setSelectedStore] = useState<StoreRow | null>(null)
   const [products, setProducts] = useState<ProductRow[]>([])
+  const [storePacks, setStorePacks] = useState<StorePackRow[]>([])
   const [search, setSearch] = useState("")
   const [cart, setCart] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState("")
@@ -485,6 +511,7 @@ export default function LivreurReapprovisionnementPage() {
       }
       setSelectedStore(store)
       setProducts(json.data || [])
+      setStorePacks(Array.isArray(json.packs) ? json.packs : [])
       setStep("products")
       setCart({})
       setSearch("")
@@ -502,8 +529,45 @@ export default function LivreurReapprovisionnementPage() {
     )
   }, [products, search])
 
+  const filteredPacks = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return storePacks
+    return storePacks.filter((pk) => {
+      if (pk.name.toLowerCase().includes(q)) return true
+      if (pk.proxyName?.toLowerCase().includes(q)) return true
+      if (pk.proxySku?.toLowerCase().includes(q)) return true
+      return pk.items.some(
+        (it) =>
+          it.name.toLowerCase().includes(q) ||
+          (it.sku && it.sku.toLowerCase().includes(q)),
+      )
+    })
+  }, [storePacks, search])
+
   const addOne = (productId: string) => {
     setCart((c) => ({ ...c, [productId]: (c[productId] || 0) + 1 }))
+  }
+
+  const addOnePack = (pk: StorePackRow) => {
+    if (!pk.proxyProductId) {
+      toast.error("Ce pack n’a pas de produit caisse — contactez le magasin.")
+      return
+    }
+    if (pk.unitsAvailable <= 0) {
+      toast.error("Aucune unité pack prête en magasin pour ce pack.")
+      return
+    }
+    const cur = cart[pk.proxyProductId] || 0
+    if (cur >= pk.unitsAvailable) {
+      toast.error(`Stock magasin insuffisant (max ${pk.unitsAvailable} pack(s)).`)
+      return
+    }
+    addOne(pk.proxyProductId)
+  }
+
+  const subOnePack = (pk: StorePackRow) => {
+    if (!pk.proxyProductId) return
+    subOne(pk.proxyProductId)
   }
 
   const subOne = (productId: string) => {
@@ -523,9 +587,16 @@ export default function LivreurReapprovisionnementPage() {
       .filter(([, q]) => q > 0)
       .map(([productId, qty]) => {
         const p = products.find((x) => x.productId === productId)
-        return { productId, qty, name: p?.name ?? productId, sku: p?.sku }
+        const pk = storePacks.find((x) => x.proxyProductId === productId)
+        return {
+          productId,
+          qty,
+          name: p?.name ?? pk?.name ?? pk?.proxyName ?? productId,
+          sku: p?.sku ?? pk?.proxySku ?? null,
+          isPack: Boolean(pk),
+        }
       })
-  }, [cart, products])
+  }, [cart, products, storePacks])
 
   const cartCount = cartLines.reduce((a, l) => a + l.qty, 0)
 
@@ -576,6 +647,7 @@ export default function LivreurReapprovisionnementPage() {
       setCart({})
       setNotes("")
       setProducts([])
+      setStorePacks([])
       loadRequests()
     } finally {
       setSubmitting(false)
@@ -640,6 +712,7 @@ export default function LivreurReapprovisionnementPage() {
         setStep("store")
         setSelectedStore(null)
         setProducts([])
+        setStorePacks([])
         setCart({})
         return
       }
@@ -656,6 +729,7 @@ export default function LivreurReapprovisionnementPage() {
     setStep("store")
     setSelectedStore(null)
     setProducts([])
+    setStorePacks([])
     setCart({})
     setSearch("")
   }
@@ -1397,79 +1471,181 @@ export default function LivreurReapprovisionnementPage() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un produit…"
+                placeholder="Rechercher un produit ou un pack…"
                 className="pl-10 h-12 rounded-xl text-base"
                 autoComplete="off"
               />
             </div>
-            {/* Grille de carreaux produits */}
-            <div className="grid grid-cols-3 gap-3 pb-36">
-              {filtered.map((p) => {
-                const q = cart[p.productId] || 0
-                const inCart = q > 0
-                return (
-                  <div
-                    key={p.productId}
-                    className={cn(
-                      "flex flex-col rounded-2xl border p-2.5 shadow-sm transition-colors",
-                      inCart ? "border-orange-300 bg-orange-50" : "border-neutral-200 bg-white",
-                    )}
-                  >
-                    {/* Image */}
-                    <div className="relative rounded-xl overflow-hidden bg-neutral-100 aspect-square mb-2">
-                      {p.photo && typeof p.photo === "string" ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.photo} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center">
-                          <Package className="h-8 w-8 text-neutral-300" />
-                        </div>
-                      )}
-                      {inCart && (
-                        <span
-                          className="absolute top-1 right-1 h-5 w-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
-                          style={{ backgroundColor: ORANGE }}
+            <div className="space-y-4 pb-36">
+              {filteredPacks.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-neutral-600 px-1 mb-2 flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" />
+                    Packs magasin
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {filteredPacks.map((pk) => {
+                      const pid = pk.proxyProductId
+                      const q = pid ? cart[pid] || 0 : 0
+                      const inCart = q > 0
+                      const cover =
+                        pk.proxyPhotos?.[0] ||
+                        pk.items.find((it) => it.photos?.[0])?.photos?.[0] ||
+                        null
+                      const canAdd =
+                        Boolean(pid) && pk.unitsAvailable > 0 && q < pk.unitsAvailable
+                      return (
+                        <div
+                          key={pk.packId}
+                          className={cn(
+                            "flex flex-col rounded-2xl border p-2.5 shadow-sm transition-colors",
+                            inCart ? "border-orange-300 bg-orange-50" : "border-neutral-200 bg-white",
+                          )}
                         >
-                          {q}
-                        </span>
-                      )}
-                    </div>
-                    {/* Nom + stock */}
-                    <p className="text-[11px] font-semibold text-neutral-900 leading-snug line-clamp-2 mb-1 flex-1">
-                      {p.name}
-                    </p>
-                    <p className="text-[9px] text-neutral-400 mb-2">Stock : {p.stockMagasin}</p>
-                    {/* Contrôles + / − */}
-                    <div className="flex items-center justify-between gap-1">
-                      <button
-                        type="button"
-                        onClick={() => subOne(p.productId)}
-                        disabled={q === 0}
-                        className={cn(
-                          "h-8 w-8 rounded-full border flex items-center justify-center shrink-0 touch-manipulation transition-colors",
-                          q === 0 ? "border-neutral-200 text-neutral-300" : "border-neutral-300 text-neutral-700 active:bg-neutral-100",
-                        )}
-                        aria-label="Diminuer"
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="text-sm font-bold tabular-nums text-neutral-800 w-5 text-center">{q}</span>
-                      <button
-                        type="button"
-                        onClick={() => addOne(p.productId)}
-                        className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 touch-manipulation text-white active:opacity-80"
-                        style={{ backgroundColor: ORANGE }}
-                        aria-label="Augmenter"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                          <div className="relative rounded-xl overflow-hidden bg-neutral-100 aspect-square mb-2">
+                            {cover ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={cover} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center">
+                                <Layers className="h-8 w-8 text-neutral-300" />
+                              </div>
+                            )}
+                            <span
+                              className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white"
+                            >
+                              Pack
+                            </span>
+                            {inCart && (
+                              <span
+                                className="absolute top-1 right-1 h-5 w-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+                                style={{ backgroundColor: ORANGE }}
+                              >
+                                {q}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-semibold text-neutral-900 leading-snug line-clamp-2 mb-1 flex-1">
+                            {pk.name}
+                          </p>
+                          <p className="text-[9px] text-neutral-500 mb-0.5">
+                            Prêt : <strong>{pk.unitsAvailable}</strong>
+                            {pk.assembleableExtraUnits > 0 ? (
+                              <> · assembl. poss. {pk.assembleableExtraUnits}</>
+                            ) : null}
+                          </p>
+                          <p className="text-[8px] text-neutral-400 line-clamp-2 mb-2" title={pk.items.map((i) => `${i.quantityPerPack}× ${i.name}`).join(" · ")}>
+                            {pk.items.map((i) => `${i.quantityPerPack}× ${i.name}`).join(" · ")}
+                          </p>
+                          <div className="flex items-center justify-between gap-1">
+                            <button
+                              type="button"
+                              onClick={() => subOnePack(pk)}
+                              disabled={q === 0 || !pid}
+                              className={cn(
+                                "h-8 w-8 rounded-full border flex items-center justify-center shrink-0 touch-manipulation transition-colors",
+                                q === 0 || !pid
+                                  ? "border-neutral-200 text-neutral-300"
+                                  : "border-neutral-300 text-neutral-700 active:bg-neutral-100",
+                              )}
+                              aria-label="Diminuer"
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="text-sm font-bold tabular-nums text-neutral-800 w-5 text-center">
+                              {q}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => addOnePack(pk)}
+                              disabled={!canAdd}
+                              className={cn(
+                                "h-8 w-8 rounded-full flex items-center justify-center shrink-0 touch-manipulation text-white active:opacity-80",
+                                !canAdd ? "opacity-40" : "",
+                              )}
+                              style={{ backgroundColor: ORANGE }}
+                              aria-label="Augmenter"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
+                </div>
+              ) : null}
+
+              {filtered.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-neutral-600 px-1 mb-2">Produits</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {filtered.map((p) => {
+                      const q = cart[p.productId] || 0
+                      const inCart = q > 0
+                      return (
+                        <div
+                          key={p.productId}
+                          className={cn(
+                            "flex flex-col rounded-2xl border p-2.5 shadow-sm transition-colors",
+                            inCart ? "border-orange-300 bg-orange-50" : "border-neutral-200 bg-white",
+                          )}
+                        >
+                          <div className="relative rounded-xl overflow-hidden bg-neutral-100 aspect-square mb-2">
+                            {p.photo && typeof p.photo === "string" ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.photo} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center">
+                                <Package className="h-8 w-8 text-neutral-300" />
+                              </div>
+                            )}
+                            {inCart && (
+                              <span
+                                className="absolute top-1 right-1 h-5 w-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+                                style={{ backgroundColor: ORANGE }}
+                              >
+                                {q}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-semibold text-neutral-900 leading-snug line-clamp-2 mb-1 flex-1">
+                            {p.name}
+                          </p>
+                          <p className="text-[9px] text-neutral-400 mb-2">Stock : {p.stockMagasin}</p>
+                          <div className="flex items-center justify-between gap-1">
+                            <button
+                              type="button"
+                              onClick={() => subOne(p.productId)}
+                              disabled={q === 0}
+                              className={cn(
+                                "h-8 w-8 rounded-full border flex items-center justify-center shrink-0 touch-manipulation transition-colors",
+                                q === 0 ? "border-neutral-200 text-neutral-300" : "border-neutral-300 text-neutral-700 active:bg-neutral-100",
+                              )}
+                              aria-label="Diminuer"
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="text-sm font-bold tabular-nums text-neutral-800 w-5 text-center">{q}</span>
+                            <button
+                              type="button"
+                              onClick={() => addOne(p.productId)}
+                              className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 touch-manipulation text-white active:opacity-80"
+                              style={{ backgroundColor: ORANGE }}
+                              aria-label="Augmenter"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
-            {filtered.length === 0 ? (
-              <p className="text-center text-gray-500 py-6">Aucun produit trouvé.</p>
+            {filteredPacks.length === 0 && filtered.length === 0 ? (
+              <p className="text-center text-gray-500 py-6">Aucun produit ni pack trouvé.</p>
             ) : null}
           </section>
         )}
@@ -1508,10 +1684,16 @@ export default function LivreurReapprovisionnementPage() {
               <div className="grid grid-cols-4 gap-2">
                 {cartLines.map((l) => {
                   const prod = products.find((x) => x.productId === l.productId)
+                  const pk = storePacks.find((x) => x.proxyProductId === l.productId)
+                  const photo =
+                    prod?.photo ??
+                    pk?.proxyPhotos?.[0] ??
+                    pk?.items.find((it) => it.photos?.[0])?.photos?.[0] ??
+                    null
                   return (
                     <ProductTile
                       key={l.productId}
-                      photo={prod?.photo ?? null}
+                      photo={photo}
                       name={l.name}
                       badge={l.qty}
                       badgeBg={ORANGE}

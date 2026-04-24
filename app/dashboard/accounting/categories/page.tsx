@@ -38,7 +38,7 @@ import {
   Shield,
   ExternalLink,
 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import Link from "next/link"
 
 interface Category {

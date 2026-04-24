@@ -16,10 +16,13 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    const notPackProxy = { linkedStorePackId: null as string | null }
+
     const [totalProducts, totalCategories, products] = await Promise.all([
-      prisma.product.count(),
+      prisma.product.count({ where: notPackProxy }),
       prisma.productCategory.count(),
       prisma.product.findMany({
+        where: notPackProxy,
         select: {
           stock: true,
           prixAchat: true,

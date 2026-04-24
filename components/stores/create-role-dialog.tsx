@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner"
+import { toast } from "@/lib/app-toast"
 import { Loader2 } from "lucide-react"
 
 interface StorePermission {

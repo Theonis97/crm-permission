@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { releaseDeliveryPersonStock } from '@/lib/delivery-stock-validator';
+import { releaseDeliveryPersonStock, type OrderItem } from '@/lib/delivery-stock-validator';
 
 /**
  * POST /api/delivery/orders/[orderId]/cancel
@@ -80,15 +80,18 @@ export async function POST(
       if (order.deliveryPersonId && order.items.length > 0) {
         console.log(`🔄 Libération du stock réservé du livreur ${order.deliveryPersonId} pour la commande ${order.number}`);
         
-        const stockItems = order.items.map(item => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-        }));
+        const stockItems: OrderItem[] = order.items
+          .filter((item) => item.productId != null && item.quantity > 0)
+          .map((item) => ({
+            productId: item.productId as string,
+            variantId: item.variantId,
+            quantity: item.quantity,
+          }));
 
-        // Libérer le stock réservé du livreur
-        await releaseDeliveryPersonStock(order.deliveryPersonId, stockItems);
-        
+        if (stockItems.length > 0) {
+          await releaseDeliveryPersonStock(order.deliveryPersonId, stockItems);
+        }
+
         console.log(`✅ Stock libéré avec succès pour ${stockItems.length} produit(s)`);
       }
 
