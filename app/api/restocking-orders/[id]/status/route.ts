@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 export async function PATCH(
   request: NextRequest,
@@ -211,12 +212,14 @@ export async function PATCH(
           })
           console.log(`    📈 Stock magasin: ${existingStoreProduct.stock} → ${newStoreStock} (+${quantity})`)
         } else {
+          const p = item.product
           await prisma.storeProduct.create({
             data: {
               storeId: order.storeId,
               productId: item.productId,
               stock: quantity,
               minStock: 10, // Valeur par défaut
+              ...(p ? catalogPricesSnapshot(p) : {}),
             },
           })
           console.log(`    🆕 Nouveau StoreProduct créé avec stock: ${quantity}`)

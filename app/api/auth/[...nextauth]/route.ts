@@ -4,11 +4,8 @@ import { authOptions } from "@/lib/auth"
 // Configuration pour la production
 const handler = NextAuth({
   ...authOptions,
-  
-  // Gestion du trustHost pour la production
-  ...(process.env.NODE_ENV === "production" && {
-    trustHost: true,
-  }),
+  // Next.js 15+ / hôte local ou reverse proxy : évite des refus CSRF / host header
+  trustHost: true,
 })
 
 export { handler as GET, handler as POST }

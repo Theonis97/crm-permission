@@ -39,7 +39,6 @@ interface PrinterSettings {
   // Personnalisation du ticket
   showLogo: boolean
   footerMessage: string
-  showTaxDetails: boolean
   showItemSKU: boolean
   
   // Format des prix
@@ -62,7 +61,6 @@ const DEFAULT_SETTINGS: PrinterSettings = {
   copies: 1,
   showLogo: false,
   footerMessage: "Merci de votre visite!\nA bientôt",
-  showTaxDetails: true,
   showItemSKU: false,
   currencySymbol: "FCFA",
   showDecimals: false
@@ -240,19 +238,6 @@ export function PrinterSettingsDialog({
             </h3>
             
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Afficher les détails de TVA</Label>
-                  <p className="text-xs text-gray-500">
-                    Montrer le calcul de la TVA sur le ticket
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.showTaxDetails}
-                  onCheckedChange={(checked) => updateSetting("showTaxDetails", checked)}
-                />
-              </div>
-              
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Afficher les codes SKU</Label>

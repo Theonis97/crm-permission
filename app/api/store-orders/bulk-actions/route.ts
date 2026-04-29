@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import { sendOrderCancellationEmail, sendOrderDeliveredEmail } from "@/lib/email-service"
 import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 // POST - Actions groupées sur les commandes
 export async function POST(request: NextRequest) {
@@ -167,6 +168,10 @@ export async function POST(request: NextRequest) {
                     },
                   })
                 } else {
+                  const p = await tx.product.findUnique({
+                    where: { id: item.productId },
+                    select: { prixVente: true, prixAchat: true },
+                  })
                   await tx.storeProduct.create({
                     data: {
                       storeId: order.storeId,
@@ -174,6 +179,7 @@ export async function POST(request: NextRequest) {
                       stock: item.quantity,
                       minStock: 0,
                       maxStock: 0,
+                      ...(p ? catalogPricesSnapshot(p) : {}),
                     },
                   })
                 }

@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { StorePageHeader } from "@/components/stores/store-page-header"
-import { ProductFormDialog } from "@/components/products/product-form-dialog"
+import { ProductFormDialog, type ProductFormProduct } from "@/components/products/product-form-dialog"
 import { StoreProductDetailsSheet } from "@/components/stores/store-product-details-sheet"
 import { RestockingRequestDialog } from "@/components/stores/restocking-request-dialog"
 import { RestockingOrdersSheet } from "@/components/stores/restocking-orders-sheet"
@@ -102,7 +102,7 @@ export default function ProductsPage({ params }: ProductsPageProps) {
   const [createProductDialogOpen, setCreateProductDialogOpen] = useState(false)
   const [restockingDialogOpen, setRestockingDialogOpen] = useState(false)
   const [restockingOrdersSheetOpen, setRestockingOrdersSheetOpen] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [editingCatalogProduct, setEditingCatalogProduct] = useState<ProductFormProduct | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [barcodePrintDialogOpen, setBarcodePrintDialogOpen] = useState(false)
@@ -194,9 +194,37 @@ export default function ProductsPage({ params }: ProductsPageProps) {
     setBarcodePrintDialogOpen(true)
   }
 
-  const handleEditProduct = async (product: Product) => {
-    setEditingProduct(product)
-    setCreateProductDialogOpen(true)
+  const handleOpenStoreProductSettings = (product: Product, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setSelectedProductId(product.id)
+    setDetailsOpen(true)
+  }
+
+  const handleEditCatalogProduct = async (product: Product, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/products/${product.id}`)
+      if (!res.ok) throw new Error("fetch")
+      const full = await res.json()
+      setEditingCatalogProduct({
+        id: full.id,
+        name: full.name,
+        sku: full.sku,
+        description: full.description,
+        photos: full.photos || [],
+        prixVente: Number(full.prixVente),
+        prixAchat: Number(full.prixAchat),
+        tva: Number(full.tva ?? 0),
+        stock: Number(full.stock ?? 0),
+        minStock: Number(full.minStock ?? 0),
+        maxStock: full.maxStock != null ? Number(full.maxStock) : null,
+        categoryId: full.categoryId,
+        brandId: full.brandId ?? null,
+      })
+      setCreateProductDialogOpen(true)
+    } catch {
+      toast.error("Impossible de charger la fiche catalogue (entrepôt)")
+    }
   }
 
   const handleDeleteProduct = async (product: Product) => {
@@ -333,7 +361,10 @@ export default function ProductsPage({ params }: ProductsPageProps) {
               fallback={null}
             >
               <Button
-                onClick={() => setCreateProductDialogOpen(true)}
+                onClick={() => {
+                  setEditingCatalogProduct(null)
+                  setCreateProductDialogOpen(true)
+                }}
                 variant="outline"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -497,7 +528,14 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                           <Truck className="h-4 w-4 mr-2" />
                           Demander un approvisionnement
                         </Button>
-                        <Button onClick={() => setCreateProductDialogOpen(true)} variant="outline" className="flex-1">
+                        <Button
+                onClick={() => {
+                  setEditingCatalogProduct(null)
+                  setCreateProductDialogOpen(true)
+                }}
+                variant="outline"
+                className="flex-1"
+              >
                           <Plus className="h-4 w-4 mr-2" />
                           Créer un produit
                         </Button>
@@ -589,9 +627,19 @@ export default function ProductsPage({ params }: ProductsPageProps) {
                                     </DropdownMenuItem>
                                   )}
                                   {hasPermission(STORE_PERMISSIONS.PRODUCTS_EDIT) && (
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }}>
+                                    <DropdownMenuItem
+                                      onClick={(e) => handleOpenStoreProductSettings(product, e)}
+                                    >
                                       <Edit className="mr-2 h-4 w-4" />
                                       Modifier
+                                    </DropdownMenuItem>
+                                  )}
+                                  {hasPermission("products.edit") && (
+                                    <DropdownMenuItem
+                                      onClick={(e) => handleEditCatalogProduct(product, e)}
+                                    >
+                                      <Package className="mr-2 h-4 w-4" />
+                                      Catalogue entrepôt
                                     </DropdownMenuItem>
                                   )}
                                   {hasPermission(STORE_PERMISSIONS.PRODUCTS_DELETE) && (
@@ -708,9 +756,12 @@ export default function ProductsPage({ params }: ProductsPageProps) {
 
       <ProductFormDialog
         open={createProductDialogOpen}
-        onOpenChange={setCreateProductDialogOpen}
+        onOpenChange={(open) => {
+          setCreateProductDialogOpen(open)
+          if (!open) setEditingCatalogProduct(null)
+        }}
         onSuccess={() => loadProducts(storeId)}
-        product={editingProduct}
+        product={editingCatalogProduct}
       />
 
       <StoreProductDetailsSheet

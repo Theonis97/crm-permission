@@ -32,6 +32,7 @@ interface PayrollRubric {
   displayOrder: number
   category: string | null
   isActive: boolean
+  isAlreadyDisbursed?: boolean
   _count: { employeeRubrics: number; rubricLines: number }
 }
 
@@ -139,7 +140,7 @@ export default function PayrollRubricsPage() {
                   {filteredRubrics.map((rubric) => (
                     <TableRow key={rubric.id} className={!rubric.isActive ? "opacity-50" : ""}>
                       <TableCell className="font-mono">{rubric.code}</TableCell>
-                      <TableCell><div><p className="font-medium">{rubric.name}</p>{rubric.category && <p className="text-xs text-gray-500">{rubric.category}</p>}</div></TableCell>
+                      <TableCell><div><p className="font-medium flex items-center gap-2 flex-wrap">{rubric.name}{(rubric.type === "INDEMNITY" || rubric.isAlreadyDisbursed) && <Badge variant="outline" className="text-[10px] font-normal text-slate-600">Hors net</Badge>}</p>{rubric.category && <p className="text-xs text-gray-500">{rubric.category}</p>}</div></TableCell>
                       <TableCell><Badge className={typeColors[rubric.type]}>{typeLabels[rubric.type]}</Badge></TableCell>
                       <TableCell className="text-sm text-gray-600">{calculationBaseLabels[rubric.calculationBase]}</TableCell>
                       <TableCell className="text-right">{rubric.calculationBase === "FIXED" ? formatCurrency(rubric.defaultAmount) : formatRate(rubric.defaultRate)}</TableCell>

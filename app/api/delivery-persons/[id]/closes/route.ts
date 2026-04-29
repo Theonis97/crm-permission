@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { calculateCommission } from "@/lib/commission-calculator"
+import { getBusinessDateKeyFromInstant } from "@/lib/driver-declaration-window"
 
+const MAX_SALES = 8000
+const MAX_DAYS_IN_RESPONSE = 120
+
+/**
+ * Clôtures côté déclarations livreur : regroupe les `DriverSale` par jour métier
+ * (même logique que les ventes / 23h59) et expose l’encaissé client vs le montant net dû au magasin
+ * (« à déposer » / à reverser).
+ */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -16,110 +24,89 @@ export async function GET(
 
     const { id: driverId } = await params
 
-    // Vérifier que le livreur existe
     const driver = await prisma.deliveryPerson.findUnique({
       where: { id: driverId },
+      select: { id: true },
     })
 
     if (!driver) {
       return NextResponse.json({ error: "Livreur non trouvé" }, { status: 404 })
     }
 
-    // Récupérer les commandes livrées du livreur
-    const deliveredOrders = await prisma.storeOrder.findMany({
-      where: {
-        deliveryPersonId: driverId,
-        status: "DELIVERED",
-        deliveredAt: {
-          not: null
+    const sales = await prisma.driverSale.findMany({
+      where: { deliveryPersonId: driverId },
+      select: {
+        declaredAt: true,
+        totalAmount: true,
+        netTotalAmount: true,
+        totalDeliveryFees: true,
+      },
+      orderBy: { declaredAt: "desc" },
+      take: MAX_SALES,
+    })
+
+    type DayAgg = {
+      businessDateKey: string
+      declarationCount: number
+      totalCollected: number
+      totalToDeposit: number
+      totalDeliveryFees: number
+      lastDeclaredAt: Date
+    }
+
+    const grouped = new Map<string, DayAgg>()
+
+    for (const s of sales) {
+      const key = getBusinessDateKeyFromInstant(s.declaredAt)
+      let g = grouped.get(key)
+      if (!g) {
+        g = {
+          businessDateKey: key,
+          declarationCount: 0,
+          totalCollected: 0,
+          totalToDeposit: 0,
+          totalDeliveryFees: 0,
+          lastDeclaredAt: s.declaredAt,
         }
-      },
-      orderBy: {
-        deliveredAt: 'desc'
-      },
-      take: 500 // Limiter pour la performance
-    })
-
-    // Grouper par date de livraison
-    const groupedData = new Map()
-
-    deliveredOrders.forEach(order => {
-      if (!order.deliveredAt) return
-
-      const deliveryDate = order.deliveredAt.toISOString().split('T')[0]
-      const key = deliveryDate
-
-      if (!groupedData.has(key)) {
-        groupedData.set(key, {
-          id: `${driverId}-${deliveryDate}`,
-          closeDate: deliveryDate,
-          status: "APPROVED", // Les commandes livrées sont considérées comme approuvées
-          totalOrders: 0,
-          totalRevenue: 0,
-          totalCommission: 0,
-          totalCash: 0,
-          totalCard: 0,
-          totalMobile: 0,
-          notes: null,
-          createdAt: order.deliveredAt,
-          approvedAt: order.deliveredAt,
-          approvedBy: null
-        })
+        grouped.set(key, g)
       }
-
-      const group = groupedData.get(key)
-      group.totalOrders += 1
-      group.totalRevenue += order.total || 0
-      
-      // Calculer la commission selon les règles métier
-      const commission = calculateCommission(order.total || 0)
-      group.totalCommission += commission
-
-      // Comptabiliser par mode de paiement
-      const paymentMethod = order.paymentMethod?.toUpperCase() || 'CASH'
-      if (paymentMethod === 'CASH' || paymentMethod === 'ESPECES') {
-        group.totalCash += order.total || 0
-      } else if (paymentMethod === 'CARD' || paymentMethod === 'CARTE') {
-        group.totalCard += order.total || 0
-      } else if (paymentMethod === 'MOBILE' || paymentMethod === 'MOBILE_MONEY') {
-        group.totalMobile += order.total || 0
+      g.declarationCount += 1
+      g.totalCollected += s.totalAmount
+      g.totalToDeposit += s.netTotalAmount
+      g.totalDeliveryFees += s.totalDeliveryFees
+      if (s.declaredAt.getTime() > g.lastDeclaredAt.getTime()) {
+        g.lastDeclaredAt = s.declaredAt
       }
-    })
+    }
 
-    // Convertir en array et trier par date décroissante
-    const closes = Array.from(groupedData.values())
-      .sort((a, b) => new Date(b.closeDate).getTime() - new Date(a.closeDate).getTime())
-      .slice(0, 50) // Limiter aux 50 dernières clôtures
+    const closes = Array.from(grouped.values())
+      .sort((a, b) => b.businessDateKey.localeCompare(a.businessDateKey))
+      .slice(0, MAX_DAYS_IN_RESPONSE)
 
-    // Calculer les statistiques
-    const totalCommission = closes.reduce((sum, c) => sum + c.totalCommission, 0)
-    const lastClose = closes[0]
+    const totalDeclarations = closes.reduce((sum, c) => sum + c.declarationCount, 0)
+    const totalToDepositAll = closes.reduce((sum, c) => sum + c.totalToDeposit, 0)
+    const totalCollectedAll = closes.reduce((sum, c) => sum + c.totalCollected, 0)
 
     return NextResponse.json({
-      closes: closes.map(close => ({
-        id: close.id,
-        closeDate: close.closeDate,
-        status: close.status,
-        totalOrders: close.totalOrders,
-        totalRevenue: close.totalRevenue,
-        totalCommission: close.totalCommission,
-        totalCash: close.totalCash,
-        totalCard: close.totalCard,
-        totalMobile: close.totalMobile,
-        notes: close.notes,
-        createdAt: close.createdAt?.toISOString() || close.closeDate,
-        approvedAt: close.approvedAt?.toISOString() || null,
-        approvedBy: close.approvedBy,
+      closes: closes.map((c) => ({
+        id: `${driverId}-${c.businessDateKey}`,
+        closeDate: c.businessDateKey,
+        declarationCount: c.declarationCount,
+        totalCollected: c.totalCollected,
+        totalToDeposit: c.totalToDeposit,
+        totalDeliveryFees: c.totalDeliveryFees,
+        lastDeclaredAt: c.lastDeclaredAt.toISOString(),
       })),
       summary: {
-        totalCloses: closes.length,
-        pendingCloses: 0, // Pas de clôtures en attente dans ce système
-        totalCommission,
-        lastCloseDate: lastClose?.closeDate || null,
+        totalDays: closes.length,
+        totalDeclarations,
+        totalCollectedAll,
+        totalToDepositAll,
+        lastCloseDate: closes[0]?.businessDateKey ?? null,
       },
     })
   } catch (error) {
-    console.error("Error fetching driver closes:", error)
+    console.error("Error fetching driver declaration closes:", error)
     return NextResponse.json(
       { error: "Erreur lors de la récupération des clôtures" },
       { status: 500 }

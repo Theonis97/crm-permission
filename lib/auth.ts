@@ -24,9 +24,10 @@ export const authOptions: NextAuthOptions = {
         try {
           console.log("[auth] Attempting to find user:", email)
 
-          const user = await prisma.user.findUnique({
+          // findFirst + mode insensitive : l’email côté DB peut être en Majuscules / mixte
+          const user = await prisma.user.findFirst({
             where: {
-              email,
+              email: { equals: email, mode: "insensitive" },
             },
             select: {
               id: true,
@@ -56,10 +57,19 @@ export const authOptions: NextAuthOptions = {
           }
 
           console.log("[auth] Verifying password...")
+          const looksBcrypt =
+            typeof user.password === "string" &&
+            /^\$2[aby]?\$/.test(user.password)
+          if (!looksBcrypt) {
+            console.warn(
+              "[auth] Le mot de passe en base ne ressemble pas à un hash bcrypt — exécutez une réinitialisation (API / seed) ou vérifiez les données.",
+            )
+          }
+
           const isPasswordValid = await bcrypt.compare(password, user.password)
 
           if (!isPasswordValid) {
-            console.log("[auth] Invalid password")
+            console.log("[auth] Invalid password (ou hash incompatible avec bcrypt)")
             return null
           }
 

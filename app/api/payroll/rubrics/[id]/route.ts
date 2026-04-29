@@ -83,6 +83,7 @@ export async function PUT(
       displayOrder,
       category,
       isActive,
+      isAlreadyDisbursed,
     } = body
 
     // Vérifier que la rubrique existe
@@ -126,6 +127,7 @@ export async function PUT(
         ...(displayOrder !== undefined && { displayOrder }),
         ...(category !== undefined && { category }),
         ...(isActive !== undefined && { isActive }),
+        ...(isAlreadyDisbursed !== undefined && { isAlreadyDisbursed: !!isAlreadyDisbursed }),
       },
     })
 

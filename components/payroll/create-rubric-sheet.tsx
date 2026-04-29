@@ -53,6 +53,7 @@ export function CreateRubricSheet({ open, onOpenChange, onSuccess }: CreateRubri
           exemptionCeiling: formData.exemptionCeiling ? parseFloat(formData.exemptionCeiling) : null,
           displayOrder: parseInt(formData.displayOrder) || 0,
           category: formData.category || null,
+          isAlreadyDisbursed: formData.type === "INDEMNITY",
         }),
       })
 
@@ -125,6 +126,11 @@ export function CreateRubricSheet({ open, onOpenChange, onSuccess }: CreateRubri
               <div><Label>Soumis aux cotisations</Label><p className="text-xs text-gray-500">CNSS, CSS, etc.</p></div>
               <Switch checked={formData.isSubjectToSocial} onCheckedChange={(v) => setFormData({ ...formData, isSubjectToSocial: v })} />
             </div>
+            {formData.type === "INDEMNITY" && (
+              <p className="text-xs text-slate-600 border-t border-gray-200 pt-3">
+                Les indemnités figurent sur le bulletin pour la traçabilité mais ne sont pas incluses dans le net à payer (versements séparés).
+              </p>
+            )}
           </div>
 
           <div className="border rounded-lg p-4 space-y-4 bg-gray-50">

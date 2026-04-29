@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateMobileUser } from '@/lib/auth-mobile';
 import { prisma } from '@/lib/prisma';
+import { catalogPricesSnapshot } from '@/lib/store-product-pricing';
 
 interface ReturnItem {
   stockId: string;
@@ -148,12 +149,17 @@ export async function POST(request: NextRequest) {
           console.log(`    📈 Stock magasin: ${existingStoreProduct.stock} → ${newStoreStock} (+${item.quantity})`);
         } else {
           // Créer un nouveau StoreProduct si le produit n'existe pas dans le magasin
+          const p = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { prixVente: true, prixAchat: true },
+          });
           await tx.storeProduct.create({
             data: {
               storeId: storeId,
               productId: item.productId,
               stock: item.quantity,
               minStock: 10,
+              ...(p ? catalogPricesSnapshot(p) : {}),
             },
           });
           console.log(`    🆕 Nouveau StoreProduct créé avec stock: ${item.quantity}`);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 /**
  * POST — Remet en stock vendable magasin une ligne du tampon « stock retours SAV »
@@ -77,12 +78,17 @@ export async function POST(
       })
 
       if (!storeProduct) {
+        const p = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { prixVente: true, prixAchat: true },
+        })
         storeProduct = await tx.storeProduct.create({
           data: {
             storeId,
             productId: line.productId,
             stock: 0,
             minStock: 0,
+            ...(p ? catalogPricesSnapshot(p) : {}),
           },
         })
       }

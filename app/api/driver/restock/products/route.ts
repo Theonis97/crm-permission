@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
 import { fetchDriverStorePackDtos } from "@/lib/driver-store-packs"
+import { effectivePrixVenteForStoreDisplay } from "@/lib/store-product-pricing"
 
 /** Produits du magasin sélectionné (catalogue boutique) pour composer la demande. */
 export async function GET(req: NextRequest) {
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
             name: true,
             sku: true,
             photos: true,
+            prixVente: true,
             linkedStorePackId: true,
           },
         },
@@ -49,17 +51,24 @@ export async function GET(req: NextRequest) {
 
     const data = rows
       .filter((sp) => !sp.product.linkedStorePackId)
-      .map((sp) => ({
-        productId: sp.product.id,
-        name: sp.product.name,
-        sku: sp.product.sku,
-        photo:
-          Array.isArray(sp.product.photos) && sp.product.photos.length > 0
-            ? sp.product.photos[0]
-            : null,
-        stockMagasin: sp.stock,
-        minStock: sp.minStock,
-      }))
+      .map((sp) => {
+        const prixVente = effectivePrixVenteForStoreDisplay({
+          storePrixVente: sp.prixVente,
+          productPrixVente: sp.product.prixVente,
+        })
+        return {
+          productId: sp.product.id,
+          name: sp.product.name,
+          sku: sp.product.sku,
+          photo:
+            Array.isArray(sp.product.photos) && sp.product.photos.length > 0
+              ? sp.product.photos[0]
+              : null,
+          stockMagasin: sp.stock,
+          minStock: sp.minStock,
+          prixVente,
+        }
+      })
 
     const packs = await fetchDriverStorePackDtos(storeId)
 

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 // POST - Annuler une commande et retourner les produits en stock
 export async function POST(
@@ -114,6 +115,10 @@ export async function POST(
 
         if (!storeProduct) {
           // Si le produit n'existe pas dans le stock du magasin, le créer
+          const p = await tx.product.findUnique({
+            where: { id: productId },
+            select: { prixVente: true, prixAchat: true },
+          })
           await tx.storeProduct.create({
             data: {
               storeId,
@@ -121,6 +126,7 @@ export async function POST(
               stock: quantity,
               minStock: 0,
               maxStock: 0,
+              ...(p ? catalogPricesSnapshot(p) : {}),
             },
           })
         } else {

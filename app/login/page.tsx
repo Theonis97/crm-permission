@@ -50,7 +50,9 @@ export default function LoginPage() {
 
       if (result?.error) {
         console.error("Login error:", result.error)
-        let message = "Email ou mot de passe incorrect"
+        let message = "Connexion impossible avec cet email et ce mot de passe."
+        let detail: string | null = null
+
         if (result.error === "CredentialsSignin") {
           try {
             const health = await fetch("/api/health/database")
@@ -60,12 +62,16 @@ export default function LoginPage() {
                 data.code === "DB_AUTH"
                   ? "La base de données refuse la connexion (identifiants PostgreSQL ou DATABASE_URL dans .env incorrects)."
                   : "Impossible de joindre la base de données. Vérifiez que PostgreSQL est démarré et que DATABASE_URL est correcte."
+            } else {
+              detail =
+                "Côté serveur, cette erreur arrive si : email inconnu, mot de passe erroné, compte inactif (statut ≠ ACTIF), ou compte sans mot de passe. Après un seed par défaut : admin@example.com / password. Regardez la console du serveur Next.js (lignes [auth]) pour le détail."
             }
           } catch {
-            /* garder le message par défaut */
+            detail =
+              "Si la base répond, vérifiez email, mot de passe et que le compte est actif. Logs serveur : préfixe [auth]."
           }
         }
-        setError(message)
+        setError(detail ? `${message}\n\n${detail}` : message)
       } else if (result?.ok) {
         console.log("Login successful!")
 
@@ -227,7 +233,9 @@ export default function LoginPage() {
                 {/* Error */}
                 {error && (
                   <Alert variant="destructive" className="border-red-200 bg-red-50">
-                    <AlertDescription className="text-red-800">{error}</AlertDescription>
+                    <AlertDescription className="text-red-800 whitespace-pre-line text-sm">
+                      {error}
+                    </AlertDescription>
                   </Alert>
                 )}
 

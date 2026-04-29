@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import {
+  getBackfillMaxDays,
+  getBusinessDateKeyFromInstant,
+  getDeclarationDayBounds,
+  getOldestAllowedBackfillDateKey,
+  getYesterdayBusinessDateKey,
+  isDeclarationWindowOpen,
+} from "@/lib/driver-declaration-window"
+import { effectivePrixVenteForStoreDisplay } from "@/lib/store-product-pricing"
 
 // GET - Récupérer le stock d'un livreur
 export async function GET(
@@ -68,11 +77,27 @@ export async function GET(
       },
     })
 
+    const productIds = [...new Set(stock.map((s) => s.productId))]
+    const storePriceRows =
+      productIds.length === 0
+        ? []
+        : await prisma.storeProduct.findMany({
+            where: { storeId: deliveryPerson.storeId, productId: { in: productIds } },
+            select: { productId: true, prixVente: true },
+          })
+    const storePrixByProduct = new Map(
+      storePriceRows.map((r) => [r.productId, r.prixVente as number | null]),
+    )
+
+    const priceFor = (row: (typeof stock)[0]) =>
+      effectivePrixVenteForStoreDisplay({
+        storePrixVente: storePrixByProduct.get(row.productId),
+        productPrixVente: row.product.prixVente,
+        variantPrixVente: row.variant?.prixVente,
+      })
+
     // Calculer la valeur totale du stock
-    const totalValue = stock.reduce((sum, item) => {
-      const price = item.variant?.prixVente || item.product.prixVente
-      return sum + price * item.quantity
-    }, 0)
+    const totalValue = stock.reduce((sum, item) => sum + priceFor(item) * item.quantity, 0)
 
     // Calculer le nombre total d'articles
     const totalItems = stock.reduce((sum, item) => sum + item.quantity, 0)
@@ -83,13 +108,60 @@ export async function GET(
       return available > 0 && available <= 5
     }).length
 
+    const now = new Date()
+    const { dayStart, deadline } = getDeclarationDayBounds(now)
+    const windowOpen = isDeclarationWindowOpen(now)
+
+    const saleItemsToday = await prisma.driverSaleItem.findMany({
+      where: {
+        driverSale: {
+          deliveryPersonId: id,
+          declaredAt: { gte: dayStart, lte: deadline },
+        },
+      },
+      select: { productId: true, variantId: true, quantity: true },
+    })
+
+    const declaredByLine = new Map<string, number>()
+    for (const row of saleItemsToday) {
+      const key = `${row.productId}\0${row.variantId ?? ""}`
+      declaredByLine.set(key, (declaredByLine.get(key) ?? 0) + row.quantity)
+    }
+
+    const items = stock.map((item) => {
+      const key = `${item.productId}\0${item.variantId ?? ""}`
+      const declaredQtyToday = declaredByLine.get(key) ?? 0
+      const quantityDisplay = windowOpen ? item.quantity : 0
+      const reservedDisplay = windowOpen ? item.reserved : item.quantity
+      const pv = priceFor(item)
+      return {
+        ...item,
+        product: { ...item.product, prixVente: pv },
+        variant: item.variant ? { ...item.variant, prixVente: pv } : null,
+        declaredQtyToday,
+        declarationWindowOpen: windowOpen,
+        quantityDisplay,
+        reservedDisplay,
+      }
+    })
+
     return NextResponse.json({
       deliveryPerson: {
         id: deliveryPerson.id,
         name: deliveryPerson.name,
         store: deliveryPerson.store,
       },
-      items: stock,
+      items,
+      declaration: {
+        windowOpen,
+        dayStart: dayStart.toISOString(),
+        deadline: deadline.toISOString(),
+        now: now.toISOString(),
+        businessDateKey: getBusinessDateKeyFromInstant(now),
+        yesterdayDateKey: getYesterdayBusinessDateKey(now),
+        oldestBackfillDateKey: getOldestAllowedBackfillDateKey(now),
+        maxBackfillDays: getBackfillMaxDays(),
+      },
       summary: {
         totalItems,
         totalValue,
@@ -228,7 +300,11 @@ export async function POST(
     const { productId, variantId, quantity, notes, items } = body
 
     // Support pour un seul produit OU plusieurs produits
-    const productsToTransfer = items ? items : [{ productId, variantId: variantId || null, quantity }]
+    const productsToTransfer: Array<{
+      productId: string
+      variantId?: string | null
+      quantity: number
+    }> = items ? items : [{ productId, variantId: variantId || null, quantity }]
 
     if (productsToTransfer.length === 0) {
       return NextResponse.json(
@@ -314,7 +390,7 @@ export async function POST(
       const existingDeliveryStocks = await tx.deliveryPersonStock.findMany({
         where: {
           deliveryPersonId: id,
-          productId: { in: productsToTransfer.map((item: any) => item.productId) },
+          productId: { in: productsToTransfer.map((item) => item.productId) },
         },
       })
 
@@ -323,7 +399,6 @@ export async function POST(
       const deliveryPersonStockOps = []
       const stockMovements = []
       const deliveryStockMovements = []
-      const transferredItems = []
 
       for (const item of productsToTransfer) {
         const storeProduct = storeProducts.find(sp => sp.productId === item.productId)!
@@ -411,12 +486,13 @@ export async function POST(
       // 3. Exécuter toutes les opérations en parallèle
       console.log(`🔄 Executing ${storeProductUpdates.length + deliveryPersonStockOps.length + stockMovements.length + deliveryStockMovements.length} operations`)
       
-      const [storeUpdates, deliveryUpdates, stockMoves, deliveryMoves] = await Promise.all([
+      const parallelResults = await Promise.all([
         Promise.all(storeProductUpdates),
         Promise.all(deliveryPersonStockOps),
         Promise.all(stockMovements),
         Promise.all(deliveryStockMovements),
       ])
+      const deliveryUpdates = parallelResults[1]
 
       console.log(`✅ Stock transfer completed for delivery person ${id}`)
       return deliveryUpdates

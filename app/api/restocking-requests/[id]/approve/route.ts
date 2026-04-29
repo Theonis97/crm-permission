@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
+import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
 /**
  * POST /api/restocking-requests/[id]/approve
@@ -261,25 +262,26 @@ export async function POST(
         decrementByStoreProduct.set(v.storeProductId, cur)
       }
 
-      const storeOps = []
+      // Sortie magasin : même logique que la vente POS — décrément + alignement store_packs.assembled_stock pour les produits proxy pack
       for (const [storeProductId, { productId, total }] of decrementByStoreProduct) {
-        storeOps.push(
-          tx.storeProduct.update({
-            where: { id: storeProductId },
-            data: { stock: { decrement: total } },
-          }),
-        )
-        storeOps.push(
-          tx.stockMovement.create({
-            data: {
-              productId,
-              quantity: -total,
-              type: "TRANSFER_OUT",
-              note: `Transfert vers livreur ${restockingRequest.deliveryPerson.name} — demande ${id} (${stockValidations.filter((s) => s.productId === productId).length} ligne(s))`,
-              userId: user.id,
-            },
-          }),
-        )
+        await tx.storeProduct.update({
+          where: { id: storeProductId },
+          data: { stock: { decrement: total } },
+        })
+        await adjustPackAssembledForProxyProduct(tx, {
+          storeId: restockingRequest.storeId,
+          productId,
+          deltaPackUnits: -total,
+        })
+        await tx.stockMovement.create({
+          data: {
+            productId,
+            quantity: -total,
+            type: "TRANSFER_OUT",
+            note: `Transfert vers livreur ${restockingRequest.deliveryPerson.name} — demande ${id} (${stockValidations.filter((s) => s.productId === productId).length} ligne(s))`,
+            userId: user.id,
+          },
+        })
       }
 
       // 4. Entrée stock livreur : regrouper par (productId, variantId) pour éviter créations en double dans la même transaction
@@ -343,10 +345,10 @@ export async function POST(
         )
       }
 
-      console.log(`🔄 Executing stock operations for ${id}`)
-      await Promise.all([...storeOps, ...deliveryOps])
+      console.log(`🔄 Executing delivery stock operations for ${id}`)
+      await Promise.all(deliveryOps)
 
-      console.log(`✅ Completed stock operations for ${id}`)
+      console.log(`✅ Completed store decrement + pack sync + delivery credit for ${id}`)
 
       // 4. Marquer la demande comme terminée
       await tx.restockingRequest.update({

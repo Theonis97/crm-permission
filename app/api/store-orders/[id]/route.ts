@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import { sendOrderCancellationEmail, sendOrderDeliveredEmail } from "@/lib/email-service"
 import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 export async function PATCH(
   request: NextRequest,
@@ -112,6 +113,10 @@ export async function PATCH(
             })
           } else {
             // Créer l'entrée de stock si elle n'existe pas
+            const p = await tx.product.findUnique({
+              where: { id: item.productId },
+              select: { prixVente: true, prixAchat: true },
+            })
             await tx.storeProduct.create({
               data: {
                 storeId: existingOrder.storeId,
@@ -119,6 +124,7 @@ export async function PATCH(
                 stock: item.quantity,
                 minStock: 0,
                 maxStock: 0,
+                ...(p ? catalogPricesSnapshot(p) : {}),
               },
             })
           }

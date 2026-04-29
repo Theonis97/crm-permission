@@ -360,18 +360,23 @@ export async function PUT(
         updateData.totalDeductions = totalEmployeeDeductions
         updateData.employerCharges = totalEmployerCharges
 
-        // Primes / indemnités déjà sur le bulletin (lignes de rubriques)
-        const rubricSum = await prisma.payrollRubricLine.aggregate({
+        // Primes / indemnités : seules les rubriques « à payer » entrent dans le net
+        const rubricLinesNet = await prisma.payrollRubricLine.findMany({
           where: { payrollId: id },
-          _sum: { amount: true },
+          select: { amount: true, isAlreadyDisbursed: true, rubricType: true },
         })
-        const rubricsTotal = rubricSum._sum.amount ?? 0
+        const rubricsTotalTowardNet = rubricLinesNet.reduce(
+          (s, l) =>
+            s +
+            (l.rubricType === "INDEMNITY" || l.isAlreadyDisbursed ? 0 : l.amount),
+          0,
+        )
 
-        // Recalculer le salaire net (brut − cotisations salariales + rubriques)
+        // Recalculer le salaire net (brut − cotisations salariales + rubriques payables)
         const finalGrossSalary = newGrossSalary
         updateData.netSalary = Math.max(
           0,
-          finalGrossSalary + rubricsTotal - totalEmployeeDeductions,
+          finalGrossSalary + rubricsTotalTowardNet - totalEmployeeDeductions,
         )
 
         // Reste à payer = net − déjà versé (inclut l’impact des heures sup. dans le net)
@@ -412,17 +417,27 @@ export async function PUT(
             isSubjectToSocial: line.isSubjectToSocial || false,
             exemptAmount: 0,
             taxableAmount: line.isSubjectToTax ? line.amount : 0,
+            isAlreadyDisbursed:
+              line.rubricType === "INDEMNITY" || !!line.isAlreadyDisbursed,
           })),
         })
 
         // Calculer le total des rubriques
         const totalRubrics = rubricLines.reduce((sum: number, line: any) => sum + (line.amount || 0), 0)
+        const totalRubricsTowardNet = rubricLines.reduce(
+          (sum: number, line: any) =>
+            sum +
+            (line.rubricType === "INDEMNITY" || line.isAlreadyDisbursed
+              ? 0
+              : (line.amount || 0)),
+          0,
+        )
         updateData.totalBonuses = totalRubrics
 
         // Recalculer le salaire net avec les rubriques
         const finalGrossSalary = updateData.grossSalary !== undefined ? updateData.grossSalary : existing.grossSalary
         const finalDeductions = updateData.totalDeductions !== undefined ? updateData.totalDeductions : existing.totalDeductions
-        updateData.netSalary = Math.max(0, finalGrossSalary + totalRubrics - finalDeductions)
+        updateData.netSalary = Math.max(0, finalGrossSalary + totalRubricsTowardNet - finalDeductions)
         updateData.remainingAmount = Math.max(
           0,
           updateData.netSalary - (existing.paidAmount ?? 0),

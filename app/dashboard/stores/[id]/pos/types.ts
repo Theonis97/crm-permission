@@ -1,5 +1,3 @@
-import { TicketData } from "@/lib/thermal-printer"
-
 export interface Product {
   id: string
   storeProductId: string
@@ -7,6 +5,7 @@ export interface Product {
   sku: string | null
   description: string | null
   photos: string[]
+  /** Prix utilisé en caisse : tarif magasin s’il existe, sinon référence entrepôt (provisoire). */
   prixVente: number
   prixAchat: number
   tva: number
@@ -15,6 +14,7 @@ export interface Product {
   maxStock: number
   categoryId: string
   brandId: string | null
+  warehousePrixVente?: number
   category: {
     id: string
     name: string

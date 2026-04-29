@@ -26,6 +26,7 @@ interface PayrollRubric {
   displayOrder: number
   category: string | null
   isActive: boolean
+  isAlreadyDisbursed: boolean
 }
 
 interface EditRubricSheetProps {
@@ -41,6 +42,7 @@ export function EditRubricSheet({ open, onOpenChange, rubric, onSuccess }: EditR
     code: "", name: "", description: "", type: "PRIME" as "PRIME" | "INDEMNITY",
     isSubjectToTax: true, isSubjectToSocial: true, calculationBase: "FIXED",
     defaultAmount: "", defaultRate: "", exemptionCeiling: "", category: "", displayOrder: "0",
+    isAlreadyDisbursed: false,
   })
 
   useEffect(() => {
@@ -58,6 +60,8 @@ export function EditRubricSheet({ open, onOpenChange, rubric, onSuccess }: EditR
         exemptionCeiling: rubric.exemptionCeiling?.toString() || "",
         category: rubric.category || "",
         displayOrder: rubric.displayOrder.toString(),
+        isAlreadyDisbursed:
+          rubric.type === "INDEMNITY" ? true : rubric.isAlreadyDisbursed ?? false,
       })
     }
   }, [rubric])
@@ -81,6 +85,7 @@ export function EditRubricSheet({ open, onOpenChange, rubric, onSuccess }: EditR
           exemptionCeiling: formData.exemptionCeiling ? parseFloat(formData.exemptionCeiling) : null,
           displayOrder: parseInt(formData.displayOrder) || 0,
           category: formData.category || null,
+          isAlreadyDisbursed: formData.type === "INDEMNITY" || formData.isAlreadyDisbursed,
         }),
       })
 
@@ -149,6 +154,23 @@ export function EditRubricSheet({ open, onOpenChange, rubric, onSuccess }: EditR
               <div><Label>Soumis aux cotisations</Label><p className="text-xs text-gray-500">CNSS, CSS, etc.</p></div>
               <Switch checked={formData.isSubjectToSocial} onCheckedChange={(v) => setFormData({ ...formData, isSubjectToSocial: v })} />
             </div>
+            {formData.type === "INDEMNITY" && (
+              <p className="text-xs text-slate-600 border-t border-gray-200 pt-3">
+                Les indemnités figurent sur le bulletin pour la traçabilité mais ne sont pas incluses dans le net à payer (versements séparés).
+              </p>
+            )}
+            {formData.type === "PRIME" && (
+              <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                <div>
+                  <Label>Prime déjà versée hors paie</Label>
+                  <p className="text-xs text-gray-500">Ne sera pas ajoutée au net à payer</p>
+                </div>
+                <Switch
+                  checked={formData.isAlreadyDisbursed}
+                  onCheckedChange={(v) => setFormData({ ...formData, isAlreadyDisbursed: v })}
+                />
+              </div>
+            )}
           </div>
 
           <div className="border rounded-lg p-4 space-y-4 bg-gray-50">

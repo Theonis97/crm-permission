@@ -9,10 +9,23 @@ import { Separator } from "@/components/ui/separator"
 import { CheckCircle2, AlertTriangle, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
+interface DayCloseSummary {
+  closeDate?: string | Date
+  date?: string
+  closedBy?: string | null
+  totalSales?: number
+  totalItems?: number
+  subtotal?: number
+  totalTax?: number
+  totalDiscounts?: number
+  totalRevenue?: number
+  discrepancies?: string
+}
+
 interface DayCloseSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  summary: any
+  summary: DayCloseSummary | null
 }
 
 export function DayCloseSheet({ open, onOpenChange, summary }: DayCloseSheetProps) {
@@ -27,7 +40,8 @@ export function DayCloseSheet({ open, onOpenChange, summary }: DayCloseSheetProp
             Clôture de journée effectuée
           </SheetTitle>
           <SheetDescription>
-            Récapitulatif de la journée du {new Date(summary.closeDate).toLocaleDateString("fr-FR")}
+            Récapitulatif de la journée du{" "}
+            {new Date(summary.closeDate || summary.date).toLocaleDateString("fr-FR")}
           </SheetDescription>
         </SheetHeader>
 
@@ -68,17 +82,19 @@ export function DayCloseSheet({ open, onOpenChange, summary }: DayCloseSheetProp
                 <span className="text-gray-600">Sous-total</span>
                 <span>{summary.subtotal?.toLocaleString()} FCFA</span>
               </div>
+              {(summary.totalTax ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">TVA</span>
+                  <span>{summary.totalTax?.toLocaleString()} FCFA</span>
+                </div>
+              )}
               <div className="flex justify-between text-red-600">
                 <span>Remises totales</span>
                 <span>-{summary.totalDiscounts?.toLocaleString()} FCFA</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>TVA</span>
-                <span>{summary.totalTax?.toLocaleString()} FCFA</span>
-              </div>
               <Separator className="my-2" />
               <div className="flex justify-between text-lg font-bold">
-                <span>Chiffre d'affaires</span>
+                <span>{"Chiffre d'affaires"}</span>
                 <span className="text-green-600">{summary.totalRevenue?.toLocaleString()} FCFA</span>
               </div>
             </div>

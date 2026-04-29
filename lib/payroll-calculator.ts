@@ -48,6 +48,8 @@ export interface RubricLine {
   isSubjectToSocial: boolean
   exemptAmount: number
   taxableAmount: number
+  /** Déjà versé hors virement de paie (ex. transport / repas) : affiché mais non ajouté au net */
+  isAlreadyDisbursed: boolean
 }
 
 export interface PayrollCalculationInput {
@@ -529,16 +531,21 @@ export async function calculatePayroll(
   let rubricLines: RubricLine[] = []
   let totalPrimes = 0
   let totalIndemnities = 0
-  let rubricSocialContributions = 0 // Cotisations supplémentaires sur rubriques
+  let rubricAmountTowardNet = 0
 
   if (profile.rubrics && profile.rubrics.length > 0) {
     for (const employeeRubric of profile.rubrics) {
       const rubric = employeeRubric.rubric
+      const catalogAlreadyDisbursed = Boolean(rubric.isAlreadyDisbursed)
+      // Indemnités : toujours hors net à payer (versées séparément). Primes : sauf si « déjà versée ».
+      const countsTowardNet =
+        rubric.type === "PRIME" && !catalogAlreadyDisbursed
       
-      // Vérifier la période d'application
-      const now = new Date()
-      if (employeeRubric.startDate && new Date(employeeRubric.startDate) > now) continue
-      if (employeeRubric.endDate && new Date(employeeRubric.endDate) < now) continue
+      // Vérifier la période d'application (par rapport à la période de paie, pas la date du jour)
+      const pStart = period.startDate
+      const pEnd = period.endDate
+      if (employeeRubric.startDate && new Date(employeeRubric.startDate) > pEnd) continue
+      if (employeeRubric.endDate && new Date(employeeRubric.endDate) < pStart) continue
 
       // Calculer le montant selon la base de calcul
       let baseAmount = 0
@@ -590,6 +597,7 @@ export async function calculatePayroll(
         isSubjectToSocial: rubric.isSubjectToSocial,
         exemptAmount,
         taxableAmount,
+        isAlreadyDisbursed: rubric.type === "INDEMNITY" || catalogAlreadyDisbursed,
       })
 
       // Cumuler les totaux par type
@@ -598,20 +606,21 @@ export async function calculatePayroll(
       } else {
         totalIndemnities += calculatedAmount
       }
-
-      // Si soumis aux cotisations, calculer les cotisations supplémentaires
-      // (simplifié : on applique le même taux global de cotisations)
-      if (rubric.isSubjectToSocial && taxableAmount > 0) {
-        const socialRate = contributionLines.reduce((sum, c) => sum + c.rate, 0)
-        rubricSocialContributions += Math.round((taxableAmount * socialRate / 100) * 100) / 100
+      if (countsTowardNet) {
+        rubricAmountTowardNet += calculatedAmount
       }
+
+      // Pas de 2ᵉ passage CNSS / cotisations sur les rubriques : les retenues salariales
+      // sont déjà calculées une fois sur le brut (contributionLines / totalDeductions).
+      // Le flag isSubjectToSocial sur la rubrique reste informatif pour l’affichage / évolutions futures.
     }
   }
 
   // 12. Calculer le salaire net final
-  // Net = Brut - Cotisations + Primes + Indemnités + Bonus - Pénalités - Cotisations sur rubriques
+  // Net = Brut - Cotisations salariales + rubriques comptées pour le paiement + Bonus - Pénalités
+  // (indemnités toujours hors net ; primes « déjà versées » exclues aussi)
   const netSalary = Math.round(
-    (grossSalary - totalDeductions + totalPrimes + totalIndemnities + totalBonuses - totalPenalties - rubricSocialContributions) * 100
+    (grossSalary - totalDeductions + rubricAmountTowardNet + totalBonuses - totalPenalties) * 100
   ) / 100
 
   // 13. Préparer les ajustements appliqués
@@ -631,7 +640,7 @@ export async function calculatePayroll(
     absenceDays,
     expectedWorkingDays,
     grossSalary,
-    totalDeductions: Math.round((totalDeductions + rubricSocialContributions) * 100) / 100,
+    totalDeductions: Math.round(totalDeductions * 100) / 100,
     totalBonuses: Math.round(totalBonuses * 100) / 100,
     totalPrimes: Math.round(totalPrimes * 100) / 100,
     totalIndemnities: Math.round(totalIndemnities * 100) / 100,

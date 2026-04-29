@@ -84,6 +84,7 @@ export async function POST(request: Request) {
       exemptionCeiling,
       displayOrder,
       category,
+      isAlreadyDisbursed,
     } = body
 
     // Validation
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
         exemptionCeiling,
         displayOrder: displayOrder || 0,
         category,
+        isAlreadyDisbursed: !!isAlreadyDisbursed,
       },
     })
 

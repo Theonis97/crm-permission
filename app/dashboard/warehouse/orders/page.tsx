@@ -945,7 +945,7 @@ export default function WarehouseOrdersPage() {
                         </TableHead>
                         <TableHead>N° Commande</TableHead>
                         <TableHead>Magasin</TableHead>
-                        <TableHead className="text-center">Articles</TableHead>
+                        <TableHead className="text-center">Unités</TableHead>
                         <TableHead className="text-right">Montant</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead>Priorité</TableHead>
@@ -955,7 +955,15 @@ export default function WarehouseOrdersPage() {
                     </TableHeader>
                     <TableBody>
                       {paginatedOrders.map((order) => {
-                        const totalItems = order.items?.length || 0
+                        const lineCount = order.items?.length || 0
+                        const unitTotal =
+                          typeof order.totalQuantity === "number"
+                            ? order.totalQuantity
+                            : (order.items ?? []).reduce(
+                                (s: number, it: { requestedQuantity?: number }) =>
+                                  s + (Number(it.requestedQuantity) || 0),
+                                0
+                              )
                         const isSelected = selectedOrders.includes(order.id)
                         return (
                           <TableRow 
@@ -979,9 +987,16 @@ export default function WarehouseOrdersPage() {
                             </TableCell>
                             <TableCell className="font-medium">{order.store?.name}</TableCell>
                             <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Package className="h-4 w-4 text-gray-400" />
-                                <span className="text-sm font-medium">{totalItems}</span>
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <span className="text-sm font-semibold tabular-nums">{unitTotal}</span>
+                                </div>
+                                {lineCount > 0 ? (
+                                  <span className="text-xs text-gray-500">
+                                    {lineCount} ligne{lineCount > 1 ? "s" : ""}
+                                  </span>
+                                ) : null}
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-semibold">

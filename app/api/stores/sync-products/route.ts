@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 /**
  * Route API pour synchroniser les produits dans les magasins
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
                 productId: item.productId,
                 stock: item.requestedQuantity,
                 minStock: 10, // Valeur par défaut
+                ...catalogPricesSnapshot(item.product),
               },
             })
             storeProductsCreated++
