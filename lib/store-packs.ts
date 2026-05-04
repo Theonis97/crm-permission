@@ -225,6 +225,121 @@ export async function adjustPackAssembledForProxyProduct(
   })
 }
 
+/**
+ * Dissocie n unités pack au magasin : les composants sont recrédités, le stock proxy et assembled_stock diminuent.
+ * Inverse de l’assemblage pour les unités déjà en stock « pack prêt » (proxy / assemblé).
+ */
+export async function dissociatePackUnitsAtStore(
+  tx: Tx,
+  args: {
+    storeId: string
+    packId: string
+    units: number
+    userId: string
+    note?: string | null
+  }
+): Promise<void> {
+  const n = Math.max(0, Math.floor(args.units))
+  if (n < 1) throw new Error("Quantité invalide")
+
+  const pack = await tx.storePack.findUnique({
+    where: { id: args.packId },
+    select: { storeId: true, assembledStock: true },
+  })
+  if (!pack || pack.storeId !== args.storeId) {
+    throw new Error("Pack introuvable")
+  }
+
+  const lines = await tx.$queryRaw<{ product_id: string; quantity: number }[]>`
+    SELECT product_id, quantity FROM store_pack_items WHERE pack_id = ${args.packId}
+  `
+  if (lines.length < 1) {
+    throw new Error("Composition du pack invalide")
+  }
+
+  const proxy = await tx.product.findFirst({
+    where: { linkedStorePackId: args.packId },
+    select: { id: true },
+  })
+
+  let proxyStoreStock = 0
+  if (proxy) {
+    const spx = await tx.storeProduct.findFirst({
+      where: { storeId: args.storeId, productId: proxy.id, isActive: true },
+      select: { stock: true },
+    })
+    proxyStoreStock = Math.max(0, Math.floor(Number(spx?.stock) || 0))
+  }
+
+  const rawAssembled = Math.max(0, Math.floor(Number(pack.assembledStock) || 0))
+  /**
+   * Unités dissociables : aligné sur l’affichage (GREATEST proxy, assemblé) quand il y a un proxy,
+   * sinon uniquement l’assemblé magasin — évite « packs prêts » visibles mais dissociation à 0 ou stock proxy négatif.
+   */
+  const available = proxy ? Math.max(proxyStoreStock, rawAssembled) : rawAssembled
+
+  if (available < n) {
+    throw new Error(
+      `Stock pack insuffisant pour dissocier (disponible : ${available}, demandé : ${n}).`,
+    )
+  }
+
+  const now = new Date()
+  const noteBase =
+    (args.note && args.note.trim()) || `Dissociation pack — ${n} unité(s)`
+
+  for (const line of lines) {
+    const sp = await tx.storeProduct.findFirst({
+      where: { storeId: args.storeId, productId: line.product_id },
+      select: { id: true },
+    })
+    if (!sp) {
+      throw new Error(`Composant absent du magasin (${line.product_id})`)
+    }
+    const credit = Math.max(1, Math.floor(Number(line.quantity) || 1)) * n
+    await tx.$executeRaw`
+      UPDATE store_products
+      SET stock = stock + ${credit}, updated_at = ${now}
+      WHERE id = ${sp.id}
+    `
+    await tx.stockMovement.create({
+      data: {
+        productId: line.product_id,
+        quantity: credit,
+        type: "ADJUSTMENT",
+        note: `${noteBase} — retour composant`,
+        userId: args.userId,
+      },
+    })
+  }
+
+  if (proxy) {
+    const decProxy = Math.min(n, proxyStoreStock)
+    if (decProxy > 0) {
+      await incrementPackProxyStock(tx, args.storeId, args.packId, -decProxy)
+      await tx.stockMovement.create({
+        data: {
+          productId: proxy.id,
+          quantity: -decProxy,
+          type: "ADJUSTMENT",
+          note: noteBase,
+          userId: args.userId,
+        },
+      })
+    }
+    await adjustPackAssembledForProxyProduct(tx, {
+      storeId: args.storeId,
+      productId: proxy.id,
+      deltaPackUnits: -n,
+    })
+  } else {
+    await tx.storePack.update({
+      where: { id: args.packId },
+      data: { assembledStock: Math.max(0, rawAssembled - n) },
+    })
+  }
+}
+
 /** Après PATCH sur store_packs : aligner nom / description / prix du produit caisse. */
 export async function syncPackProxyPricing(
   packId: string,

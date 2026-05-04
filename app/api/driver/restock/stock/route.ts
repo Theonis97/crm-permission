@@ -4,6 +4,15 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getActiveDeliveryPersonByUserEmail } from "@/lib/driver-session"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
+import {
+  getBackfillMaxDays,
+  getBusinessDateKeyFromInstant,
+  getDeclarationDayBounds,
+  getOldestAllowedBackfillDateKey,
+  getYesterdayBusinessDateKey,
+  isDeclarationWindowOpen,
+} from "@/lib/driver-declaration-window"
+import { effectivePrixVenteForStoreDisplay } from "@/lib/store-product-pricing"
 
 /**
  * GET /api/driver/restock/stock
@@ -22,6 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     let deliveryPersonId: string
+    let driverStoreId: string
 
     if (reason === "staff") {
       const qp = req.nextUrl.searchParams.get("deliveryPersonId")
@@ -33,12 +43,13 @@ export async function GET(req: NextRequest) {
       }
       const dp = await prisma.deliveryPerson.findFirst({
         where: { id: qp, isActive: true },
-        select: { id: true, name: true },
+        select: { id: true, name: true, storeId: true },
       })
       if (!dp) {
         return NextResponse.json({ success: false, error: "Livreur invalide" }, { status: 400 })
       }
       deliveryPersonId = dp.id
+      driverStoreId = dp.storeId
     } else {
       // Livreur (par email ou par rôle)
       const driverSelf = await getActiveDeliveryPersonByUserEmail(session.user.email)
@@ -55,6 +66,7 @@ export async function GET(req: NextRequest) {
         })
       }
       deliveryPersonId = driverSelf.id
+      driverStoreId = driverSelf.storeId
     }
 
     const stock = await prisma.deliveryPersonStock.findMany({
@@ -85,13 +97,53 @@ export async function GET(req: NextRequest) {
 
     const totalItems = stock.reduce((sum, row) => sum + row.quantity, 0)
 
+    const productIds = [...new Set(stock.map((r) => r.productId))]
+    const storePriceRows =
+      productIds.length === 0
+        ? []
+        : await prisma.storeProduct.findMany({
+            where: { storeId: driverStoreId, productId: { in: productIds } },
+            select: { productId: true, prixVente: true },
+          })
+    const storePrixByProduct = new Map(
+      storePriceRows.map((r) => [r.productId, r.prixVente as number | null]),
+    )
+
+    const items = stock.map((row) => {
+      const storePv = storePrixByProduct.get(row.productId)
+      const pv = effectivePrixVenteForStoreDisplay({
+        storePrixVente: storePv,
+        productPrixVente: row.product.prixVente,
+        variantPrixVente: row.variant?.prixVente,
+      })
+      return {
+        ...row,
+        product: { ...row.product, prixVente: pv },
+        variant: row.variant ? { ...row.variant, prixVente: pv } : null,
+      }
+    })
+
+    const now = new Date()
+    const { dayStart, deadline } = getDeclarationDayBounds(now)
+    const windowOpen = isDeclarationWindowOpen(now)
+
     return NextResponse.json({
       success: true,
       data: {
-        items: stock,
+        items,
         summary: {
           totalItems,
           totalProducts: stock.length,
+        },
+        declaration: {
+          windowOpen,
+          dayStart: dayStart.toISOString(),
+          deadline: deadline.toISOString(),
+          now: now.toISOString(),
+          businessDateKey: getBusinessDateKeyFromInstant(now),
+          yesterdayDateKey: getYesterdayBusinessDateKey(now),
+          oldestBackfillDateKey: getOldestAllowedBackfillDateKey(now),
+          maxBackfillDays: getBackfillMaxDays(),
         },
       },
     })

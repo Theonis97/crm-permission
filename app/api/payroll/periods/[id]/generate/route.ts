@@ -177,6 +177,7 @@ export async function POST(
               isSubjectToSocial: line.isSubjectToSocial,
               exemptAmount: line.exemptAmount,
               taxableAmount: line.taxableAmount,
+              isAlreadyDisbursed: line.isAlreadyDisbursed,
             })),
           })
         }

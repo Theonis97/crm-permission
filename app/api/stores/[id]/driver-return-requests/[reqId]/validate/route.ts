@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 /**
  * PATCH /api/stores/[id]/driver-return-requests/[reqId]/validate
@@ -134,11 +135,16 @@ export async function PATCH(
           data: { stock: { increment: qtyToApprove } },
         })
       } else {
+        const p = await tx.product.findUnique({
+          where: { id: returnReq.productId },
+          select: { prixVente: true, prixAchat: true },
+        })
         await tx.storeProduct.create({
           data: {
             storeId,
             productId: returnReq.productId,
             stock: qtyToApprove,
+            ...(p ? catalogPricesSnapshot(p) : {}),
           },
         })
       }

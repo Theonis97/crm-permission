@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Sheet,
   SheetContent,
@@ -28,6 +28,8 @@ export type PackDetails = {
   assembledStock: number
   /** Combien d’autres packs on peut encore assembler avec le stock actuel des composants */
   assembleableStock: number
+  /** Unités pack qu’on peut dissocier (stock proxy si caisse, sinon assemblé magasin) */
+  dissociatableUnits?: number
   stockStatus: "ok" | "low" | "out"
   coverPhoto: string | null
   /** Affichage type inventaire produit (proxy caisse) */
@@ -78,8 +80,19 @@ export function StorePackDetailsSheet({
 }: StorePackDetailsSheetProps) {
   const [addQty, setAddQty] = useState("1")
   const [adding, setAdding] = useState(false)
+  const [dissociateQty, setDissociateQty] = useState("1")
+  const [dissociating, setDissociating] = useState(false)
+
+  useEffect(() => {
+    if (open && pack?.id) {
+      setAddQty("1")
+      setDissociateQty("1")
+    }
+  }, [open, pack?.id])
 
   if (!pack) return null
+
+  const maxDissociate = Math.max(0, Math.floor(Number(pack.dissociatableUnits) || 0))
 
   const statusConfig = {
     ok: {
@@ -122,6 +135,35 @@ export function StorePackDetailsSheet({
     }
   }
 
+  const handleDissociate = async () => {
+    const n = Math.min(
+      maxDissociate,
+      Math.max(1, Math.floor(Number(dissociateQty) || 1)),
+    )
+    if (maxDissociate < 1) return
+    try {
+      setDissociating(true)
+      const res = await fetch(`/api/stores/${storeId}/packs/${pack.id}/dissociate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ dissociateCount: n }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(typeof data.error === "string" ? data.error : "Impossible de dissocier le pack")
+        return
+      }
+      toast.success(typeof data.message === "string" ? data.message : "Composants recrédités au magasin")
+      setDissociateQty("1")
+      onStockAdded?.()
+    } catch {
+      toast.error("Erreur réseau")
+    } finally {
+      setDissociating(false)
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
@@ -132,6 +174,35 @@ export function StorePackDetailsSheet({
             <strong>Assemblables</strong> : combien d&apos;autres packs vous pouvez encore fabriquer avec
             le stock restant des produits (après déduction des pièces déjà utilisées).
           </SheetDescription>
+          {pack.items.length > 0 ? (
+            <div className="mt-3 pt-3 border-t border-border/60">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Articles du pack</p>
+              <div className="flex flex-wrap gap-2">
+                {pack.items.map((it) => (
+                  <div
+                    key={it.id}
+                    className="flex flex-col items-center gap-1 w-[4.5rem]"
+                    title={`${it.product.name} × ${it.quantity}`}
+                  >
+                    <div className="h-14 w-full rounded-lg border bg-muted overflow-hidden flex items-center justify-center shrink-0">
+                      {it.product.photos[0] ? (
+                        <img
+                          src={it.product.photos[0]}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-center text-muted-foreground line-clamp-2 leading-tight w-full">
+                      ×{it.quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
@@ -170,6 +241,55 @@ export function StorePackDetailsSheet({
               </Button>
             </div>
           </div>
+
+          {maxDissociate > 0 ? (
+            <div
+              className={cn(
+                "rounded-lg border p-4 space-y-3",
+                canAddStock ? "border-muted" : "border-amber-200/80 bg-amber-50/50",
+              )}
+            >
+              <h4 className="text-sm font-semibold text-foreground">Dissocier le pack</h4>
+              {!canAddStock ? (
+                <p className="text-xs text-amber-800">
+                  Votre rôle ne permet pas de dissocier des packs (création / édition produit ou gestion de
+                  stock magasin requis).
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Les composants repassent au stock magasin (quantité pack × nombre de dissociations). Le
+                  stock pack / caisse diminue. Maximum : <strong>{maxDissociate}</strong>.
+                </p>
+              )}
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="pack-dissociate-qty">Nombre de packs à dissocier</Label>
+                  <Input
+                    id="pack-dissociate-qty"
+                    type="number"
+                    min={1}
+                    max={maxDissociate}
+                    className="w-28"
+                    value={dissociateQty}
+                    onChange={(e) => setDissociateQty(e.target.value)}
+                    disabled={dissociating || !canAddStock}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDissociate}
+                  disabled={dissociating || !canAddStock || maxDissociate < 1}
+                >
+                  {dissociating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Dissocier (recréditer les produits)"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex items-start gap-3">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">

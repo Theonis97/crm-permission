@@ -90,7 +90,14 @@ export async function GET(request: NextRequest) {
     // 3. Formater les produits pour l'interface (sans doublon proxy pack)
     const formattedProducts = storeProducts
       .filter((sp) => !sp.product.linkedStorePackId)
-      .map((storeProduct) => ({
+      .map((storeProduct) => {
+        const pvCat = Number(storeProduct.product.prixVente)
+        const prix =
+          storeProduct.prixVente != null &&
+          !Number.isNaN(Number(storeProduct.prixVente))
+            ? Number(storeProduct.prixVente)
+            : pvCat
+        return {
       id: storeProduct.product.id,
       productId: storeProduct.product.id,
       name: storeProduct.product.name,
@@ -101,8 +108,9 @@ export async function GET(request: NextRequest) {
       productDescription: storeProduct.product.description,
       photos: storeProduct.product.photos || [],
       productImage: storeProduct.product.photos?.[0] || null,
-      prixVente: storeProduct.product.prixVente,
-      price: storeProduct.product.prixVente,
+      prixVente: prix,
+      price: prix,
+      warehousePrixVente: pvCat,
       stock: storeProduct.stock,
       storeStock: storeProduct.stock,
       minStock: storeProduct.minStock,
@@ -119,7 +127,8 @@ export async function GET(request: NextRequest) {
       categoryId: storeProduct.product.category?.id || '',
       categoryName: storeProduct.product.category?.name || 'Non catégorisé',
       variants: [], // TODO: Ajouter les variants si nécessaire
-    }));
+    }
+    })
 
     console.log(`✅ Produits formatés: ${formattedProducts.length}`);
 

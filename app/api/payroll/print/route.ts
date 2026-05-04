@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { calculateGrossSalary } from "@/lib/payroll-calculator"
+import {
+  type BulletinEmployerSettingsFields,
+  type BulletinEmployerStoreFields,
+  getBulletinEmployerDisplay,
+  getPrimaryStoreForPayroll,
+} from "@/lib/payroll-primary-store"
+import { ContractType } from "@prisma/client"
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,6 +42,7 @@ export async function GET(request: NextRequest) {
                 email: true,
                 matricule: true,
                 storeUserRoles: {
+                  orderBy: { assignedAt: "desc" },
                   include: {
                     store: {
                       select: {
@@ -47,10 +56,10 @@ export async function GET(request: NextRequest) {
                         cnssEmployeur: true,
                         siegeSocial: true,
                         logo: true,
+                        coverImage: true,
                       },
                     },
                   },
-                  take: 1,
                 },
               },
             },
@@ -139,48 +148,96 @@ export async function GET(request: NextRequest) {
       FREELANCE: "Freelance",
     }
 
-    const companySettings = await prisma.payrollCompanySettings.findFirst()
+    const companySettings = (await prisma.payrollCompanySettings.findFirst()) as
+      | BulletinEmployerSettingsFields
+      | null
+
+    const formatContributionRatePercent = (appliedRate: unknown) => {
+      const r = Number(appliedRate)
+      if (!Number.isFinite(r)) return "—"
+      if (r > 0 && r < 1) return `${(r * 100).toFixed(2)} %`
+      return `${r.toFixed(2)} %`
+    }
 
     const payslipsHtml = payrolls.map((payroll: any, index: number) => {
       const profile = payroll.employeeProfile
       const user = profile.user
       const period = payroll.period
-      const hourlyRate = profile.baseSalary / (payroll.expectedWorkingDays * profile.workingHoursPerDay)
+      const expectedH =
+        Number(payroll.expectedWorkingDays) * Number(profile.workingHoursPerDay) || 1
+      const hourlyRate = profile.baseSalary / expectedH
+      const otRate = Number(profile.overtimeRate) > 0 ? Number(profile.overtimeRate) : 1.5
 
-      const salaireNetBulletin = Number(payroll.netSalary) || 0
-      const paidTotal = Number(payroll.paidAmount) || 0
-      const montantHeuresSup =
+      const employmentGross = Math.round(
+        calculateGrossSalary(
+          {
+            contractType: profile.contractType as ContractType,
+            baseSalary: profile.baseSalary,
+            dailyRate: profile.dailyRate ?? null,
+            hourlyRate: profile.hourlyRate ?? null,
+            workingDaysPattern: profile.workingDaysPattern,
+            workingHoursPerDay: profile.workingHoursPerDay,
+          },
+          payroll.daysWorked,
+          payroll.hoursWorked,
+          payroll.overtimeHours,
+          otRate,
+          payroll.expectedWorkingDays,
+        ) * 100,
+      ) / 100
+
+      const overtimeDisplay =
         payroll.overtimeHours > 0
-          ? Math.round(Number(payroll.overtimeHours) * hourlyRate * 1.5)
+          ? Math.round(Number(payroll.overtimeHours) * hourlyRate * otRate)
           : 0
-      const totalPrimes =
-        payroll.rubricLines
-          ?.filter((r: any) => r.rubricType === "PRIME")
-          .reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0) || 0
-      const totalIndemnites =
-        payroll.rubricLines
-          ?.filter((r: any) => r.rubricType === "INDEMNITY")
-          .reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0) || 0
-      const sommeHeuresSupPrimesIndemnites =
-        montantHeuresSup + totalPrimes + totalIndemnites
-      const totalNetAvantVersements =
-        salaireNetBulletin + sommeHeuresSupPrimesIndemnites
-      const netAPayerRestant = Math.max(0, totalNetAvantVersements - paidTotal)
+      const baseRowGain = Math.max(0, Math.round(employmentGross - overtimeDisplay))
+      const rubricsSum =
+        payroll.rubricLines?.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0) || 0
+      const rubricsTowardNet =
+        payroll.rubricLines?.reduce((sum: number, r: any) => {
+          if (r.rubricType === "INDEMNITY" || r.isAlreadyDisbursed) return sum
+          return sum + (Number(r.amount) || 0)
+        }, 0) || 0
+      const totalBrutAvecRubriques = Math.round((employmentGross + rubricsSum) * 100) / 100
+      const totalDeductionsNum = Number(payroll.totalDeductions) || 0
+      const netCoherent = Math.max(
+        0,
+        Math.round((employmentGross - totalDeductionsNum + rubricsTowardNet) * 100) / 100,
+      )
 
-      const storeRole = user.storeUserRoles?.[0]
-      const store = storeRole?.store
-      
-      const companyName = companySettings?.companyName || store?.name || 'Non défini'
-      const companyAddress = companySettings?.companyAddress || store?.address || 'Adresse non définie'
-      const companyCity = companySettings?.companyCity || ''
-      const companyPostalCode = companySettings?.companyPostalCode || ''
-      const companyCountry = companySettings?.companyCountry || ''
-      const companyPhone = companySettings?.companyPhone || store?.phone || ''
-      const companyEmail = companySettings?.companyEmail || store?.email || ''
-      const rccmNumber = companySettings?.rccmNumber || store?.rccm || ''
-      const nifNumber = companySettings?.nifNumber || store?.nif || ''
-      const cnssEmployerNumber = companySettings?.cnssEmployerNumber || store?.cnssEmployeur || ''
-      const companyLogo = companySettings?.companyLogo || store?.logo || ''
+      const paidTotal = Number(payroll.paidAmount) || 0
+      // Même formule que le moteur de paie : brut emploi (temps + HS) − cotisations + rubriques.
+      // Évite l’écart quand le brut stocké ne contient pas les HS mais une ligne HS est affichée.
+      const netAPayerRestant = Math.max(0, netCoherent - paidTotal)
+
+      const rubricsHorsNetLines =
+        payroll.rubricLines?.filter(
+          (r: any) => r.rubricType === "INDEMNITY" || r.isAlreadyDisbursed,
+        ) || []
+      const montantRubriquesDejaVerseesHorsNet = rubricsHorsNetLines.reduce(
+        (s: number, r: any) => s + (Number(r.amount) || 0),
+        0,
+      )
+      // Tout ce qui est déjà reçu : versements enregistrés sur le bulletin + indemnités / primes hors net
+      const montantDejaVerseAffiche =
+        Math.round((paidTotal + montantRubriquesDejaVerseesHorsNet) * 100) / 100
+
+      const store = getPrimaryStoreForPayroll(user.storeUserRoles) as
+        | BulletinEmployerStoreFields
+        | null
+      const {
+        companyName,
+        companyAddress,
+        companyCity,
+        companyPostalCode,
+        companyCountry,
+        companyPhone,
+        companyEmail,
+        rccmNumber,
+        nifNumber,
+        cnssEmployerNumber,
+        companyLogo,
+      } = getBulletinEmployerDisplay(store, companySettings)
       
       return `
       <div class="payslip ${index > 0 ? 'page-break' : ''}">
@@ -233,7 +290,7 @@ export async function GET(request: NextRequest) {
               <td>Salaire de base mensuel</td>
               <td class="center">${payroll.expectedWorkingDays} j</td>
               <td class="right">${formatCurrency(profile.baseSalary)}</td>
-              <td class="right gain">${formatCurrency(payroll.grossSalary)}</td>
+              <td class="right gain">${formatCurrency(baseRowGain)}</td>
               <td></td>
             </tr>
 
@@ -242,10 +299,10 @@ export async function GET(request: NextRequest) {
               <td colspan="5">HEURES SUPPLÉMENTAIRES</td>
             </tr>
             <tr>
-              <td>Heures supplémentaires (taux × 1,5)</td>
+              <td>Heures supplémentaires (taux × ${otRate})</td>
               <td class="center">${payroll.overtimeHours} h</td>
-              <td class="right">${formatCurrency(Math.round(hourlyRate * 1.5))}/h</td>
-              <td class="right gain">${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+              <td class="right">${formatCurrency(Math.round(hourlyRate * otRate))}/h</td>
+              <td class="right gain">${formatCurrency(overtimeDisplay)}</td>
               <td></td>
             </tr>
             ` : ''}
@@ -284,11 +341,7 @@ export async function GET(request: NextRequest) {
               <td><strong>TOTAL BRUT + HEURES SUP + PRIMES + INDEMNITÉS</strong></td>
               <td></td>
               <td></td>
-              <td class="right"><strong>${formatCurrency(
-                payroll.grossSalary +
-                (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
-                (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
-              )}</strong></td>
+              <td class="right"><strong>${formatCurrency(totalBrutAvecRubriques)}</strong></td>
               <td></td>
             </tr>
 
@@ -300,7 +353,7 @@ export async function GET(request: NextRequest) {
             <tr>
               <td>${line.contribution.name}</td>
               <td class="center">${formatCurrency(line.baseAmount)}</td>
-              <td class="right">${(line.appliedRate * 100).toFixed(2)}%</td>
+              <td class="right">${formatContributionRatePercent(line.appliedRate)}</td>
               <td></td>
               <td class="right retenue">${formatCurrency(line.amount)}</td>
             </tr>
@@ -344,12 +397,12 @@ export async function GET(request: NextRequest) {
             <table class="summary-table summary-table-gains">
               <tr>
                 <td>Salaire brut</td>
-                <td class="right">${formatCurrency(payroll.grossSalary)}</td>
+                <td class="right">${formatCurrency(baseRowGain)}</td>
               </tr>
               ${payroll.overtimeHours > 0 ? `
               <tr>
                 <td>Heures supplémentaires</td>
-                <td class="right">+ ${formatCurrency(Math.round(payroll.overtimeHours * hourlyRate * 1.5))}</td>
+                <td class="right">+ ${formatCurrency(overtimeDisplay)}</td>
               </tr>
               ` : ''}
               ${payroll.rubricLines && payroll.rubricLines.filter((r: any) => r.rubricType === 'PRIME').length > 0 ? `
@@ -366,11 +419,7 @@ export async function GET(request: NextRequest) {
               ` : ''}
               <tr class="summary-gains-total-row">
                 <td><strong>Total brut</strong></td>
-                <td class="right"><strong>${formatCurrency(
-                  payroll.grossSalary +
-                  (payroll.overtimeHours > 0 ? Math.round(payroll.overtimeHours * hourlyRate * 1.5) : 0) +
-                  (payroll.rubricLines?.reduce((sum: number, r: any) => sum + r.amount, 0) || 0)
-                )}</strong></td>
+                <td class="right"><strong>${formatCurrency(totalBrutAvecRubriques)}</strong></td>
               </tr>
             </table>
             <div class="cnss-cotisations-box">
@@ -388,7 +437,7 @@ export async function GET(request: NextRequest) {
         <div class="payment-status-section">
           <h3 class="payment-status-title">ACCOMPTE</h3>
           <div class="payment-summary">
-            <p><strong>Montant versé :</strong> ${formatCurrency(paidTotal)}</p>
+            <p><strong>Montant versé :</strong> ${formatCurrency(montantDejaVerseAffiche)}</p>
             <p><strong>Montant à verser :</strong> ${formatCurrency(netAPayerRestant)}</p>
           </div>
           <div class="net-restant-box">
@@ -399,7 +448,13 @@ export async function GET(request: NextRequest) {
 
         <div class="footer-section">
           <div class="payment-info">
-            <p><strong>Mode de paiement :</strong> ${payroll.payments && payroll.payments.length > 0 ? 'Paiements multiples (voir détail ci-dessus)' : 'Virement bancaire'}</p>
+            <p><strong>Mode de paiement :</strong> ${
+              payroll.payments && payroll.payments.length > 0
+                ? payroll.payments.length === 1
+                  ? payroll.payments[0].paymentMode || "Paiement enregistré"
+                  : "Paiements multiples"
+                : "Virement bancaire"
+            }</p>
             <p><strong>Statut :</strong> ${statusLabels[payroll.status] || payroll.status}${payroll.status === 'PARTIALLY_PAID' ? ` — Payé: ${formatCurrency(payroll.paidAmount)} | Reste: ${formatCurrency(payroll.remainingAmount)}` : ''}</p>
             <p><strong>Date ${payroll.status === 'PARTIALLY_PAID' ? 'dernier versement' : 'de paiement'} :</strong> ${payroll.paidAt ? formatDate(payroll.paidAt) : payroll.payments && payroll.payments.length > 0 ? formatDate(payroll.payments[payroll.payments.length - 1].paymentDate) : 'En attente'}</p>
           </div>
@@ -777,31 +832,6 @@ export async function GET(request: NextRequest) {
         .payment-summary p {
           margin: 3px 0;
           font-size: 10px;
-        }
-
-        .payments-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 9px;
-        }
-
-        .payments-table th {
-          background: #333;
-          color: white;
-          padding: 6px 8px;
-          text-align: left;
-          font-weight: 600;
-        }
-
-        .payments-table td {
-          padding: 5px 8px;
-          border-bottom: 1px solid #ddd;
-        }
-
-        .payments-table .right { text-align: right; }
-
-        .payments-table tbody tr:nth-child(even) {
-          background: #f9f9f9;
         }
 
         .print-button {

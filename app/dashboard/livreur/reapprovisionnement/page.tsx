@@ -35,13 +35,16 @@ import {
   ArrowLeft,
   MinusCircle,
   Layers,
+  AlertTriangle,
+  FileText,
 } from "lucide-react"
 import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
+import { DriverCloses } from "@/components/drivers"
 
 const ORANGE = "#FF8C00"
 
-type MainTab = "accueil" | "magasin" | "stock" | "ventes" | "retours"
+type MainTab = "accueil" | "magasin" | "stock" | "ventes" | "clotures" | "retours"
 
 type StoreRow = { id: string; name: string; address: string | null }
 type StaffDriverOption = { id: string; name: string; phone: string; storeName: string }
@@ -51,6 +54,8 @@ type ProductRow = {
   sku: string | null
   photo: string | null
   stockMagasin: number
+  /** Tarif magasin affiché (store_products ou catalogue) */
+  prixVente?: number
 }
 
 type StorePackRow = {
@@ -110,6 +115,17 @@ type StockLineRow = {
   } | null
 }
 
+type StockDeclarationMeta = {
+  windowOpen: boolean
+  dayStart: string
+  deadline: string
+  now: string
+  businessDateKey?: string
+  yesterdayDateKey?: string
+  oldestBackfillDateKey?: string
+  maxBackfillDays?: number
+}
+
 type SaleRow = {
   id: string
   totalAmount: number
@@ -139,6 +155,17 @@ type SaleCart = Record<string, {
   deliveryFee: number
   deliveryType: "none" | "free" | "paid"
 }>
+
+function formatBusinessDateKeyFr(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number)
+  if (!y || !m || !d) return dateKey
+  return new Date(y, m - 1, d).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
+}
 
 /** Petit carreau produit générique (photo + badge + texte) */
 function ProductTile({
@@ -250,14 +277,19 @@ export default function LivreurReapprovisionnementPage() {
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [stockLines, setStockLines] = useState<StockLineRow[]>([])
   const [stockLoading, setStockLoading] = useState(false)
+  const [stockDeclaration, setStockDeclaration] = useState<StockDeclarationMeta | null>(null)
 
   // États pour l'onglet Ventes
   const [sales, setSales] = useState<SaleRow[]>([])
   const [salesLoading, setSalesLoading] = useState(false)
-  const [saleStep, setSaleStep] = useState<"history" | "declare" | "confirm">("history")
+  const [saleStep, setSaleStep] = useState<"history" | "pick-day" | "declare" | "confirm">("history")
   const [saleCart, setSaleCart] = useState<SaleCart>({})
   const [saleNotes, setSaleNotes] = useState("")
   const [saleSubmitting, setSaleSubmitting] = useState(false)
+  const [saleDayChoice, setSaleDayChoice] = useState<"today" | "yesterday" | "custom">("today")
+  const [saleCustomDateKey, setSaleCustomDateKey] = useState("")
+  /** null = ventes du jour (API sans saleDate). Non-null = clé AAAA-MM-JJ pour rétroactif. */
+  const [saleEffectiveDateKey, setSaleEffectiveDateKey] = useState<string | null>(null)
 
   // États pour l'onglet Retours
   const [retourItem, setRetourItem] = useState<StockLineRow | null>(null)
@@ -305,9 +337,11 @@ export default function LivreurReapprovisionnementPage() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         setStockLines([])
+        setStockDeclaration(null)
         return
       }
       setStockLines(json.data?.items || [])
+      setStockDeclaration(json.data?.declaration ?? null)
     } finally {
       setStockLoading(false)
     }
@@ -358,14 +392,105 @@ export default function LivreurReapprovisionnementPage() {
     [saleCartLines]
   )
   const saleTotalDeliveryFees = useMemo(
-    () => saleCartLines.reduce((sum, l) => {
-      if (l.deliveryType === "none") return sum
-      return sum + l.qty * l.deliveryFee
-    }, 0),
+    () =>
+      saleCartLines.reduce((sum, l) => {
+        if (l.deliveryType === "none") return sum
+        return sum + l.qty * l.deliveryFee
+      }, 0),
     [saleCartLines]
   )
+
+  const declarationUrgencyNotice = useMemo(() => {
+    if (!stockDeclaration || !canQueryDriver) return null
+    const deadlineStr = new Date(stockDeclaration.deadline).toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    const open = stockDeclaration.windowOpen
+    return (
+      <div
+        className={cn(
+          "rounded-2xl border p-4 text-sm space-y-2 shadow-sm",
+          open ? "border-amber-200 bg-amber-50 text-amber-950" : "border-red-200 bg-red-50 text-red-950"
+        )}
+      >
+        <p className="font-semibold flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          {open ? "Déclarez vos ventes dans le délai imparti" : "Délai de déclaration dépassé"}
+        </p>
+        {open ? (
+          <>
+            <p>
+              Vous devez saisir vos ventes <strong>du jour courant</strong> au plus tard le{" "}
+              <strong>{deadlineStr}</strong> (<strong>limite 23h59</strong>, heure entreprise). Après cette heure, vous ne
+              pourrez plus les enregistrer comme « aujourd’hui » en ligne.
+            </p>
+            <p>
+              <strong>Jours passés :</strong> vous pouvez aussi déclarer des ventes pour{" "}
+              <strong>hier</strong> ou une date antérieure (jusqu’à {stockDeclaration.maxBackfillDays ?? 7} jour
+              {(stockDeclaration.maxBackfillDays ?? 7) > 1 ? "s" : ""}), depuis l’étape « Déclarer mes ventes ».
+            </p>
+          </>
+        ) : (
+          <p>
+            La fenêtre de déclaration est fermée pour aujourd&apos;hui — vous ne pouvez plus déclarer des ventes
+            <strong> du jour courant</strong> en ligne. Vous pouvez en revanche saisir des ventes d&apos;
+            <strong>hier</strong> ou d&apos;un jour précédent (dans la limite affichée), via{" "}
+            <strong>Déclarer mes ventes</strong> puis le choix de la date.
+          </p>
+        )}
+      </div>
+    )
+  }, [stockDeclaration, canQueryDriver])
   const formatPrice = (n: number) =>
     n.toLocaleString("fr-FR", { style: "currency", currency: "XOF", maximumFractionDigits: 0 })
+
+  const continuePickSaleDay = () => {
+    if (saleDayChoice === "today") {
+      if (stockDeclaration && !stockDeclaration.windowOpen) {
+        toast.error(
+          "Pour aujourd’hui, la clôture (23h59) est passée. Choisissez « Hier » ou une autre date passée.",
+        )
+        return
+      }
+      setSaleEffectiveDateKey(null)
+    } else if (saleDayChoice === "yesterday") {
+      const y = stockDeclaration?.yesterdayDateKey
+      if (!y) {
+        toast.error("Impossible de déterminer la date d’hier. Réessayez après chargement du stock.")
+        return
+      }
+      setSaleEffectiveDateKey(y)
+    } else {
+      const k = saleCustomDateKey.trim()
+      if (!k) {
+        toast.error("Sélectionnez une date.")
+        return
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) {
+        toast.error("Format de date invalide (AAAA-MM-JJ).")
+        return
+      }
+      if (stockDeclaration?.businessDateKey != null && k >= stockDeclaration.businessDateKey) {
+        toast.error("La date doit être strictement avant aujourd’hui.")
+        return
+      }
+      if (
+        stockDeclaration?.oldestBackfillDateKey != null &&
+        k < stockDeclaration.oldestBackfillDateKey
+      ) {
+        toast.error(
+          `Date trop ancienne (maximum ${stockDeclaration.maxBackfillDays ?? 7} jour(s) en arrière).`,
+        )
+        return
+      }
+      setSaleEffectiveDateKey(k)
+    }
+    setSaleStep("declare")
+  }
 
   const submitSale = async () => {
     if (saleCartLines.length === 0) return
@@ -383,6 +508,7 @@ export default function LivreurReapprovisionnementPage() {
             deliveryType: l.deliveryType,
           })),
           notes: saleNotes || null,
+          ...(saleEffectiveDateKey ? { saleDate: saleEffectiveDateKey } : {}),
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -393,6 +519,9 @@ export default function LivreurReapprovisionnementPage() {
       toast.success("Ventes déclarées avec succès !")
       setSaleCart({})
       setSaleNotes("")
+      setSaleEffectiveDateKey(null)
+      setSaleDayChoice("today")
+      setSaleCustomDateKey("")
       setSaleStep("history")
       await loadSales()
       await loadStock() // rafraîchir le stock après déclaration
@@ -482,10 +611,8 @@ export default function LivreurReapprovisionnementPage() {
     if (mainTab !== "ventes") return
     if (!canQueryDriver) return
     loadSales()
-    // Aussi charger le stock pour la déclaration
-    if (stockLines.length === 0) loadStock()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainTab, bootError, loading, canQueryDriver, loadSales])
+    loadStock()
+  }, [mainTab, bootError, loading, canQueryDriver, loadSales, loadStock])
 
   useEffect(() => {
     if (bootError || loading) return
@@ -865,6 +992,34 @@ export default function LivreurReapprovisionnementPage() {
           </header>
         )}
 
+        {/* En-tête Ventes & Clôtures */}
+        {(mainTab === "ventes" || mainTab === "clotures") && (
+          <header
+            className="sticky top-0 z-20 -mx-3 sm:-mx-4 px-4 pt-4 pb-4 text-white shadow-md rounded-b-2xl"
+            style={{ backgroundColor: ORANGE }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                {mainTab === "clotures" ? (
+                  <FileText className="h-6 w-6 text-white" />
+                ) : (
+                  <ShoppingBag className="h-6 w-6 text-white" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-bold leading-tight">
+                  {mainTab === "clotures" ? "Clôtures" : "Ventes"}
+                </h1>
+                <p className="text-sm text-white/90">
+                  {mainTab === "clotures"
+                    ? "Déclarations et montants à déposer au magasin"
+                    : "Déclarez vos ventes sur le terrain"}
+                </p>
+              </div>
+            </div>
+          </header>
+        )}
+
         {/* Onglet Accueil */}
         {mainTab === "accueil" && (
           <section className="mt-4 space-y-3 pb-4">
@@ -973,6 +1128,8 @@ export default function LivreurReapprovisionnementPage() {
               </div>
             ) : null}
 
+            {declarationUrgencyNotice}
+
             {!canQueryDriver ? (
               <p className="text-center text-neutral-500 py-8 text-sm">Sélectionnez un livreur pour voir le stock.</p>
             ) : stockLoading ? (
@@ -1028,6 +1185,40 @@ export default function LivreurReapprovisionnementPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Onglet Clôtures (synthèse déclarations / dépôt magasin) */}
+        {mainTab === "clotures" && (
+          <section className="mt-4 space-y-3 pb-8">
+            {portalMode === "staff" && staffDrivers.length > 0 ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 space-y-2">
+                <Label className="text-amber-950 font-medium">Livreur</Label>
+                <Select value={selectedDeliveryPersonId || undefined} onValueChange={setSelectedDeliveryPersonId}>
+                  <SelectTrigger className="h-12 rounded-xl text-base bg-white">
+                    <SelectValue placeholder="Choisir un livreur…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {staffDrivers.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-base py-3">
+                        <span className="font-medium">{d.name}</span>
+                        <span className="block text-xs text-muted-foreground">{d.storeName}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            {!canQueryDriver ? (
+              <p className="text-center text-neutral-500 py-8 text-sm">
+                {portalMode === "staff" ? "Sélectionnez un livreur pour voir les clôtures." : "Profil livreur indisponible."}
+              </p>
+            ) : (
+              <div className="rounded-2xl border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm">
+                <DriverCloses driverId={selectedDeliveryPersonId} />
               </div>
             )}
           </section>
@@ -1306,7 +1497,7 @@ export default function LivreurReapprovisionnementPage() {
               <p className="text-xs text-amber-800 leading-relaxed">
                 Votre demande sera envoyée au gestionnaire de{" "}
                 <strong>{stores.find(s => s.id === retourStoreId)?.name ?? "magasin sélectionné"}</strong> pour validation.
-                Le stock ne sera modifié qu'après approbation.
+                Le stock ne sera modifié qu&apos;après approbation.
               </p>
             </div>
           </section>
@@ -1784,8 +1975,112 @@ export default function LivreurReapprovisionnementPage() {
         {/* ===== ONGLET VENTES ===== */}
         {mainTab === "ventes" && (
           <section className="mt-4 space-y-4 pb-36">
+            {saleStep === "pick-day" && (
+              <>
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-sm text-gray-500 mb-2 touch-manipulation"
+                  onClick={() => {
+                    setSaleStep("history")
+                    setSaleEffectiveDateKey(null)
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" /> Retour
+                </button>
+                <p className="text-base font-bold text-neutral-900 mb-1">Jour des ventes</p>
+                <p className="text-sm text-neutral-600 mb-4">
+                  Indiquez pour quelle date vous saisissez ces ventes (ex. hier si vous n&apos;avez pas pu déclarer à temps).
+                </p>
+                <div className="space-y-3">
+                  <label
+                    className={cn(
+                      "flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition-colors",
+                      saleDayChoice === "today" ? "border-orange-400 bg-orange-50/50" : "border-neutral-200 bg-white",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="sale-day"
+                      className="mt-1 accent-orange-500"
+                      checked={saleDayChoice === "today"}
+                      onChange={() => setSaleDayChoice("today")}
+                    />
+                    <div>
+                      <p className="font-semibold text-neutral-900">Aujourd&apos;hui</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        {stockDeclaration?.businessDateKey
+                          ? formatBusinessDateKeyFr(stockDeclaration.businessDateKey)
+                          : "Chargement…"}{" "}
+                        · uniquement avant 23h59
+                      </p>
+                    </div>
+                  </label>
+                  <label
+                    className={cn(
+                      "flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition-colors",
+                      saleDayChoice === "yesterday" ? "border-orange-400 bg-orange-50/50" : "border-neutral-200 bg-white",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="sale-day"
+                      className="mt-1 accent-orange-500"
+                      checked={saleDayChoice === "yesterday"}
+                      onChange={() => setSaleDayChoice("yesterday")}
+                    />
+                    <div>
+                      <p className="font-semibold text-neutral-900">Hier</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        {stockDeclaration?.yesterdayDateKey
+                          ? formatBusinessDateKeyFr(stockDeclaration.yesterdayDateKey)
+                          : "Chargement…"}
+                      </p>
+                    </div>
+                  </label>
+                  <label
+                    className={cn(
+                      "flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition-colors",
+                      saleDayChoice === "custom" ? "border-orange-400 bg-orange-50/50" : "border-neutral-200 bg-white",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="sale-day"
+                      className="mt-1 accent-orange-500"
+                      checked={saleDayChoice === "custom"}
+                      onChange={() => setSaleDayChoice("custom")}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-neutral-900">Autre date</p>
+                      <p className="text-xs text-neutral-500 mt-0.5 mb-2">
+                        Jusqu&apos;à {stockDeclaration?.maxBackfillDays ?? 7} jour(s) en arrière (hors aujourd&apos;hui).
+                      </p>
+                      <Input
+                        type="date"
+                        className="h-11 rounded-xl text-base"
+                        disabled={saleDayChoice !== "custom"}
+                        min={stockDeclaration?.oldestBackfillDateKey}
+                        max={stockDeclaration?.yesterdayDateKey}
+                        value={saleCustomDateKey}
+                        onChange={(e) => setSaleCustomDateKey(e.target.value)}
+                      />
+                    </div>
+                  </label>
+                </div>
+                <Button
+                  type="button"
+                  className="w-full h-14 mt-5 text-base font-semibold rounded-2xl text-white border-0 shadow-lg"
+                  style={{ backgroundColor: ORANGE }}
+                  onClick={continuePickSaleDay}
+                >
+                  Continuer
+                </Button>
+              </>
+            )}
             {saleStep === "history" && (
               <>
+                {declarationUrgencyNotice}
+
                 {/* Bouton déclarer */}
                 {canQueryDriver && portalMode === "driver" && (
                   <button
@@ -1795,8 +2090,11 @@ export default function LivreurReapprovisionnementPage() {
                     onClick={() => {
                       setSaleCart({})
                       setSaleNotes("")
-                      setSaleStep("declare")
-                      if (stockLines.length === 0) loadStock()
+                      setSaleDayChoice("today")
+                      setSaleCustomDateKey("")
+                      setSaleEffectiveDateKey(null)
+                      setSaleStep("pick-day")
+                      void loadStock()
                     }}
                   >
                     <ShoppingBag className="h-5 w-5" />
@@ -1881,10 +2179,26 @@ export default function LivreurReapprovisionnementPage() {
                 <button
                   type="button"
                   className="flex items-center gap-1 text-sm text-gray-500 mb-2 touch-manipulation"
-                  onClick={() => setSaleStep("history")}
+                  onClick={() => setSaleStep("pick-day")}
                 >
-                  <ChevronLeft className="h-4 w-4" /> Retour
+                  <ChevronLeft className="h-4 w-4" /> Changer la date
                 </button>
+                <div className="rounded-2xl border border-orange-200 bg-orange-50/80 px-3 py-2 mb-3">
+                  <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide">Ventes pour</p>
+                  <p className="text-sm font-bold text-neutral-900">
+                    {saleEffectiveDateKey
+                      ? formatBusinessDateKeyFr(saleEffectiveDateKey)
+                      : stockDeclaration?.businessDateKey
+                        ? `Aujourd’hui · ${formatBusinessDateKeyFr(stockDeclaration.businessDateKey)}`
+                        : "Aujourd’hui"}
+                  </p>
+                  {saleEffectiveDateKey ? (
+                    <p className="text-[11px] text-orange-900/90 mt-1">
+                      Déclaration rétroactive — la date figurera sur votre historique et les rapports.
+                    </p>
+                  ) : null}
+                </div>
+                {declarationUrgencyNotice}
                 <p className="text-sm font-semibold text-gray-700 mb-3">Sélectionnez les produits vendus</p>
                 {stockLoading ? (
                   <div className="flex justify-center py-10">
@@ -2053,6 +2367,16 @@ export default function LivreurReapprovisionnementPage() {
                 >
                   <ChevronLeft className="h-4 w-4" /> Modifier
                 </button>
+                <p className="text-xs text-neutral-500 mb-3">
+                  Jour concerné :{" "}
+                  <strong className="text-neutral-800">
+                    {saleEffectiveDateKey
+                      ? formatBusinessDateKeyFr(saleEffectiveDateKey)
+                      : stockDeclaration?.businessDateKey
+                        ? `Aujourd’hui (${formatBusinessDateKeyFr(stockDeclaration.businessDateKey)})`
+                        : "Aujourd’hui"}
+                  </strong>
+                </p>
                 {/* Récapitulatif financier */}
                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 space-y-2">
                   <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Récapitulatif</p>
@@ -2182,18 +2506,18 @@ export default function LivreurReapprovisionnementPage() {
           className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-neutral-200 max-w-lg mx-auto shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
         >
-          <div className="flex justify-around items-stretch pt-2 pb-1">
+          <div className="flex justify-between items-stretch pt-2 pb-1 px-1 overflow-x-auto gap-0.5 scrollbar-none">
             <button
               type="button"
               onClick={() => setMainTab("accueil")}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4.5rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "accueil" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "accueil" ? { color: ORANGE } : undefined}
             >
-              <Home className={cn("h-6 w-6", mainTab !== "accueil" && "opacity-70")} />
-              <span className="text-[11px]">Accueil</span>
+              <Home className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "accueil" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Accueil</span>
             </button>
             <button
               type="button"
@@ -2204,49 +2528,61 @@ export default function LivreurReapprovisionnementPage() {
                 }
               }}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4.5rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "magasin" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "magasin" ? { color: ORANGE } : undefined}
             >
-              <StoreIcon className={cn("h-6 w-6", mainTab !== "magasin" && "opacity-70")} />
-              <span className="text-[11px]">Magasin</span>
+              <StoreIcon className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "magasin" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Magasin</span>
             </button>
             <button
               type="button"
               onClick={() => setMainTab("stock")}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4.5rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "stock" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "stock" ? { color: ORANGE } : undefined}
             >
-              <Wallet className={cn("h-6 w-6", mainTab !== "stock" && "opacity-70")} />
-              <span className="text-[11px]">Stock</span>
+              <Wallet className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "stock" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Stock</span>
             </button>
             <button
               type="button"
               onClick={() => { setMainTab("ventes"); setSaleStep("history") }}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "ventes" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "ventes" ? { color: ORANGE } : undefined}
             >
-              <ShoppingBag className={cn("h-6 w-6", mainTab !== "ventes" && "opacity-70")} />
-              <span className="text-[11px]">Ventes</span>
+              <ShoppingBag className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "ventes" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Ventes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainTab("clotures")}
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
+                mainTab === "clotures" ? "font-semibold" : "text-neutral-400",
+              )}
+              style={mainTab === "clotures" ? { color: ORANGE } : undefined}
+            >
+              <FileText className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "clotures" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Clôtures</span>
             </button>
             <button
               type="button"
               onClick={() => { setMainTab("retours"); setRetourStep("list"); setRetourItem(null) }}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[4rem] py-1 touch-manipulation",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "retours" ? "font-semibold" : "text-neutral-400",
               )}
               style={mainTab === "retours" ? { color: "#dc2626" } : undefined}
             >
-              <RotateCcw className={cn("h-6 w-6", mainTab !== "retours" && "opacity-70")} />
-              <span className="text-[11px]">Retours</span>
+              <RotateCcw className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "retours" && "opacity-70")} />
+              <span className="text-[10px] sm:text-[11px]">Retours</span>
             </button>
           </div>
         </nav>

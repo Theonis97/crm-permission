@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedSession } from "@/lib/auth-helpers"
 import { prisma } from "@/lib/prisma"
+import { getPrimaryStoreForPayroll } from "@/lib/payroll-primary-store"
 
 // POST - Enregistrer un paiement (total ou partiel / acompte) sur un bulletin
 export async function POST(
@@ -33,6 +34,7 @@ export async function POST(
                 firstName: true,
                 lastName: true,
                 storeUserRoles: {
+                  orderBy: { assignedAt: "desc" },
                   include: {
                     store: {
                       select: {
@@ -41,7 +43,6 @@ export async function POST(
                       },
                     },
                   },
-                  take: 1,
                 },
               },
             },
@@ -112,10 +113,12 @@ export async function POST(
       })
     }
 
-    // Déterminer la boutique de l'employé
-    const storeRole = existing.employeeProfile.user.storeUserRoles?.[0]
-    const storeId = storeRole?.store?.id || null
-    const storeName = storeRole?.store?.name || "Non assigné"
+    // Déterminer la boutique de l'employé (affectation la plus récente en premier dans la requête)
+    const primaryStore = getPrimaryStoreForPayroll(
+      existing.employeeProfile.user.storeUserRoles,
+    ) as { id: string; name: string } | null
+    const storeId = primaryStore?.id ?? null
+    const storeName = primaryStore?.name ?? "Non assigné"
 
     // Construire le nom de l'employé
     const employeeName = `${existing.employeeProfile.user.firstName || ""} ${existing.employeeProfile.user.lastName || ""}`.trim() || "Employé"

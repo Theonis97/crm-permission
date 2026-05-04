@@ -73,12 +73,14 @@ export function PosProductGrid({
                 {product.brand && (
                   <p className="text-[10px] text-gray-500 mb-1">{product.brand.name}</p>
                 )}
-                <div className="flex items-center justify-between">
-                  <div className="text-blue-600 font-bold text-sm">
-                    {product.prixVente} F
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    Stock: {product.stock}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-blue-600 font-bold text-sm">
+                      {product.prixVente} F
+                    </div>
+                    <div className="text-[10px] text-gray-500 shrink-0">
+                      Stock: {product.stock}
+                    </div>
                   </div>
                 </div>
               </div>

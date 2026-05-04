@@ -69,12 +69,6 @@ export class ThermalPrinterService {
       return ' '.repeat(padding) + text
     }
 
-    // Fonction pour aligner à droite
-    const rightAlign = (text: string): string => {
-      const padding = Math.max(0, width - text.length)
-      return ' '.repeat(padding) + text
-    }
-
     // Fonction pour créer une ligne avec texte à gauche et prix à droite
     const itemLine = (name: string, price: string): string => {
       const maxNameLength = width - price.length - 1
@@ -162,13 +156,13 @@ export class ThermalPrinterService {
 
     // Totaux
     lines.push(itemLine('Sous-total:', this.formatPrice(data.subtotal)))
+
+    if (data.tax > 0) {
+      lines.push(itemLine('TVA:', this.formatPrice(data.tax)))
+    }
     
     if (data.discount > 0) {
       lines.push(itemLine('Remise:', `-${this.formatPrice(data.discount)}`))
-    }
-    
-    if (data.tax > 0) {
-      lines.push(itemLine('TVA:', this.formatPrice(data.tax)))
     }
     
     if (data.deliveryFee && data.deliveryFee > 0) {
@@ -342,8 +336,8 @@ export class ThermalPrinterService {
       }, 500)
 
       return true
-    } catch (error: any) {
-      console.error('Erreur lors de l\'impression:', error)
+    } catch (error: unknown) {
+      console.error("Erreur lors de l'impression:", error)
       throw error
     }
   }

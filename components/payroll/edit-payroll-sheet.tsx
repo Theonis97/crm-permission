@@ -117,6 +117,7 @@ interface PayrollDetail {
     amount: number
     isSubjectToTax: boolean
     isSubjectToSocial: boolean
+    isAlreadyDisbursed?: boolean
   }>
 }
 
@@ -173,6 +174,7 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
     isSubjectToTax: boolean
     isSubjectToSocial: boolean
     exemptionCeiling: number | null
+    isAlreadyDisbursed: boolean
   }>>([])
   const [selectedRubrics, setSelectedRubrics] = useState<Array<{
     id: string
@@ -183,6 +185,7 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
     amount: number
     isSubjectToTax: boolean
     isSubjectToSocial: boolean
+    isAlreadyDisbursed: boolean
   }>>([])
   const [selectedRubricId, setSelectedRubricId] = useState("")
   const [rubricAmount, setRubricAmount] = useState("")
@@ -238,6 +241,7 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
           amount: rl.amount,
           isSubjectToTax: rl.isSubjectToTax,
           isSubjectToSocial: rl.isSubjectToSocial,
+          isAlreadyDisbursed: rl.rubricType === "INDEMNITY" || !!rl.isAlreadyDisbursed,
         })))
       } else {
         setSelectedRubrics([])
@@ -254,17 +258,22 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
 
   // Calculer le total des rubriques ajoutées
   const totalSelectedRubrics = selectedRubrics.reduce((sum, r) => sum + r.amount, 0)
+  const totalRubricsTowardNet = selectedRubrics.reduce(
+    (sum, r) =>
+      sum + (r.rubricType === "INDEMNITY" || r.isAlreadyDisbursed ? 0 : r.amount),
+    0,
+  )
   const totalPrimes = selectedRubrics.filter(r => r.rubricType === "PRIME").reduce((sum, r) => sum + r.amount, 0)
   const totalIndemnities = selectedRubrics.filter(r => r.rubricType === "INDEMNITY").reduce((sum, r) => sum + r.amount, 0)
 
   const recalculateNet = () => {
-    const net = formData.grossSalary - formData.totalDeductions + totalSelectedRubrics
+    const net = formData.grossSalary - formData.totalDeductions + totalRubricsTowardNet
     setFormData(prev => ({ ...prev, netSalary: Math.max(0, net) }))
   }
 
   useEffect(() => {
     recalculateNet()
-  }, [formData.grossSalary, formData.totalDeductions, totalSelectedRubrics])
+  }, [formData.grossSalary, formData.totalDeductions, totalRubricsTowardNet])
 
   // Quand on sélectionne une rubrique, pré-remplir le montant par défaut
   const handleRubricSelect = (rubricId: string) => {
@@ -326,6 +335,7 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
         amount,
         isSubjectToTax: rubric.isSubjectToTax,
         isSubjectToSocial: rubric.isSubjectToSocial,
+        isAlreadyDisbursed: rubric.type === "INDEMNITY" || !!rubric.isAlreadyDisbursed,
       }
     ])
     setSelectedRubricId("")
@@ -678,6 +688,11 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                                     Cotisable
                                   </Badge>
                                 )}
+                                {(rubric.rubricType === "INDEMNITY" || rubric.isAlreadyDisbursed) && (
+                                  <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">
+                                    {rubric.rubricType === "INDEMNITY" ? "Hors net à payer" : "Déjà versée (hors net)"}
+                                  </Badge>
+                                )}
                               </div>
                               <div className="flex items-center gap-3">
                                 <span className="text-sm font-medium text-gray-900">{formatCurrency(rubric.amount)}</span>
@@ -694,7 +709,12 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                             </div>
                           ))}
                           <div className="flex justify-end pt-2 text-sm font-medium text-gray-700">
-                            Total: {formatCurrency(totalSelectedRubrics)}
+                            Total rubriques: {formatCurrency(totalSelectedRubrics)}
+                            {totalRubricsTowardNet !== totalSelectedRubrics && (
+                              <span className="block text-xs font-normal text-slate-600 mt-1">
+                                Dont comptées dans le net à payer : {formatCurrency(totalRubricsTowardNet)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}
@@ -820,12 +840,22 @@ export function EditPayrollSheet({ open, onOpenChange, payrollId, onSuccess }: E
                                   Cotisable
                                 </Badge>
                               )}
+                              {(rubric.rubricType === "INDEMNITY" || rubric.isAlreadyDisbursed) && (
+                                <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">
+                                  {rubric.rubricType === "INDEMNITY" ? "Hors net à payer" : "Déjà versée (hors net)"}
+                                </Badge>
+                              )}
                             </div>
                             <span className="text-sm font-medium text-gray-900">{formatCurrency(rubric.amount)}</span>
                           </div>
                         ))}
                         <div className="flex justify-end pt-2 text-sm font-medium text-gray-700">
-                          Total: {formatCurrency(totalSelectedRubrics)}
+                          Total rubriques: {formatCurrency(totalSelectedRubrics)}
+                          {totalRubricsTowardNet !== totalSelectedRubrics && (
+                            <span className="block text-xs font-normal text-slate-600 mt-1">
+                              Dont comptées dans le net à payer : {formatCurrency(totalRubricsTowardNet)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

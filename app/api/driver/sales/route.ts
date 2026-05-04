@@ -3,6 +3,12 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { userCanAccessDriverRestock } from "@/lib/driver-restock-access"
+import {
+  getBusinessDateKeyFromInstant,
+  getDeclarationDayBounds,
+  isDeclarationWindowOpen,
+  validateSaleBackfillDate,
+} from "@/lib/driver-declaration-window"
 
 // GET — Historique des ventes du livreur connecté
 export async function GET(req: NextRequest) {
@@ -77,7 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { items, notes } = body as {
+    const { items, notes, saleDate: saleDateRaw } = body as {
       items: Array<{
         productId: string
         variantId?: string | null
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest) {
         deliveryType?: "none" | "free" | "paid"
       }>
       notes?: string
+      saleDate?: string | null
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -103,6 +110,35 @@ export async function POST(req: NextRequest) {
         { error: "Aucun profil livreur actif trouvé pour ce compte" },
         { status: 422 },
       )
+    }
+
+    const now = new Date()
+    const todayKey = getBusinessDateKeyFromInstant(now)
+    const saleDateStr = typeof saleDateRaw === "string" ? saleDateRaw.trim() : ""
+
+    let declaredAt: Date
+
+    if (!saleDateStr || saleDateStr === todayKey) {
+      if (!isDeclarationWindowOpen(now)) {
+        const { deadline } = getDeclarationDayBounds(now)
+        return NextResponse.json(
+          {
+            error:
+              `La période de déclaration est close pour aujourd’hui (limite 23h59). ` +
+              `Pour saisir des ventes d’un jour précédent, indiquez saleDate au format AAAA-MM-JJ (ex. hier).`,
+            deadline: deadline.toISOString(),
+            todayBusinessDateKey: todayKey,
+          },
+          { status: 403 },
+        )
+      }
+      declaredAt = now
+    } else {
+      const backfill = validateSaleBackfillDate(saleDateStr, now)
+      if (!backfill.ok) {
+        return NextResponse.json({ error: backfill.error }, { status: 400 })
+      }
+      declaredAt = backfill.declaredAt
     }
 
     // Validation des quantités vs stock disponible
@@ -165,6 +201,7 @@ export async function POST(req: NextRequest) {
           totalDeliveryFees,
           netTotalAmount,
           notes: notes ?? null,
+          declaredAt,
           items: {
             create: items.map((i) => {
               const fee = i.deliveryFee ?? 0

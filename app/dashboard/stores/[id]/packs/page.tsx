@@ -89,6 +89,13 @@ export default function StorePacksPage({ params }: { params: Promise<{ id: strin
           storeId: p.storeId ?? storeId,
           assembledStock: typeof p.assembledStock === "number" ? p.assembledStock : 0,
           assembleableStock: typeof p.assembleableStock === "number" ? p.assembleableStock : 0,
+          dissociatableUnits:
+            typeof p.dissociatableUnits === "number"
+              ? p.dissociatableUnits
+              : typeof p.assembledStock === "number"
+                ? p.assembledStock
+                : 0,
+          items: Array.isArray(p.items) ? p.items : [],
           categoryId: p.categoryId ?? PACK_FALLBACK_CATEGORY,
           categoryName: p.categoryName ?? "Pack",
           brandId: p.brandId ?? null,
@@ -153,8 +160,16 @@ export default function StorePacksPage({ params }: { params: Promise<{ id: strin
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
     return packs.filter((p) => {
+      const items = Array.isArray(p.items) ? p.items : []
       const matchesSearch =
-        p.name.toLowerCase().includes(q) || (p.sku?.toLowerCase().includes(q) ?? false)
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.sku?.toLowerCase().includes(q) ?? false) ||
+        items.some(
+          (it) =>
+            (it.product?.name ?? "").toLowerCase().includes(q) ||
+            (it.product?.sku?.toLowerCase().includes(q) ?? false),
+        )
       const matchesCategory =
         categoryFilter === "all" || (p.categoryId ?? PACK_FALLBACK_CATEGORY) === categoryFilter
       const matchesBrand =
@@ -309,7 +324,7 @@ export default function StorePacksPage({ params }: { params: Promise<{ id: strin
               <div className="relative w-full max-w-[400px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Rechercher un produit..."
+                  placeholder="Rechercher un pack, SKU ou article de la composition…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -431,6 +446,37 @@ export default function StorePacksPage({ params }: { params: Promise<{ id: strin
                               ) : (
                                 <div className="text-sm text-gray-500">
                                   {p.items.length} article{p.items.length > 1 ? "s" : ""}
+                                </div>
+                              )}
+                              {p.items.length > 0 && (
+                                <div
+                                  className="mt-2 flex flex-wrap items-center gap-1.5 max-w-[320px]"
+                                  title="Articles composant le pack"
+                                >
+                                  {p.items.slice(0, 8).map((it) => (
+                                    <div
+                                      key={it.id}
+                                      className="h-9 w-9 rounded-md border border-gray-200 overflow-hidden bg-gray-50 shrink-0 shadow-sm"
+                                      title={`${it.product.name} × ${it.quantity}`}
+                                    >
+                                      {it.product.photos[0] ? (
+                                        <img
+                                          src={it.product.photos[0]}
+                                          alt=""
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="h-full w-full flex items-center justify-center">
+                                          <ImageIcon className="h-4 w-4 text-gray-400" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {p.items.length > 8 ? (
+                                    <span className="text-xs text-gray-500 font-medium px-1 py-0.5 rounded bg-gray-100">
+                                      +{p.items.length - 8}
+                                    </span>
+                                  ) : null}
                                 </div>
                               )}
                             </div>

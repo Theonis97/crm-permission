@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 // POST - Enregistrer un retour de produits d'un livreur vers le magasin
 export async function POST(
@@ -189,12 +190,17 @@ export async function POST(
 
         if (!storeProduct) {
           // Créer l'entrée dans le stock du magasin si elle n'existe pas
+          const p = await tx.product.findUnique({
+            where: { id: productId },
+            select: { prixVente: true, prixAchat: true },
+          })
           storeProduct = await tx.storeProduct.create({
             data: {
               storeId,
               productId,
               stock: 0,
               minStock: 0,
+              ...(p ? catalogPricesSnapshot(p) : {}),
             },
           })
         }

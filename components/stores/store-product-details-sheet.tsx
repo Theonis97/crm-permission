@@ -16,7 +16,6 @@ import {
   Package,
   TrendingUp,
   TrendingDown,
-  Edit,
   Plus,
   Loader2,
   Box,
@@ -32,7 +31,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/app-toast"
-import { ProductFormDialog } from "@/components/products/product-form-dialog"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts"
 
 interface StoreProductDetailsSheetProps {
@@ -52,7 +50,6 @@ export function StoreProductDetailsSheet({
 }: StoreProductDetailsSheetProps) {
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
   const [adjustQuantity, setAdjustQuantity] = useState("")
   const [adjustNote, setAdjustNote] = useState("")
@@ -296,14 +293,20 @@ export function StoreProductDetailsSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-full sm:max-w-4xl p-0 flex flex-col gap-0 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
+            <>
+              <SheetTitle className="sr-only">Chargement du produit</SheetTitle>
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              </div>
+            </>
           ) : !product ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Package className="h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-500">Produit introuvable</p>
-            </div>
+            <>
+              <SheetTitle className="sr-only">Produit introuvable</SheetTitle>
+              <div className="flex flex-col items-center justify-center py-20">
+                <Package className="h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-gray-500">Produit introuvable</p>
+              </div>
+            </>
           ) : (
             <>
               {/* Header fixe */}
@@ -413,10 +416,12 @@ export function StoreProductDetailsSheet({
                       <span className="text-gray-600">Prix de vente (HT):</span>
                       <span className="font-medium">{product.prixVente.toLocaleString("fr-FR")} XAF</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">TVA:</span>
-                      <span className="font-medium">{product.tva}%</span>
-                    </div>
+                    {product.tva != null && Number(product.tva) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">TVA:</span>
+                        <span className="font-medium">{Number(product.tva)} %</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm border-t pt-3">
                       <span className="text-gray-600">Marge brute:</span>
                       <span className="font-semibold text-green-600">
@@ -582,7 +587,7 @@ export function StoreProductDetailsSheet({
 
               {/* Footer fixe avec boutons d'action */}
               <div className="shrink-0 border-t bg-white p-6">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <Button
                     variant="outline"
                     onClick={() => setAdjustDialogOpen(true)}
@@ -597,14 +602,10 @@ export function StoreProductDetailsSheet({
                     <Tag className="h-4 w-4 mr-2" />
                     Paramètres magasin
                   </Button>
-                  <Button
-                    onClick={() => setEditDialogOpen(true)}
-                    className="bg-blue-900 hover:bg-blue-800"
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Modifier produit
-                  </Button>
                 </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Les prix et marges de ce magasin se règlent via « Paramètres magasin ». La fiche catalogue (tous les magasins) se modifie depuis l’entrepôt ou l’action « catalogue » sur la liste des produits.
+                </p>
               </div>
             </>
           )}
@@ -750,7 +751,8 @@ export function StoreProductDetailsSheet({
           <SheetHeader>
             <SheetTitle>Paramètres magasin</SheetTitle>
             <SheetDescription>
-              Configuration spécifique pour {product?.name}
+              Prix et stock pour ce magasin uniquement.
+              {product?.name ? ` ${product.name}` : ""}
             </SheetDescription>
           </SheetHeader>
 
@@ -928,18 +930,6 @@ export function StoreProductDetailsSheet({
         </SheetContent>
       </Sheet>
 
-      {/* Dialog de modification */}
-      {product && (
-        <ProductFormDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          product={product}
-          onSuccess={() => {
-            loadProduct()
-            onUpdated?.()
-          }}
-        />
-      )}
     </>
   )
 }

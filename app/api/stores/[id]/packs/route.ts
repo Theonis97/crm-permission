@@ -63,7 +63,7 @@ type PackRow = {
   name: string
   description: string | null
   sale_price: number | null
-  assembled_stock: number
+  assembled_stock: number | unknown
   created_at: Date
   updated_at: Date
   proxy_sku?: string | null
@@ -74,6 +74,10 @@ type PackRow = {
   brand_name?: string | null
   proxy_min_stock?: number | null
   proxy_max_stock?: number | null
+  /** Produit caisse lié au pack ; null si pas de proxy */
+  proxy_product_id?: string | null
+  pack_assembled_raw?: number | unknown
+  proxy_store_stock?: number | unknown
 }
 
 type ItemRow = {
@@ -181,6 +185,9 @@ async function fetchPacksViaSql(storeId: string) {
     ? await prisma.$queryRaw<PackRow[]>`
         SELECT sp.id, sp.store_id, sp.name, sp.description, sp.sale_price,
           GREATEST(COALESCE(spx.stock, 0), ${packColExpr})::int AS assembled_stock,
+          COALESCE(${packColExpr}, 0)::int AS pack_assembled_raw,
+          COALESCE(spx.stock, 0)::int AS proxy_store_stock,
+          prx.id AS proxy_product_id,
           prx.sku AS proxy_sku,
           prx.photos AS proxy_photos,
           prx.category_id AS proxy_category_id,
@@ -201,7 +208,10 @@ async function fetchPacksViaSql(storeId: string) {
       `
     : await prisma.$queryRaw<PackRow[]>`
         SELECT id, store_id, name, description, sale_price,
-          ${hasAssembledCol ? Prisma.sql`COALESCE(assembled_stock, 0)::int AS assembled_stock` : Prisma.sql`0::int AS assembled_stock`},
+          ${hasAssembledCol ? Prisma.sql`COALESCE(assembled_stock, 0)::int` : Prisma.sql`0::int`} AS assembled_stock,
+          ${hasAssembledCol ? Prisma.sql`COALESCE(assembled_stock, 0)::int` : Prisma.sql`0::int`} AS pack_assembled_raw,
+          0::int AS proxy_store_stock,
+          NULL::text AS proxy_product_id,
           created_at, updated_at
         FROM store_packs
         WHERE store_id = ${storeId}
@@ -226,6 +236,10 @@ async function fetchPacksViaSql(storeId: string) {
 
   return packs.map((p) => {
     const packItems = items.filter((i) => i.pack_id === p.id)
+    const rawA = intFromSql(p.pack_assembled_raw ?? p.assembled_stock)
+    const rawP = intFromSql(p.proxy_store_stock)
+    const hasProxy = Boolean(p.proxy_product_id)
+    const dissociatableUnits = hasProxy ? Math.max(rawP, rawA) : rawA
     const metrics = computePackRowMetrics(p.sale_price, intFromSql(p.assembled_stock), packItems)
     const proxyPhotos = normalizePhotos(p.proxy_photos)
     const listPhoto = proxyPhotos[0] ?? metrics.coverPhoto
@@ -246,6 +260,7 @@ async function fetchPacksViaSql(storeId: string) {
       description: p.description,
       salePrice: p.sale_price,
       assembledStock: metrics.assembledStock,
+      dissociatableUnits,
       categoryId,
       categoryName,
       brandId,

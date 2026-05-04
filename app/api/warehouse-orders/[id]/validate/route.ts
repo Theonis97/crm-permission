@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { hasPermission } from "@/lib/auth-helpers"
 
 export async function POST(
@@ -99,9 +100,12 @@ export async function POST(
       )
     }
 
-    // Utiliser une transaction pour garantir la cohérence
-    const result = await prisma.$transaction(async (tx: any) => {
-      // 1. Mettre à jour le statut de la commande
+    /**
+     * La validation entrepôt n’altère pas `Product.stock`.
+     * Le débit entrepôt + crédit magasin est réservé au passage « Livré » par le magasin
+     * (`PATCH /api/restocking-orders/[id]/status` avec status=DELIVERED).
+     */
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedOrder = await tx.order.update({
         where: { id },
         data: {
@@ -132,42 +136,15 @@ export async function POST(
         },
       })
 
-      // 2. Créer les mouvements de sortie de stock pour chaque produit
-      const movements = []
-      for (const item of order.items) {
-        const requestedQty = item.requestedQuantity || 0
-        // Créer le mouvement de sortie (quantité négative pour sortie)
-        const movement = await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            quantity: -requestedQty, // Négatif pour sortie
-            type: "EXIT", // Sortie vers magasin (transfert)
-            note: `Commande ${order.number} - Transfert vers ${order.store.name}`,
-            userId: user.id,
-          },
-        })
-
-        movements.push(movement)
-
-        // Mettre à jour le stock du produit
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              decrement: requestedQty,
-            },
-          },
-        })
-      }
-
-      return { order: updatedOrder, movements }
+      return { order: updatedOrder }
     })
 
     return NextResponse.json({
       success: true,
       order: result.order,
-      movements: result.movements,
-      message: `Commande validée avec succès. ${result.movements.length} mouvement(s) de stock créé(s).`,
+      movements: [],
+      message:
+        "Commande approuvée. Le stock entrepôt sera débité et celui du magasin crédité lorsque le magasin marquera la commande comme livrée.",
     })
   } catch (error) {
     console.error("Error validating order:", error)

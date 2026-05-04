@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
+import { catalogPricesSnapshot } from "@/lib/store-product-pricing"
 
 export async function GET(
   request: NextRequest,
@@ -79,17 +80,14 @@ export async function GET(
       sku: sp.product.sku,
       description: sp.product.description,
       photos: sp.product.photos,
-      // Prix spécifiques au magasin ou prix de l'entrepôt par défaut
       prixVente: sp.prixVente ?? sp.product.prixVente,
       prixAchat: sp.prixAchat ?? sp.product.prixAchat,
       tva: sp.product.tva,
       stock: sp.stock,
       minStock: sp.minStock,
       maxStock: sp.maxStock ?? sp.product.maxStock,
-      // Prix de l'entrepôt pour comparaison
       warehousePrixVente: sp.product.prixVente,
       warehousePrixAchat: sp.product.prixAchat,
-      // Prix spécifiques du magasin (pour l'édition)
       storePrixVente: sp.prixVente,
       storePrixAchat: sp.prixAchat,
       storeMinStock: sp.minStock,
@@ -195,13 +193,14 @@ export async function POST(
       )
     }
 
-    // Créer le StoreProduct
+    // Créer le StoreProduct (prix copiés depuis le catalogue : indépendants par magasin)
     const storeProduct = await prisma.storeProduct.create({
       data: {
         storeId,
         productId,
         stock: stock || 0,
         minStock: minStock || 0,
+        ...catalogPricesSnapshot(product),
       },
       include: {
         product: {

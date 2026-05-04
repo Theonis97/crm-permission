@@ -32,7 +32,7 @@ interface Brand {
   name: string
 }
 
-interface Product {
+export interface ProductFormProduct {
   id: string
   name: string
   sku: string | null
@@ -52,7 +52,7 @@ interface ProductFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
-  product?: Product | null
+  product?: ProductFormProduct | null
 }
 
 export function ProductFormDialog({
@@ -475,7 +475,7 @@ export function ProductFormDialog({
             <div className="max-w-2xl mx-auto space-y-6">
               <div className="text-center mb-8">
                 <h3 className="text-lg font-semibold text-gray-900">Tarification</h3>
-                <p className="text-sm text-gray-500 mt-1">Prix d'achat, de vente et TVA</p>
+                <p className="text-xs text-gray-500 mt-1">Prix d'achat, de vente et TVA</p>
               </div>
 
               <div className="space-y-6">

@@ -1,10 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect, useCallback } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -13,62 +11,57 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { 
-  Loader2, 
+import {
+  Loader2,
   Calendar,
   DollarSign,
   AlertCircle,
   FileText,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Eye
+  Receipt,
 } from "lucide-react"
 
-interface DriverClose {
+export interface DriverDeclarationCloseRow {
   id: string
   closeDate: string
-  status: "PENDING" | "APPROVED" | "REJECTED"
-  totalOrders: number
-  totalRevenue: number
-  totalCommission: number
-  totalCash: number
-  totalCard: number
-  totalMobile: number
-  notes: string | null
-  createdAt: string
-  approvedAt: string | null
-  approvedBy: {
-    id: string
-    name: string
-  } | null
+  declarationCount: number
+  totalCollected: number
+  totalToDeposit: number
+  totalDeliveryFees: number
+  lastDeclaredAt: string
 }
 
 interface DriverClosesData {
-  closes: DriverClose[]
+  closes: DriverDeclarationCloseRow[]
   summary: {
-    totalCloses: number
-    pendingCloses: number
-    totalCommission: number
+    totalDays: number
+    totalDeclarations: number
+    totalCollectedAll: number
+    totalToDepositAll: number
     lastCloseDate: string | null
   }
 }
 
 interface DriverClosesProps {
   driverId: string
-  onViewClose?: (closeId: string) => void
 }
 
-export function DriverCloses({ driverId, onViewClose }: DriverClosesProps) {
+function formatBusinessDateKeyFr(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number)
+  if (!y || !m || !d) return dateKey
+  return new Date(y, m - 1, d).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+export function DriverCloses({ driverId }: DriverClosesProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [closesData, setClosesData] = useState<DriverClosesData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadCloses()
-  }, [driverId])
-
-  const loadCloses = async () => {
+  const loadCloses = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
@@ -78,52 +71,20 @@ export function DriverCloses({ driverId, onViewClose }: DriverClosesProps) {
       }
       const data = await response.json()
       setClosesData(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading closes:", err)
-      setError(err.message || "Erreur lors du chargement")
+      setError(err instanceof Error ? err.message : "Erreur lors du chargement")
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [driverId])
+
+  useEffect(() => {
+    void loadCloses()
+  }, [loadCloses])
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("fr-FR").format(amount) + " FCFA"
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric"
-    })
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "APPROVED":
-        return (
-          <Badge className="bg-green-100 text-green-700 flex items-center gap-1">
-            <CheckCircle2 className="h-3 w-3" />
-            Approuvée
-          </Badge>
-        )
-      case "PENDING":
-        return (
-          <Badge className="bg-amber-100 text-amber-700 flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            En attente
-          </Badge>
-        )
-      case "REJECTED":
-        return (
-          <Badge className="bg-red-100 text-red-700 flex items-center gap-1">
-            <XCircle className="h-3 w-3" />
-            Rejetée
-          </Badge>
-        )
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
+    return new Intl.NumberFormat("fr-FR").format(Math.round(amount)) + " FCFA"
   }
 
   if (isLoading) {
@@ -154,95 +115,95 @@ export function DriverCloses({ driverId, onViewClose }: DriverClosesProps) {
 
   return (
     <div className="space-y-6">
-      {/* Statistiques des clôtures */}
-      <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+      <p className="text-sm text-muted-foreground">
+        Synthèse par <strong>jour des ventes déclarées</strong> (fuseau entreprise).{" "}
+        <strong>À déposer</strong> = montant net dû au magasin après vos règles de livraison (identique au
+        « Net » sur chaque déclaration).
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br py-0 from-blue-50 to-blue-100 border-blue-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-200 rounded-lg">
-                <FileText className="h-5 w-5 text-blue-700" />
+                <Calendar className="h-5 w-5 text-blue-700" />
               </div>
               <div>
-                <p className="text-sm text-blue-600">Total clôtures</p>
-                <p className="text-2xl font-bold text-blue-700">{closesData.summary.totalCloses}</p>
+                <p className="text-sm text-blue-600">Jours déclarés</p>
+                <p className="text-2xl font-bold text-blue-700">{closesData.summary.totalDays}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br py-0 from-amber-50 to-amber-100 border-amber-200">
+        <Card className="bg-gradient-to-br py-0 from-violet-50 to-violet-100 border-violet-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-200 rounded-lg">
-                <Clock className="h-5 w-5 text-amber-700" />
+              <div className="p-2 bg-violet-200 rounded-lg">
+                <Receipt className="h-5 w-5 text-violet-700" />
               </div>
               <div>
-                <p className="text-sm text-amber-600">En attente</p>
-                <p className="text-2xl font-bold text-amber-700">{closesData.summary.pendingCloses}</p>
+                <p className="text-sm text-violet-600">Déclarations (lignes)</p>
+                <p className="text-2xl font-bold text-violet-700">{closesData.summary.totalDeclarations}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br py-0 from-green-50 to-green-100 border-green-200">
+        <Card className="bg-gradient-to-br py-0 from-emerald-50 to-emerald-100 border-emerald-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-200 rounded-lg">
-                <DollarSign className="h-5 w-5 text-green-700" />
+              <div className="p-2 bg-emerald-200 rounded-lg">
+                <DollarSign className="h-5 w-5 text-emerald-700" />
               </div>
               <div>
-                <p className="text-sm text-green-600">Commission totale</p>
-                <p className="text-lg font-bold text-green-700">{formatCurrency(closesData.summary.totalCommission)}</p>
+                <p className="text-sm text-emerald-600">Total à déposer (période)</p>
+                <p className="text-lg font-bold text-emerald-700 tabular-nums">
+                  {formatCurrency(closesData.summary.totalToDepositAll)}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
-
-
       </div>
 
-     
-        <div>
-          {closesData.closes && closesData.closes.length > 0 ? (
-            <ScrollArea className="h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-center">Commandes</TableHead>
-                    <TableHead className="text-right">CA</TableHead>
-                    <TableHead className="text-right">Commission</TableHead>
+      <div>
+        {closesData.closes && closesData.closes.length > 0 ? (
+          <ScrollArea className="h-[420px] sm:h-[480px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date (jour métier)</TableHead>
+                  <TableHead className="text-center">Décl.</TableHead>
+                  <TableHead className="text-right">Encaissé</TableHead>
+                  <TableHead className="text-right font-semibold">À déposer</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {closesData.closes.map((close) => (
+                  <TableRow key={close.id}>
+                    <TableCell className="font-medium">
+                      {formatBusinessDateKeyFr(close.closeDate)}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums">{close.declarationCount}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(close.totalCollected)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-emerald-700 tabular-nums">
+                      {formatCurrency(close.totalToDeposit)}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {closesData.closes.map((close) => (
-                    <TableRow key={close.id}>
-                      <TableCell className="font-medium">
-                        {formatDate(close.closeDate)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {close.totalOrders}
-                      </TableCell>
-                      <TableCell className="text-right font-bold">
-                        {formatCurrency(close.totalRevenue - close.totalCommission)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {formatCurrency(close.totalCommission)}
-                      </TableCell>
-                 
-                     
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileText className="h-12 w-12 text-gray-300 mb-4" />
-              <p className="text-gray-500">Aucune clôture enregistrée</p>
-            </div>
-          )}
-        </div>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <FileText className="h-12 w-12 text-gray-300 mb-4" />
+            <p className="text-gray-500">Aucune déclaration de vente enregistrée</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -12,14 +12,12 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { 
-  Printer, 
-  Eye, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Printer,
+  Eye,
+  CheckCircle,
   Loader2,
   Receipt,
-  Settings
 } from "lucide-react"
 import { toast } from "@/lib/app-toast"
 import { thermalPrinter, type TicketData } from "@/lib/thermal-printer"
@@ -54,9 +52,11 @@ export function ThermalPrinterDialog({
       
       onPrintSuccess?.()
       onOpenChange(false)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erreur impression:", error)
-      toast.error(error.message || "Erreur lors de l'impression")
+      toast.error(
+        error instanceof Error ? error.message : "Erreur lors de l'impression"
+      )
     } finally {
       setIsPrinting(false)
     }
@@ -66,9 +66,13 @@ export function ThermalPrinterDialog({
     try {
       setIsPreviewing(true)
       await thermalPrinter.previewTicket(ticketData)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erreur prévisualisation:", error)
-      toast.error(error.message || "Erreur lors de la prévisualisation")
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors de la prévisualisation"
+      )
     } finally {
       setIsPreviewing(false)
     }
@@ -174,18 +178,18 @@ export function ThermalPrinterDialog({
               <span>Sous-total:</span>
               <span>{formatPrice(ticketData.subtotal)}</span>
             </div>
+
+            {ticketData.tax > 0 && (
+              <div className="flex justify-between text-sm">
+                <span>TVA:</span>
+                <span>{formatPrice(ticketData.tax)}</span>
+              </div>
+            )}
             
             {ticketData.discount > 0 && (
               <div className="flex justify-between text-sm text-green-600">
                 <span>Remise:</span>
                 <span>-{formatPrice(ticketData.discount)}</span>
-              </div>
-            )}
-            
-            {ticketData.tax > 0 && (
-              <div className="flex justify-between text-sm">
-                <span>TVA:</span>
-                <span>{formatPrice(ticketData.tax)}</span>
               </div>
             )}
             
@@ -253,7 +257,9 @@ export function ThermalPrinterDialog({
               </span>
             </div>
             <p className="text-xs text-blue-600 mt-1">
-              Assurez-vous que l'imprimante thermique est allumée et connectée
+              {
+                "Assurez-vous que l'imprimante thermique est allumée et connectée"
+              }
             </p>
           </div>
         </div>

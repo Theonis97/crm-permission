@@ -82,7 +82,11 @@ export function OrderDetailsDialog({
   const handleValidate = async () => {
     if (!orderId) return
 
-    if (!confirm("Êtes-vous sûr de vouloir valider cette commande ? Le stock sera automatiquement mis à jour.")) {
+    if (
+      !confirm(
+        "Valider cette commande côté entrepôt ? Le stock entrepôt ne sera débité et le magasin crédité qu’une fois le magasin aura marqué la commande comme livrée.",
+      )
+    ) {
       return
     }
 

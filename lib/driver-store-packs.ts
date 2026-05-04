@@ -87,10 +87,13 @@ export async function fetchDriverStorePackDtos(
       ? []
       : await prisma.storeProduct.findMany({
           where: { storeId, productId: { in: proxyIds } },
-          select: { productId: true, stock: true },
+          select: { productId: true, stock: true, prixVente: true },
         })
   const proxyStock: Record<string, number> = Object.fromEntries(
     proxyStoreRows.map((r) => [r.productId, r.stock])
+  )
+  const proxyStorePrix: Record<string, number | null> = Object.fromEntries(
+    proxyStoreRows.map((r) => [r.productId, r.prixVente])
   )
 
   return packs.map((pack) => {
@@ -120,12 +123,14 @@ export async function fetchDriverStorePackDtos(
       ? proxyStock[proxyProductId] ?? 0
       : 0
 
-    const pv =
-      proxy?.prixVente != null
-        ? Number(proxy.prixVente)
-        : pack.salePrice != null
-          ? Number(pack.salePrice)
-          : null
+    const storeProxyPv = proxyProductId ? proxyStorePrix[proxyProductId] : null
+    const catalogPv = proxy?.prixVente ?? pack.salePrice ?? null
+    let pv: number | null = null
+    if (storeProxyPv != null && !Number.isNaN(Number(storeProxyPv))) {
+      pv = Number(storeProxyPv)
+    } else if (catalogPv != null && !Number.isNaN(Number(catalogPv))) {
+      pv = Number(catalogPv)
+    }
 
     const pph = proxy?.photos
     const proxyPhotos = Array.isArray(pph)

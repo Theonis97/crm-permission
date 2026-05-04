@@ -2706,6 +2706,9 @@ model PayrollRubric {
   // Plafond d'exonération (pour certaines indemnités)
   exemptionCeiling Float? @map("exemption_ceiling") // Plafond exonéré de cotisations
 
+  // Indemnités (ex. transport, repas) déjà versées en espèces / hors virement de paie : affichées sur le bulletin mais non ajoutées au net à payer
+  isAlreadyDisbursed Boolean @default(false) @map("is_already_disbursed")
+
   // Affichage et organisation
   displayOrder Int     @default(0) @map("display_order")
   category     String? // Catégorie pour regroupement (ex: "Transport", "Performance")
@@ -2783,6 +2786,9 @@ model PayrollRubricLine {
   // Montant exonéré (si plafond d'exonération)
   exemptAmount  Float @default(0) @map("exempt_amount")
   taxableAmount Float @default(0) @map("taxable_amount")
+
+  // Copie au moment du bulletin (ne pas compter dans le net si true)
+  isAlreadyDisbursed Boolean @default(false) @map("is_already_disbursed")
 
   createdAt DateTime @default(now()) @map("created_at")
 

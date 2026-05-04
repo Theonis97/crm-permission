@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -24,9 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { 
-  Package, 
-  Loader2, 
+import {
+  Package,
+  Loader2,
   Search,
   Box,
   DollarSign,
@@ -42,6 +41,10 @@ interface StockItem {
   variantId: string | null
   quantity: number
   reserved: number
+  declaredQtyToday?: number
+  declarationWindowOpen?: boolean
+  quantityDisplay?: number
+  reservedDisplay?: number
   product: {
     id: string
     name: string
@@ -64,9 +67,21 @@ interface StockSummary {
   lowStockCount: number
 }
 
+interface StockMetaDeclaration {
+  windowOpen: boolean
+  dayStart: string
+  deadline: string
+  now: string
+  businessDateKey?: string
+  yesterdayDateKey?: string
+  oldestBackfillDateKey?: string
+  maxBackfillDays?: number
+}
+
 interface DriverStockData {
   items: StockItem[]
   summary: StockSummary
+  declaration?: StockMetaDeclaration
 }
 
 interface DriverStockProps {
@@ -87,11 +102,7 @@ export function DriverStock({ driverId }: DriverStockProps) {
   const [removeNotes, setRemoveNotes] = useState("")
   const [removing, setRemoving] = useState(false)
 
-  useEffect(() => {
-    loadStock()
-  }, [driverId])
-
-  const loadStock = async () => {
+  const loadStock = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
@@ -100,14 +111,23 @@ export function DriverStock({ driverId }: DriverStockProps) {
         throw new Error("Erreur lors du chargement du stock")
       }
       const data = await response.json()
-      setStockData(data)
-    } catch (err: any) {
+      setStockData({
+        items: data.items ?? [],
+        summary: data.summary,
+        declaration: data.declaration,
+      })
+    } catch (err: unknown) {
       console.error("Error loading stock:", err)
-      setError(err.message || "Erreur lors du chargement")
+      const message = err instanceof Error ? err.message : "Erreur lors du chargement"
+      setError(message)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [driverId])
+
+  useEffect(() => {
+    loadStock()
+  }, [loadStock])
 
   const openRemove = (item: StockItem) => {
     setRemoveItem(item)
@@ -148,17 +168,6 @@ export function DriverStock({ driverId }: DriverStockProps) {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("fr-FR").format(amount) + " FCFA"
-  }
-
-  const getStockStatus = (quantity: number, reserved: number) => {
-    const available = quantity - reserved
-    if (available <= 0) {
-      return <Badge className="bg-red-100 text-red-700">Rupture</Badge>
-    }
-    if (available <= 5) {
-      return <Badge className="bg-amber-100 text-amber-700">Stock faible</Badge>
-    }
-    return <Badge className="bg-green-100 text-green-700">En stock</Badge>
   }
 
   const filteredItems = stockData?.items.filter(item => {
@@ -242,6 +251,42 @@ export function DriverStock({ driverId }: DriverStockProps) {
         </Card>
       </div>
 
+      {stockData.declaration ? (
+        <div
+          className={`flex gap-2 rounded-lg border p-3 text-sm ${
+            stockData.declaration.windowOpen
+              ? "border-blue-200 bg-blue-50 text-blue-900"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+        >
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div>
+            {stockData.declaration.windowOpen ? (
+              <p>
+                <span className="font-medium">Déclarations de ventes</span> : jusqu’au{" "}
+                {new Date(stockData.declaration.deadline).toLocaleString("fr-FR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                (clôture 23h59, fuseau entreprise défini sur UTC+1 par défaut — variable{" "}
+                <code className="text-xs">DRIVER_DECLARATION_UTC_OFFSET_HOURS</code>).
+              </p>
+            ) : null}
+            {!stockData.declaration.windowOpen ? (
+              <p>
+                <span className="font-medium">Période de déclaration terminée</span> pour cette journée. La colonne{" "}
+                <strong>Qté</strong> est affichée à 0 pour faciliter le contrôle ;{" "}
+                <strong>Rés.</strong> correspond au <strong>stock physique restant</strong> ;{" "}
+                <strong>Déclaré</strong> indique les quantités vendues déclarées dans la journée.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {/* Recherche */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -263,7 +308,17 @@ export function DriverStock({ driverId }: DriverStockProps) {
                   <TableHead className="w-14">Image</TableHead>
                   <TableHead>Produit</TableHead>
                   <TableHead className="text-center">Qté</TableHead>
-                  <TableHead className="text-center">Rés.</TableHead>
+                  <TableHead className="text-center">Déclaré</TableHead>
+                  <TableHead
+                    className="text-center"
+                    title={
+                      stockData?.declaration?.windowOpen
+                        ? "Réservé (commandes en cours)"
+                        : "Après 23h59 : stock physique restant sur le livreur"
+                    }
+                  >
+                    Rés.
+                  </TableHead>
                   <TableHead className="text-right">Prix</TableHead>
                   <TableHead className="w-24 text-center">Action</TableHead>
                 </TableRow>
@@ -271,6 +326,11 @@ export function DriverStock({ driverId }: DriverStockProps) {
               <TableBody>
                 {filteredItems.map((item) => {
                   const price = item.variant?.prixVente || item.product.prixVente
+                  const qty =
+                    item.quantityDisplay !== undefined ? item.quantityDisplay : item.quantity
+                  const res =
+                    item.reservedDisplay !== undefined ? item.reservedDisplay : item.reserved
+                  const declared = item.declaredQtyToday ?? 0
                   return (
                     <TableRow key={item.id}>
                       <TableCell>
@@ -296,8 +356,9 @@ export function DriverStock({ driverId }: DriverStockProps) {
                           {item.variant?.sku || item.product.sku || "—"}
                         </p>
                       </TableCell>
-                      <TableCell className="text-center font-semibold">{item.quantity}</TableCell>
-                      <TableCell className="text-center text-amber-600">{item.reserved}</TableCell>
+                      <TableCell className="text-center font-semibold">{qty}</TableCell>
+                      <TableCell className="text-center font-semibold text-sky-700">{declared}</TableCell>
+                      <TableCell className="text-center text-amber-600">{res}</TableCell>
                       <TableCell className="text-right font-medium text-sm">{formatCurrency(price)}</TableCell>
                       <TableCell className="text-center">
                         <Button
