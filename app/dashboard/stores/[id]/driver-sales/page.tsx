@@ -39,6 +39,7 @@ import {
   Store,
   Trophy,
   TrendingUp,
+  Wallet,
 } from "lucide-react"
 import { toast } from "@/lib/app-toast"
 import { formatFCFA } from "@/lib/utils"
@@ -53,6 +54,8 @@ interface SaleItem {
   deliveryType: string
   netUnitPrice: number
   netTotalPrice: number
+  /** Palier sur le total ligne (qté × PU) */
+  commission?: number
   product: { id: string; name: string; sku: string | null; photos: string[] }
   variant?: { id: string; name: string; sku: string | null } | null
 }
@@ -62,6 +65,8 @@ interface DriverSale {
   totalAmount: number
   totalDeliveryFees: number
   netTotalAmount: number
+  totalCommission?: number
+  amountToDeposit?: number
   declaredAt: string
   notes?: string | null
   deliveryPerson: { id: string; name: string; email: string; avatar?: string | null }
@@ -74,7 +79,9 @@ interface DriverAgg {
   driverName: string
   total: number
   netTotal: number
+  depositTotal?: number
   totalDeliveryFees: number
+  commissionTotal?: number
   count: number
   rank?: number
 }
@@ -84,6 +91,8 @@ interface Summary {
   grandTotal: number
   grandNetTotal: number
   grandDeliveryFees: number
+  grandCommission?: number
+  grandAmountToDeposit?: number
   totalSales: number
   topPerformer: (DriverAgg & { rank: number }) | null
   rankingByNet: Array<DriverAgg & { rank: number }>
@@ -299,12 +308,24 @@ export default function DriverSalesPage() {
                 </div>
                 <div className="flex flex-wrap gap-6 text-right">
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Net magasin</p>
-                    <p className="text-xl font-bold text-blue-700">{formatFCFA(summary.topPerformer.netTotal)}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">À recevoir (après comm.)</p>
+                    <p className="text-xl font-bold text-blue-800">
+                      {formatFCFA(summary.topPerformer.depositTotal ?? 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Net produit</p>
+                    <p className="text-lg font-bold text-blue-700">{formatFCFA(summary.topPerformer.netTotal)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Encaissé</p>
                     <p className="text-xl font-bold text-green-700">{formatFCFA(summary.topPerformer.total)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Commission</p>
+                    <p className="text-xl font-bold text-amber-900">
+                      {formatFCFA(summary.topPerformer.commissionTotal ?? 0)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -330,7 +351,9 @@ export default function DriverSalesPage() {
                     <TableHead className="text-right">Déclarations</TableHead>
                     <TableHead className="text-right">Encaissé</TableHead>
                     <TableHead className="text-right">Frais livr.</TableHead>
-                    <TableHead className="text-right">Net magasin</TableHead>
+                    <TableHead className="text-right">Net produit</TableHead>
+                    <TableHead className="text-right text-amber-800">Commission</TableHead>
+                    <TableHead className="text-right font-semibold text-emerald-800">À recevoir</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -346,6 +369,12 @@ export default function DriverSalesPage() {
                       <TableCell className="text-right font-semibold text-blue-700">
                         {formatFCFA(row.netTotal)}
                       </TableCell>
+                      <TableCell className="text-right font-semibold text-amber-900">
+                        {formatFCFA(row.commissionTotal ?? 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-blue-900">
+                        {formatFCFA(row.depositTotal ?? 0)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -356,7 +385,7 @@ export default function DriverSalesPage() {
 
         {/* Statistiques */}
         {summary && (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total encaissé</CardTitle>
@@ -370,17 +399,31 @@ export default function DriverSalesPage() {
 
             <Card className="border-blue-200 bg-blue-50/40">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-blue-800">Net à reverser</CardTitle>
+                <CardTitle className="text-sm font-medium text-blue-800">À recevoir des livreurs</CardTitle>
                 <ArrowDownCircle className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-blue-700">{formatFCFA(summary.grandNetTotal)}</p>
+                <p className="text-2xl font-bold text-blue-800">{formatFCFA(summary.grandAmountToDeposit ?? 0)}</p>
+                <p className="text-xs text-blue-700/90 mt-1">
+                  Net produit déclaré : {formatFCFA(summary.grandNetTotal)} (qté × prix net) − commission livreur
+                </p>
                 {summary.grandDeliveryFees > 0 && (
                   <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
                     <Truck className="h-3 w-3" />
-                    Livraison : {formatFCFA(summary.grandDeliveryFees)}
+                    Livraison (info) : {formatFCFA(summary.grandDeliveryFees)}
                   </p>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-amber-200 bg-amber-50/50">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-amber-900">Commission livreurs</CardTitle>
+                <Wallet className="h-4 w-4 text-amber-700" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-amber-900">{formatFCFA(summary.grandCommission ?? 0)}</p>
+                <p className="text-xs text-amber-800/90 mt-1">Paliers sur total par ligne produit</p>
               </CardContent>
             </Card>
 
@@ -448,10 +491,24 @@ export default function DriverSalesPage() {
                     )}
                     {d.totalDeliveryFees > 0 && (
                       <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
-                        <span className="text-xs font-semibold text-blue-800">À reverser</span>
+                        <span className="text-xs font-semibold text-blue-800">Net produit (qté × prix net)</span>
                         <span className="text-sm font-bold text-blue-700">{formatFCFA(d.netTotal)}</span>
                       </div>
                     )}
+                    {d.totalDeliveryFees === 0 && (
+                      <div className="flex items-center justify-between bg-blue-50/60 rounded-lg px-3 py-1.5">
+                        <span className="text-xs font-semibold text-blue-800">Net produit</span>
+                        <span className="text-sm font-bold text-blue-700">{formatFCFA(d.netTotal)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between border-t border-amber-200/60 pt-2">
+                      <span className="text-xs font-medium text-amber-900">Commission (paliers)</span>
+                      <span className="text-sm font-bold text-amber-900">{formatFCFA(d.commissionTotal ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-1.5 border border-emerald-200">
+                      <span className="text-xs font-bold text-emerald-900">À recevoir du livreur</span>
+                      <span className="text-sm font-bold text-emerald-800">{formatFCFA(d.depositTotal ?? 0)}</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -461,15 +518,25 @@ export default function DriverSalesPage() {
                   <span className="font-bold text-green-800">Total encaissé (tous livreurs)</span>
                   <span className="text-lg font-bold text-green-600">{formatFCFA(summary?.grandTotal ?? 0)}</span>
                 </div>
-                {(summary?.grandDeliveryFees ?? 0) > 0 && (
-                  <div className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
-                    <span className="font-bold text-blue-800 flex items-center gap-2">
-                      <ArrowDownCircle className="h-4 w-4" />
-                      Net à reverser au magasin
-                    </span>
-                    <span className="text-lg font-bold text-blue-700">{formatFCFA(summary?.grandNetTotal ?? 0)}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
+                  <span className="font-bold text-blue-800 flex items-center gap-2">
+                    <ArrowDownCircle className="h-4 w-4" />
+                    Net produit déclaré (tous livreurs)
+                  </span>
+                  <span className="text-lg font-bold text-blue-700">{formatFCFA(summary?.grandNetTotal ?? 0)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+                  <span className="font-bold text-emerald-900">À recevoir des livreurs (après commission)</span>
+                  <span className="text-lg font-bold text-emerald-800">
+                    {formatFCFA(summary?.grandAmountToDeposit ?? 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                  <span className="font-bold text-amber-900">Commission livreurs (paliers)</span>
+                  <span className="text-lg font-bold text-amber-900">
+                    {formatFCFA(summary?.grandCommission ?? 0)}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -567,16 +634,24 @@ export default function DriverSalesPage() {
                         <Badge className="bg-green-100 text-green-700 border-green-200 text-sm px-3 py-1">
                           Encaissé : {formatFCFA(sale.totalAmount)}
                         </Badge>
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs px-3 py-1">
+                          Net produit : {formatFCFA(sale.netTotalAmount)}
+                        </Badge>
                         {hasDelivery && (
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="text-xs text-orange-600 flex items-center gap-1">
-                              <Truck className="h-3 w-3" />
-                              Livraison : − {formatFCFA(sale.totalDeliveryFees)}
-                            </span>
-                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-sm px-3 py-1">
-                              À reverser : {formatFCFA(sale.netTotalAmount)}
-                            </Badge>
-                          </div>
+                          <span className="text-xs text-orange-600 flex items-center justify-end gap-1">
+                            <Truck className="h-3 w-3" />
+                            Livraison : − {formatFCFA(sale.totalDeliveryFees)}
+                          </span>
+                        )}
+                        {typeof sale.amountToDeposit === "number" && (
+                          <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs px-3 py-1">
+                            À recevoir : {formatFCFA(sale.amountToDeposit)}
+                          </Badge>
+                        )}
+                        {typeof sale.totalCommission === "number" && (
+                          <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs px-3 py-1">
+                            Commission livreur : {formatFCFA(sale.totalCommission)}
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -615,13 +690,17 @@ export default function DriverSalesPage() {
                             <p className="text-sm font-semibold text-gray-700">
                               {item.quantity} × {formatFCFA(item.unitPrice)}
                             </p>
-                            {item.deliveryType !== "none" ? (
-                              <>
-                                <p className="text-xs text-gray-400 line-through">{formatFCFA(item.totalPrice)}</p>
-                                <p className="text-xs font-bold text-blue-600">Net : {formatFCFA(item.netTotalPrice)}</p>
-                              </>
-                            ) : (
-                              <p className="text-xs font-bold text-green-600">= {formatFCFA(item.totalPrice)}</p>
+                            <p className="text-xs font-bold text-green-600">Net magasin : {formatFCFA(item.netTotalPrice)}</p>
+                            {item.deliveryType !== "none" && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Livraison {item.deliveryType === "free" ? "offerte" : "payante"} · {formatFCFA(item.deliveryFee)}/u
+                                {item.deliveryType === "free" ? " (à votre charge, hors net magasin)" : ""}
+                              </p>
+                            )}
+                            {item.commission != null && (
+                              <p className="text-[11px] font-semibold text-amber-800 mt-0.5">
+                                Commission ligne : {formatFCFA(item.commission)}
+                              </p>
                             )}
                           </div>
                         </div>

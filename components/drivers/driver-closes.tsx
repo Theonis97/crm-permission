@@ -25,8 +25,13 @@ export interface DriverDeclarationCloseRow {
   closeDate: string
   declarationCount: number
   totalCollected: number
+  /** Somme des nets produit (qté × prix net / règles livraison), avant commission livreur */
+  totalNetForStore?: number
+  /** Montant à remettre au magasin : net produit − commission livreur */
   totalToDeposit: number
   totalDeliveryFees: number
+  /** Commission livreur (règles paliers sur total par ligne produit) */
+  totalDriverCommission: number
   lastDeclaredAt: string
 }
 
@@ -36,7 +41,9 @@ interface DriverClosesData {
     totalDays: number
     totalDeclarations: number
     totalCollectedAll: number
+    totalNetForStoreAll?: number
     totalToDepositAll: number
+    totalDriverCommissionAll: number
     lastCloseDate: string | null
   }
 }
@@ -116,12 +123,14 @@ export function DriverCloses({ driverId }: DriverClosesProps) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Synthèse par <strong>jour des ventes déclarées</strong> (fuseau entreprise).{" "}
-        <strong>À déposer</strong> = montant net dû au magasin après vos règles de livraison (identique au
-        « Net » sur chaque déclaration).
+        Synthèse par <strong>jour des ventes déclarées</strong> (fuseau entreprise). Le{" "}
+        <strong>net magasin (produit)</strong> est la somme des montants dus au magasin sur chaque ligne
+        (quantité × prix net, selon vos règles de livraison). La <strong>commission livreur</strong> est
+        calculée en paliers sur le total encaissé par ligne. <strong>À déposer</strong> = net produit −
+        commission (ce que vous remettez au magasin).
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-gradient-to-br py-0 from-blue-50 to-blue-100 border-blue-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -150,6 +159,22 @@ export function DriverCloses({ driverId }: DriverClosesProps) {
           </CardContent>
         </Card>
 
+        <Card className="bg-gradient-to-br py-0 from-amber-50 to-amber-100 border-amber-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-200 rounded-lg">
+                <Receipt className="h-5 w-5 text-amber-800" />
+              </div>
+              <div>
+                <p className="text-sm text-amber-800">Commission livreur (période)</p>
+                <p className="text-lg font-bold text-amber-900 tabular-nums">
+                  {formatCurrency(closesData.summary.totalDriverCommissionAll ?? 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="bg-gradient-to-br py-0 from-emerald-50 to-emerald-100 border-emerald-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -157,10 +182,11 @@ export function DriverCloses({ driverId }: DriverClosesProps) {
                 <DollarSign className="h-5 w-5 text-emerald-700" />
               </div>
               <div>
-                <p className="text-sm text-emerald-600">Total à déposer (période)</p>
+                <p className="text-sm text-emerald-600">À déposer (après commission)</p>
                 <p className="text-lg font-bold text-emerald-700 tabular-nums">
                   {formatCurrency(closesData.summary.totalToDepositAll)}
                 </p>
+                <p className="text-[11px] text-emerald-800/80 mt-1">Net produit − commission livreur</p>
               </div>
             </div>
           </CardContent>
@@ -176,7 +202,9 @@ export function DriverCloses({ driverId }: DriverClosesProps) {
                   <TableHead>Date (jour métier)</TableHead>
                   <TableHead className="text-center">Décl.</TableHead>
                   <TableHead className="text-right">Encaissé</TableHead>
-                  <TableHead className="text-right font-semibold">À déposer</TableHead>
+                  <TableHead className="text-right text-blue-800">Net produit</TableHead>
+                  <TableHead className="text-right text-amber-800">Commission</TableHead>
+                  <TableHead className="text-right font-semibold text-emerald-800">À déposer</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,6 +216,12 @@ export function DriverCloses({ driverId }: DriverClosesProps) {
                     <TableCell className="text-center tabular-nums">{close.declarationCount}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(close.totalCollected)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-blue-800">
+                      {formatCurrency(close.totalNetForStore ?? close.totalToDeposit + (close.totalDriverCommission ?? 0))}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-amber-900 font-medium">
+                      {formatCurrency(close.totalDriverCommission ?? 0)}
                     </TableCell>
                     <TableCell className="text-right font-semibold text-emerald-700 tabular-nums">
                       {formatCurrency(close.totalToDeposit)}

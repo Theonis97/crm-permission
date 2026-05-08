@@ -1,10 +1,15 @@
 /**
- * Calcule la commission du livreur selon les règles métier
- * 
- * Règles de commission :
- * - Entre 6 500 et 7 000 FCFA : 1 000 FCFA
- * - Entre 7 000 et 8 000 FCFA : 1 500 FCFA
- * - >= 8 500 FCFA : 2 000 FCFA
+ * Calcule la commission du livreur selon les règles métier.
+ *
+ * Déclarations livreur (ventes terrain) : **une commission par ligne produit**,
+ * appliquée sur le **total encaissé client de la ligne** (quantité × prix unitaire),
+ * pas « une commission par unité ». Ex. 2 casques = 10 000 FCFA sur la ligne → un seul palier sur 10 000.
+ *
+ * Règles de montant (FCFA, total ligne = qté × prix) :
+ * - Entre 1 000 et 3 000 (≥ 1 000 et < 3 000) : 500
+ * - Entre 3 000 et 7 000 (≥ 3 000 et < 7 000) : 1 000
+ * - Entre 7 000 et 8 000 (≥ 7 000 et < 8 000) : 1 500
+ * - ≥ 8 500 : 2 000
  */
 
 export interface CommissionRule {
@@ -15,7 +20,12 @@ export interface CommissionRule {
 
 export const COMMISSION_RULES: CommissionRule[] = [
   {
-    minAmount: 6500,
+    minAmount: 1000,
+    maxAmount: 3000,
+    commission: 500,
+  },
+  {
+    minAmount: 3000,
     maxAmount: 7000,
     commission: 1000,
   },
@@ -32,7 +42,7 @@ export const COMMISSION_RULES: CommissionRule[] = [
 ]
 
 /**
- * Calcule la commission pour un montant de commande donné
+ * Calcule la commission pour un montant (commande livrée ou **total ligne** déclaration livreur).
  */
 export function calculateCommission(orderAmount: number): number {
   for (const rule of COMMISSION_RULES) {
@@ -51,6 +61,29 @@ export function calculateCommission(orderAmount: number): number {
   
   // Aucune commission si en dehors des règles
   return 0
+}
+
+/**
+ * Commission totale d'une déclaration livreur : somme des `calculateCommission(totalPrice)`
+ * pour chaque ligne (totalPrice = qté × PU encaissé).
+ */
+export function totalCommissionForDriverDeclarationItems(
+  items: Array<{ totalPrice: number }>,
+): number {
+  return items.reduce((sum, it) => sum + calculateCommission(it.totalPrice), 0)
+}
+
+/**
+ * Ce que le livreur doit **déposer au magasin** : net déjà calculé par ligne
+ * (somme encaissée produit : qté × prix de vente client ; les frais livraison ne réduisent pas ce montant),
+ * moins la commission livreur (paliers sur chaque total de ligne).
+ */
+export function driverDepositAmountAfterCommission(
+  netTotalAmount: number,
+  items: Array<{ totalPrice: number }>,
+): number {
+  const commission = totalCommissionForDriverDeclarationItems(items)
+  return Math.max(0, netTotalAmount - commission)
 }
 
 /**

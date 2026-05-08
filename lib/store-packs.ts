@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "crypto"
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 
 export type NormalizedPackLine = { productId: string; quantity: number }
@@ -101,7 +102,8 @@ export async function findExistingPackIdByCompositionRobust(
   return null
 }
 
-type Tx = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">
+/** Client Prisma dans `prisma.$transaction(callback)` (aligné sur le générateur Prisma). */
+type Tx = Prisma.TransactionClient
 
 export async function createPackProxyProduct(
   tx: Tx,

@@ -1,7 +1,8 @@
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { adjustPackAssembledForProxyProduct } from "@/lib/store-packs"
 
-type SavTx = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">
+type SavTx = Prisma.TransactionClient
 
 /**
  * Échange « autre article » au sens métier :

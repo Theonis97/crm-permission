@@ -30,6 +30,11 @@ export async function POST(
       globalDiscount = 0,
     } = body
 
+    const paymentStatus = body.paymentStatus ?? "PAID"
+    const isMobilePending =
+      String(paymentMethod || "").toUpperCase() === "MOBILE" &&
+      String(paymentStatus).toUpperCase() === "PENDING"
+
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
         { error: "Aucun article dans la vente" },
@@ -98,7 +103,7 @@ export async function POST(
         )
       }
 
-      if (storeProduct.stock < item.quantity) {
+      if (!isMobilePending && storeProduct.stock < item.quantity) {
         return NextResponse.json(
           { error: `Stock insuffisant pour ${storeProduct.product.name}. Disponible: ${storeProduct.stock}, Demandé: ${item.quantity}` },
           { status: 400 }
@@ -155,7 +160,7 @@ export async function POST(
           customerName,
           customerPhone,
           customerEmail: customerEmail || null,
-          status: paymentMethod === "MOBILE" && body.paymentStatus === "PENDING" ? "PENDING" : "DELIVERED",
+          status: paymentMethod === "MOBILE" && paymentStatus === "PENDING" ? "PENDING" : "DELIVERED",
           priority: "NORMAL",
           subtotal,
           totalDiscount,
@@ -163,9 +168,9 @@ export async function POST(
           deliveryFee: 0,
           total,
           paymentMethod: paymentMethod || "CASH",
-          paymentStatus: body.paymentStatus || "PAID",
-          paidAt: body.paymentStatus === "PENDING" ? null : new Date(),
-          deliveredAt: body.paymentStatus === "PENDING" ? null : new Date(),
+          paymentStatus,
+          paidAt: paymentStatus === "PENDING" ? null : new Date(),
+          deliveredAt: paymentStatus === "PENDING" ? null : new Date(),
           notes: notes || null,
           orderSource: "POS",
           createdById: user.id,
@@ -192,57 +197,59 @@ export async function POST(
 
       const movements = []
 
-      // 2. Pour chaque produit : décrémenter le stock et créer un mouvement
-      for (const item of items) {
-        const { productId, quantity, unitPrice } = item
-        
-        // Trouver le produit en stock
-        const storeProduct = storeProducts.find(sp => sp.productId === productId)!
+      // 2. Décrémenter le stock immédiatement sauf commande mobile en attente de paiement
+      if (!isMobilePending) {
+        for (const item of items) {
+          const { productId, quantity, unitPrice } = item
 
-        // Décrémenter le stock du magasin
-        await tx.storeProduct.update({
-          where: { id: storeProduct.id },
-          data: {
-            stock: {
-              decrement: quantity,
+          // Trouver le produit en stock
+          const storeProduct = storeProducts.find((sp) => sp.productId === productId)!
+
+          // Décrémenter le stock du magasin
+          await tx.storeProduct.update({
+            where: { id: storeProduct.id },
+            data: {
+              stock: {
+                decrement: quantity,
+              },
             },
-          },
-        })
+          })
 
-        await adjustPackAssembledForProxyProduct(tx, {
-          storeId,
-          productId,
-          deltaPackUnits: -quantity,
-        })
-
-        // Créer le mouvement de stock (SALE = sortie de stock)
-        const movement = await tx.stockMovement.create({
-          data: {
+          await adjustPackAssembledForProxyProduct(tx, {
+            storeId,
             productId,
-            quantity: -quantity, // Quantité négative pour une sortie
-            type: "SALE",
-            note: `Vente POS ${saleNumber} - ${customerName} (${customerPhone})`,
-            userId: user.id,
-          },
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                sku: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        })
+            deltaPackUnits: -quantity,
+          })
 
-        movements.push(movement)
+          // Créer le mouvement de stock (SALE = sortie de stock)
+          const movement = await tx.stockMovement.create({
+            data: {
+              productId,
+              quantity: -quantity, // Quantité négative pour une sortie
+              type: "SALE",
+              note: `Vente POS ${saleNumber} - ${customerName} (${customerPhone})`,
+              userId: user.id,
+            },
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                },
+              },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          })
+
+          movements.push(movement)
+        }
       }
 
       return { movements, saleNumber, total, orderId: storeOrder.id }
@@ -265,18 +272,20 @@ export async function POST(
       }
     })
 
-    // Envoi asynchrone pour ne pas bloquer la réponse
-    sendDailyPosSalesEmail(storeId, {
-      number: result.saleNumber,
-      customerName: customerName || 'Client anonyme',
-      customerPhone: customerPhone || '',
-      subtotal,
-      totalDiscount,
-      total: result.total,
-      items: saleItems
-    }).catch(err => {
-      console.error('❌ Erreur envoi email POS (non bloquant):', err)
-    })
+    // Envoi asynchrone pour ne pas bloquer la réponse (pas d'email pour commande mobile non encore payée)
+    if (!isMobilePending) {
+      sendDailyPosSalesEmail(storeId, {
+        number: result.saleNumber,
+        customerName: customerName || 'Client anonyme',
+        customerPhone: customerPhone || '',
+        subtotal,
+        totalDiscount,
+        total: result.total,
+        items: saleItems
+      }).catch(err => {
+        console.error('❌ Erreur envoi email POS (non bloquant):', err)
+      })
+    }
 
     return NextResponse.json({
       success: true,

@@ -10,7 +10,8 @@ import {
   ShoppingCart,
   MapPin,
   Truck,
-  Calendar
+  Calendar,
+  ExternalLink,
 } from "lucide-react"
 import { 
   Dialog, 
@@ -143,8 +144,45 @@ export function PosCheckoutDialog({
   const [paymentReference, setPaymentReference] = useState<string | null>(null)
   const [transactionId, setTransactionId] = useState<string | null>(null)
   const [pendingOrder, setPendingOrder] = useState<any>(null)
-  
+  /** Libellé affiché (E-Billing / MyPVit / erreur config) */
+  const [posMobileGatewayLabel, setPosMobileGatewayLabel] = useState<string>("")
+
+  /** True si EBILLING_MOCK_PAYIN (aucun USSD réel) */
+  const [ebillingMockPayin, setEbillingMockPayin] = useState(false)
+  /** Lien portail E-Billing si l’USSD renvoie 406 (repli guide §4.4.1) */
+  const [ebillingPortalUrl, setEbillingPortalUrl] = useState<string | null>(null)
+
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Passerelle effective (défaut serveur : E-Billing uniquement)
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    void fetch("/api/payments/pos-mobile/config")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        if (d.active === "ebilling") {
+          setPosMobileGatewayLabel(
+            d.ebillingMockPayin
+              ? "E-Billing — mode test (mock local, sans API)"
+              : "E-Billing (Airtel / Moov)",
+          )
+        }
+        else if (d.active === "mypvit") setPosMobileGatewayLabel("MyPVit (Airtel / Moov)")
+        else setPosMobileGatewayLabel("Mobile Money — configurez E-Billing (EBILLING_USERNAME / EBILLING_SHARED_KEY)")
+        setEbillingMockPayin(Boolean(d.ebillingMockPayin))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPosMobileGatewayLabel("Airtel / Moov")
+          setEbillingMockPayin(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
 
   // Reset local state when dialog closes
   useEffect(() => {
@@ -164,6 +202,7 @@ export function PosCheckoutDialog({
     setPaymentReference(null)
     setTransactionId(null)
     setPendingOrder(null)
+    setEbillingPortalUrl(null)
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
       pollingIntervalRef.current = null
@@ -194,7 +233,7 @@ export function PosCheckoutDialog({
 
       setPaymentMessage("Envoi de la demande USSD...")
 
-      const response = await fetch("/api/payments/mypvit/initiate", {
+      const response = await fetch("/api/payments/pos-mobile/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -202,24 +241,78 @@ export function PosCheckoutDialog({
           amount: cartTotal,
           operator: mobileOperator,
           reference: reference,
-          payerName: customerFirstName || customerLastName ? `${customerFirstName} ${customerLastName}` : "Client POS"
-        })
+          payerName: customerFirstName || customerLastName ? `${customerFirstName} ${customerLastName}` : "Client POS",
+          payerEmail: customerEmail?.trim() || undefined,
+        }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Erreur initiation")
+        const msg = [data.error, data.details].filter(Boolean).join(" — ")
+        throw new Error(msg || "Erreur initiation")
       }
 
       setPaymentReference(reference)
       setTransactionId(data.data.reference_id || reference)
-      setPaymentStatus("waiting")
-      setPaymentMessage("Veuillez valider le paiement sur votre téléphone...")
-      toast.info("Veuillez valider le paiement sur votre mobile")
 
-      // Start polling Order Status
-      startPollingOrderStatus(order.orderId) 
+      const isMockGateway = data.data?.gateway === "ebilling-mock"
+      const portalUrl =
+        typeof data.data?.portal_url === "string" ? data.data.portal_url : null
+
+      if (portalUrl) {
+        setEbillingPortalUrl(portalUrl)
+        setPaymentMessage(
+          "L’USSD n’a pas été accepté par l’opérateur (souvent en LAB). Ouvrez le lien ci‑dessous sur le téléphone du client pour payer via le portail E-Billing, puis attendez la confirmation.",
+        )
+        toast.info("Utilisez le lien portail E-Billing sur le téléphone du client")
+      } else {
+        setEbillingPortalUrl(null)
+      }
+
+      if (isMockGateway) {
+        setPaymentMessage(
+          "Mode test : rien n’est envoyé sur le portable. La vente est enregistrée automatiquement côté serveur.",
+        )
+        toast.info("Mode test — aucun USSD / SMS sur le téléphone.")
+      } else {
+        setPaymentMessage(
+          portalUrl
+            ? "En attente : paiement via le portail E-Billing…"
+            : "Une demande peut apparaître sur votre téléphone (USSD ou notification) : validez avec votre code secret Mobile Money.",
+        )
+        if (!portalUrl) toast.info("Vérifiez votre téléphone pour valider le paiement")
+      }
+
+      setPaymentStatus("waiting")
+
+      const tryFinalizePaid = async (): Promise<boolean> => {
+        const r = await fetch(`/api/orders/${order.orderId}/status`)
+        const j = await r.json()
+        if (j.success && j.data && j.data.paymentStatus === "PAID") {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+          setPaymentStatus("success")
+          setPaymentMessage("Paiement confirmé !")
+          toast.success("Paiement confirmé !")
+          onMobilePaymentSuccess(j.data.number, mobilePhone, j.data)
+          return true
+        }
+        return false
+      }
+
+      if (isMockGateway) {
+        let ok = await tryFinalizePaid()
+        if (!ok) {
+          await new Promise((r) => setTimeout(r, 500))
+          ok = await tryFinalizePaid()
+        }
+        if (!ok) startPollingOrderStatus(order.orderId)
+      } else {
+        startPollingOrderStatus(order.orderId)
+      }
       
     } catch (error: any) {
       console.error("Payment error:", error)
@@ -360,7 +453,9 @@ export function PosCheckoutDialog({
                       )}>
                         Mobile Money
                       </div>
-                      <div className="text-xs text-gray-500">Airtel / Moov</div>
+                      <div className="text-xs text-gray-500">
+                        {posMobileGatewayLabel || "Airtel / Moov"}
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -369,6 +464,12 @@ export function PosCheckoutDialog({
               {/* Section Mobile Money */}
               {posPaymentMethod === "MOBILE" && paymentStatus === "idle" && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
+                  {ebillingMockPayin && (
+                    <p className="text-sm text-blue-900 rounded-md bg-white/70 border border-blue-100 px-3 py-2">
+                      <strong>Test local</strong> : aucun message ne sera envoyé sur le téléphone. Le paiement est simulé
+                      après validation.
+                    </p>
+                  )}
                   <div>
                     <Label className="mb-2 block text-blue-900">Opérateur</Label>
                     <div className="grid grid-cols-2 gap-3">
@@ -453,6 +554,47 @@ export function PosCheckoutDialog({
                       <p className="text-sm opacity-90">{paymentMessage}</p>
                     </div>
                   </div>
+
+                  {(paymentStatus === "waiting" || paymentStatus === "initiating") &&
+                    ebillingMockPayin && (
+                      <p className="text-xs text-blue-900 bg-blue-50 rounded px-2 py-1.5 mt-2 border border-blue-200">
+                        <strong>Mode test</strong> : avec{" "}
+                        <code className="text-[11px]">EBILLING_MOCK_PAYIN</code>, rien n’est envoyé sur le portable —
+                        c’est normal.
+                      </p>
+                    )}
+
+                  {paymentStatus === "waiting" && ebillingPortalUrl && (
+                    <div className="mt-3 space-y-2">
+                      <Button variant="default" size="sm" className="w-full" asChild>
+                        <a href={ebillingPortalUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Ouvrir le paiement E-Billing (portail)
+                        </a>
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Le client peut aussi ouvrir ce lien sur son propre appareil. Après paiement, la commande passera en
+                        payée lorsque Digitech appellera votre URL de notification (webhook).
+                      </p>
+                    </div>
+                  )}
+
+                  {paymentStatus === "waiting" && !ebillingMockPayin && !ebillingPortalUrl && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      <strong>Pas de SMS / pop-up sur le portable ?</strong> En environnement <strong>LAB</strong>, l’USSD
+                      réel est souvent <strong>désactivé ou refusé</strong> par l’opérateur : vous n’avez alors{" "}
+                      <strong>aucune demande à valider sur le téléphone</strong>, même si la facture est créée.
+                      <span className="block mt-1">
+                        Si le paiement échouait avant avec une erreur USSD, relancez : un <strong>lien portail</strong> peut
+                        s’afficher pour payer dans le navigateur. Sinon, demandez à Digitech l’activation USSD LAB (
+                        <span className="whitespace-nowrap">contact@digitech-africa.com</span>).
+                      </span>
+                      <span className="block mt-1">
+                        La caisse ne passe en « payé » qu’après le <strong>webhook</strong> Digitech vers votre serveur (URL
+                        de notification configurée + accessible depuis Internet).
+                      </span>
+                    </p>
+                  )}
 
                   {paymentStatus === "waiting" && (
                      <div className="mt-3">

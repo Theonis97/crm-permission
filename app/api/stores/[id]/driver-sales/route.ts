@@ -4,6 +4,23 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { hasPermission } from "@/lib/auth-helpers"
 import type { Prisma } from "@prisma/client"
+import {
+  calculateCommission,
+  driverDepositAmountAfterCommission,
+  totalCommissionForDriverDeclarationItems,
+} from "@/lib/commission-calculator"
+
+function enrichDriverSaleRow<
+  T extends { netTotalAmount: number; items: Array<{ totalPrice: number }> },
+>(sale: T) {
+  const items = sale.items.map((it) => ({
+    ...it,
+    commission: calculateCommission(it.totalPrice),
+  }))
+  const totalCommission = totalCommissionForDriverDeclarationItems(sale.items)
+  const amountToDeposit = driverDepositAmountAfterCommission(sale.netTotalAmount, sale.items)
+  return { ...sale, items, totalCommission, amountToDeposit }
+}
 
 function parseDateBoundary(dateStr: string, endOfDay: boolean): Date {
   const d = new Date(dateStr + (endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z"))
@@ -80,31 +97,50 @@ export async function GET(
       },
     })
 
+    const enrichedSales = sales.map((s) => enrichDriverSaleRow(s))
+
     // Calcul du total par livreur + total global
     const byDriver: Record<string, {
       driverId: string
       driverName: string
       total: number
       netTotal: number
+      depositTotal: number
       totalDeliveryFees: number
+      commissionTotal: number
       count: number
     }> = {}
     let grandTotal = 0
     let grandNetTotal = 0
     let grandDeliveryFees = 0
+    let grandCommission = 0
+    let grandAmountToDeposit = 0
 
-    for (const sale of sales) {
+    for (const sale of enrichedSales) {
       const key = sale.deliveryPersonId
       if (!byDriver[key]) {
-        byDriver[key] = { driverId: key, driverName: sale.deliveryPerson.name, total: 0, netTotal: 0, totalDeliveryFees: 0, count: 0 }
+        byDriver[key] = {
+          driverId: key,
+          driverName: sale.deliveryPerson.name,
+          total: 0,
+          netTotal: 0,
+          depositTotal: 0,
+          totalDeliveryFees: 0,
+          commissionTotal: 0,
+          count: 0,
+        }
       }
       byDriver[key].total += sale.totalAmount
       byDriver[key].netTotal += sale.netTotalAmount
+      byDriver[key].depositTotal += sale.amountToDeposit
       byDriver[key].totalDeliveryFees += sale.totalDeliveryFees
+      byDriver[key].commissionTotal += sale.totalCommission
       byDriver[key].count += 1
       grandTotal += sale.totalAmount
       grandNetTotal += sale.netTotalAmount
       grandDeliveryFees += sale.totalDeliveryFees
+      grandCommission += sale.totalCommission
+      grandAmountToDeposit += sale.amountToDeposit
     }
 
     const byDriverList = Object.values(byDriver)
@@ -119,13 +155,15 @@ export async function GET(
     )
 
     return NextResponse.json({
-      sales,
+      sales: enrichedSales,
       summary: {
         byDriver: byDriverList,
         grandTotal,
         grandNetTotal,
         grandDeliveryFees,
-        totalSales: sales.length,
+        grandCommission,
+        grandAmountToDeposit,
+        totalSales: enrichedSales.length,
         topPerformer:
           rankingByNet.length > 0
             ? {

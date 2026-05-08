@@ -1702,8 +1702,8 @@ model DriverSaleItem {
   totalPrice     Float   @map("total_price")     // quantity × unitPrice
   deliveryFee    Float   @default(0) @map("delivery_fee")    // Frais de livraison par unité
   deliveryType   String  @default("none") @map("delivery_type") // "none" | "free" | "paid"
-  netUnitPrice   Float   @default(0) @map("net_unit_price")  // Prix net dû au magasin (unitPrice - deliveryFee si free)
-  netTotalPrice  Float   @default(0) @map("net_total_price") // quantity × netUnitPrice
+  netUnitPrice   Float   @default(0) @map("net_unit_price")  // Net magasin / unité = unitPrice (frais livraison ne réduisent pas)
+  netTotalPrice  Float   @default(0) @map("net_total_price") // quantity × unitPrice (net magasin ligne)
 
   driverSale DriverSale      @relation(fields: [driverSaleId], references: [id], onDelete: Cascade)
   product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)

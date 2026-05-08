@@ -864,7 +864,9 @@ export default function PosPage() {
        // Validation sous-caisse si nécessaire
        if (selectedSubBoxOrder) {
         try {
-          await validateSubBoxOrder(selectedSubBoxOrder.id)
+          await validateSubBoxOrder(selectedSubBoxOrder.id, {
+            stockAlreadyDebited: true,
+          })
         } catch (e) {
            console.error("Erreur validation auto sous-caisse", e)
         }

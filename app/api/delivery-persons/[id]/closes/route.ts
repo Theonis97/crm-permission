@@ -3,14 +3,15 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getBusinessDateKeyFromInstant } from "@/lib/driver-declaration-window"
+import { totalCommissionForDriverDeclarationItems, driverDepositAmountAfterCommission } from "@/lib/commission-calculator"
 
 const MAX_SALES = 8000
 const MAX_DAYS_IN_RESPONSE = 120
 
 /**
  * Clôtures côté déclarations livreur : regroupe les `DriverSale` par jour métier
- * (même logique que les ventes / 23h59) et expose l’encaissé client vs le montant net dû au magasin
- * (« à déposer » / à reverser).
+ * (même logique que les ventes / 23h59) : encaissé, net magasin (produit, qté × prix net),
+ * commission livreur, et **montant à déposer** (net − commission).
  */
 export async function GET(
   _request: NextRequest,
@@ -40,6 +41,7 @@ export async function GET(
         totalAmount: true,
         netTotalAmount: true,
         totalDeliveryFees: true,
+        items: { select: { totalPrice: true } },
       },
       orderBy: { declaredAt: "desc" },
       take: MAX_SALES,
@@ -49,8 +51,12 @@ export async function GET(
       businessDateKey: string
       declarationCount: number
       totalCollected: number
+      /** Somme des `netTotalAmount` (part magasin sur le produit, règles livraison). */
+      totalNetForStore: number
+      /** Ce que le livreur doit déposer : net − commission par déclaration. */
       totalToDeposit: number
       totalDeliveryFees: number
+      totalDriverCommission: number
       lastDeclaredAt: Date
     }
 
@@ -64,16 +70,21 @@ export async function GET(
           businessDateKey: key,
           declarationCount: 0,
           totalCollected: 0,
+          totalNetForStore: 0,
           totalToDeposit: 0,
           totalDeliveryFees: 0,
+          totalDriverCommission: 0,
           lastDeclaredAt: s.declaredAt,
         }
         grouped.set(key, g)
       }
+      const commission = totalCommissionForDriverDeclarationItems(s.items)
       g.declarationCount += 1
       g.totalCollected += s.totalAmount
-      g.totalToDeposit += s.netTotalAmount
+      g.totalNetForStore += s.netTotalAmount
+      g.totalToDeposit += driverDepositAmountAfterCommission(s.netTotalAmount, s.items)
       g.totalDeliveryFees += s.totalDeliveryFees
+      g.totalDriverCommission += commission
       if (s.declaredAt.getTime() > g.lastDeclaredAt.getTime()) {
         g.lastDeclaredAt = s.declaredAt
       }
@@ -85,7 +96,9 @@ export async function GET(
 
     const totalDeclarations = closes.reduce((sum, c) => sum + c.declarationCount, 0)
     const totalToDepositAll = closes.reduce((sum, c) => sum + c.totalToDeposit, 0)
+    const totalNetForStoreAll = closes.reduce((sum, c) => sum + c.totalNetForStore, 0)
     const totalCollectedAll = closes.reduce((sum, c) => sum + c.totalCollected, 0)
+    const totalDriverCommissionAll = closes.reduce((sum, c) => sum + c.totalDriverCommission, 0)
 
     return NextResponse.json({
       closes: closes.map((c) => ({
@@ -93,15 +106,19 @@ export async function GET(
         closeDate: c.businessDateKey,
         declarationCount: c.declarationCount,
         totalCollected: c.totalCollected,
+        totalNetForStore: c.totalNetForStore,
         totalToDeposit: c.totalToDeposit,
         totalDeliveryFees: c.totalDeliveryFees,
+        totalDriverCommission: c.totalDriverCommission,
         lastDeclaredAt: c.lastDeclaredAt.toISOString(),
       })),
       summary: {
         totalDays: closes.length,
         totalDeclarations,
         totalCollectedAll,
+        totalNetForStoreAll,
         totalToDepositAll,
+        totalDriverCommissionAll,
         lastCloseDate: closes[0]?.businessDateKey ?? null,
       },
     })

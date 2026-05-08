@@ -36,15 +36,14 @@ import {
   MinusCircle,
   Layers,
   AlertTriangle,
-  FileText,
 } from "lucide-react"
 import { toast } from "@/lib/app-toast"
 import { cn } from "@/lib/utils"
-import { DriverCloses } from "@/components/drivers"
+import { calculateCommission, driverDepositAmountAfterCommission } from "@/lib/commission-calculator"
 
 const ORANGE = "#FF8C00"
 
-type MainTab = "accueil" | "magasin" | "stock" | "ventes" | "clotures" | "retours"
+type MainTab = "accueil" | "magasin" | "stock" | "ventes" | "retours"
 
 type StoreRow = { id: string; name: string; address: string | null }
 type StaffDriverOption = { id: string; name: string; phone: string; storeName: string }
@@ -131,6 +130,10 @@ type SaleRow = {
   totalAmount: number
   totalDeliveryFees: number
   netTotalAmount: number
+  /** Somme des commissions (paliers sur total par ligne produit) */
+  totalCommission?: number
+  /** Montant à remettre au magasin (net produit − commission) */
+  amountToDeposit?: number
   declaredAt: string
   notes?: string | null
   store: { id: string; name: string }
@@ -143,6 +146,7 @@ type SaleRow = {
     deliveryType: string
     netUnitPrice: number
     netTotalPrice: number
+    commission?: number
     product: { id: string; name: string; sku: string | null; photos: string[] }
     variant?: { id: string; name: string; sku: string | null } | null
   }>
@@ -370,14 +374,14 @@ export default function LivreurReapprovisionnementPage() {
       .filter(([, v]) => v.qty > 0)
       .map(([productId, v]) => {
         const stock = stockLines.find((s) => s.product.id === productId)
-        const netUnit = v.deliveryType === "free" ? v.unitPrice - v.deliveryFee : v.unitPrice
+        /** Net magasin = prix de vente client (les frais livraison ne réduisent pas ce montant). */
         return {
           productId,
           qty: v.qty,
           unitPrice: v.unitPrice,
           deliveryFee: v.deliveryFee,
           deliveryType: v.deliveryType,
-          netUnitPrice: netUnit,
+          netUnitPrice: v.unitPrice,
           stock,
         }
       }),
@@ -398,6 +402,22 @@ export default function LivreurReapprovisionnementPage() {
         return sum + l.qty * l.deliveryFee
       }, 0),
     [saleCartLines]
+  )
+
+  /** Commission = un palier par ligne sur (qté × PU encaissé), pas par unité. */
+  const saleTotalDriverCommission = useMemo(
+    () =>
+      saleCartLines.reduce((sum, l) => sum + calculateCommission(l.qty * l.unitPrice), 0),
+    [saleCartLines]
+  )
+
+  /** Net magasin (produit) sur la déclaration − commission = à déposer. */
+  const saleAmountToDeposit = useMemo(
+    () => driverDepositAmountAfterCommission(
+      saleNetTotalAmount,
+      saleCartLines.map((l) => ({ totalPrice: l.qty * l.unitPrice })),
+    ),
+    [saleNetTotalAmount, saleCartLines]
   )
 
   const declarationUrgencyNotice = useMemo(() => {
@@ -992,29 +1012,19 @@ export default function LivreurReapprovisionnementPage() {
           </header>
         )}
 
-        {/* En-tête Ventes & Clôtures */}
-        {(mainTab === "ventes" || mainTab === "clotures") && (
+        {/* En-tête Ventes */}
+        {mainTab === "ventes" && (
           <header
             className="sticky top-0 z-20 -mx-3 sm:-mx-4 px-4 pt-4 pb-4 text-white shadow-md rounded-b-2xl"
             style={{ backgroundColor: ORANGE }}
           >
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-                {mainTab === "clotures" ? (
-                  <FileText className="h-6 w-6 text-white" />
-                ) : (
-                  <ShoppingBag className="h-6 w-6 text-white" />
-                )}
+                <ShoppingBag className="h-6 w-6 text-white" />
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg font-bold leading-tight">
-                  {mainTab === "clotures" ? "Clôtures" : "Ventes"}
-                </h1>
-                <p className="text-sm text-white/90">
-                  {mainTab === "clotures"
-                    ? "Déclarations et montants à déposer au magasin"
-                    : "Déclarez vos ventes sur le terrain"}
-                </p>
+                <h1 className="text-lg font-bold leading-tight">Ventes</h1>
+                <p className="text-sm text-white/90">Déclarez vos ventes sur le terrain</p>
               </div>
             </div>
           </header>
@@ -1185,40 +1195,6 @@ export default function LivreurReapprovisionnementPage() {
                     </div>
                   )
                 })}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Onglet Clôtures (synthèse déclarations / dépôt magasin) */}
-        {mainTab === "clotures" && (
-          <section className="mt-4 space-y-3 pb-8">
-            {portalMode === "staff" && staffDrivers.length > 0 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 space-y-2">
-                <Label className="text-amber-950 font-medium">Livreur</Label>
-                <Select value={selectedDeliveryPersonId || undefined} onValueChange={setSelectedDeliveryPersonId}>
-                  <SelectTrigger className="h-12 rounded-xl text-base bg-white">
-                    <SelectValue placeholder="Choisir un livreur…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {staffDrivers.map((d) => (
-                      <SelectItem key={d.id} value={d.id} className="text-base py-3">
-                        <span className="font-medium">{d.name}</span>
-                        <span className="block text-xs text-muted-foreground">{d.storeName}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-
-            {!canQueryDriver ? (
-              <p className="text-center text-neutral-500 py-8 text-sm">
-                {portalMode === "staff" ? "Sélectionnez un livreur pour voir les clôtures." : "Profil livreur indisponible."}
-              </p>
-            ) : (
-              <div className="rounded-2xl border border-neutral-200 bg-white p-3 sm:p-4 shadow-sm">
-                <DriverCloses driverId={selectedDeliveryPersonId} />
               </div>
             )}
           </section>
@@ -2123,11 +2099,19 @@ export default function LivreurReapprovisionnementPage() {
                             {/* En-tête */}
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-xs text-gray-500">{new Date(sale.declaredAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-                              <div className="text-right shrink-0">
+                              <div className="text-right shrink-0 space-y-0.5">
                                 <p className="text-sm font-bold" style={{ color: ORANGE }}>{formatPrice(sale.totalAmount)}</p>
-                                {hasDelivery && (
-                                  <p className="text-xs text-green-700 font-semibold">
-                                    Net : {formatPrice(sale.netTotalAmount ?? sale.totalAmount)}
+                                {typeof sale.totalCommission === "number" && (
+                                  <p className="text-xs font-semibold text-amber-800">
+                                    Commission : {formatPrice(sale.totalCommission)}
+                                  </p>
+                                )}
+                                <p className="text-xs text-blue-800 font-medium">
+                                  Net produit : {formatPrice(sale.netTotalAmount ?? sale.totalAmount)}
+                                </p>
+                                {typeof sale.amountToDeposit === "number" && (
+                                  <p className="text-xs font-bold text-green-800">
+                                    À déposer : {formatPrice(sale.amountToDeposit)}
                                   </p>
                                 )}
                               </div>
@@ -2216,7 +2200,6 @@ export default function LivreurReapprovisionnementPage() {
                       const defaultEntry = { qty: 0, unitPrice: s.product.prixVente ?? 0, deliveryFee: 0, deliveryType: "none" as const }
                       const entry = saleCart[key] || defaultEntry
                       const inCart = entry.qty > 0
-                      const netUnit = entry.deliveryType === "free" ? entry.unitPrice - entry.deliveryFee : entry.unitPrice
                       return (
                         <div
                           key={s.id}
@@ -2338,7 +2321,11 @@ export default function LivreurReapprovisionnementPage() {
                                   <div className="text-xs text-neutral-500 shrink-0 max-w-[45%]">
                                     {entry.deliveryType === "free" ? (
                                       <span className="text-green-700 font-medium">
-                                        Net magasin : {formatPrice(netUnit)}/u
+                                        Net magasin : {formatPrice(entry.unitPrice)}/u · total ligne{" "}
+                                        {formatPrice(entry.qty * entry.unitPrice)}
+                                        <span className="block text-[10px] text-neutral-600 font-normal mt-0.5">
+                                          Frais livraison {formatPrice(entry.deliveryFee)}/u à votre charge — ne diminuent pas le net magasin
+                                        </span>
                                       </span>
                                     ) : (
                                       <span className="text-blue-700 font-medium">
@@ -2386,16 +2373,22 @@ export default function LivreurReapprovisionnementPage() {
                   </div>
                   {saleTotalDeliveryFees > 0 && (
                     <div className="flex justify-between items-baseline border-t border-orange-200 pt-2">
-                      <span className="text-xs text-orange-700">Frais de livraison</span>
-                      <span className="text-sm font-semibold text-orange-600">− {formatPrice(saleTotalDeliveryFees)}</span>
+                      <span className="text-xs text-orange-700">Frais livraison (charge livreur, hors net magasin)</span>
+                      <span className="text-sm font-semibold text-orange-600">{formatPrice(saleTotalDeliveryFees)}</span>
                     </div>
                   )}
-                  {saleTotalDeliveryFees > 0 && (
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs font-semibold text-green-800">Net à reverser au magasin</span>
-                      <span className="text-lg font-bold text-green-700">{formatPrice(saleNetTotalAmount)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between items-baseline border-t border-orange-200 pt-2">
+                    <span className="text-xs font-semibold text-blue-900">Net magasin (qté × prix vente)</span>
+                    <span className="text-lg font-bold text-blue-800">{formatPrice(saleNetTotalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs font-semibold text-amber-900">Votre commission (paliers / ligne)</span>
+                    <span className="text-lg font-bold text-amber-800">{formatPrice(saleTotalDriverCommission)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline border-t border-green-200 pt-2 bg-green-50/60 -mx-4 px-4 py-2 rounded-lg">
+                    <span className="text-xs font-bold text-green-900">À déposer au magasin</span>
+                    <span className="text-xl font-bold text-green-800">{formatPrice(saleAmountToDeposit)}</span>
+                  </div>
                   <p className="text-xs text-orange-700">{saleCartLines.length} article{saleCartLines.length > 1 ? "s" : ""}</p>
                 </div>
 
@@ -2423,18 +2416,27 @@ export default function LivreurReapprovisionnementPage() {
                       {l.deliveryType === "free" && (
                         <p className="text-xs text-green-700">Net magasin : {formatPrice(l.qty * l.netUnitPrice)}</p>
                       )}
+                      <p className="text-xs font-semibold text-amber-800">
+                        Commission ligne : {formatPrice(calculateCommission(l.qty * l.unitPrice))}
+                      </p>
                     </div>
                   ))}
                   <div className="flex items-center justify-between px-4 py-3 font-bold text-sm">
                     <span>Total encaissé</span>
                     <span style={{ color: ORANGE }}>{formatPrice(saleTotalAmount)}</span>
                   </div>
-                  {saleTotalDeliveryFees > 0 && (
-                    <div className="flex items-center justify-between px-4 py-3 font-bold text-sm bg-green-50 rounded-b-2xl">
-                      <span className="text-green-800">Net magasin</span>
-                      <span className="text-green-700">{formatPrice(saleNetTotalAmount)}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between px-4 py-3 text-sm bg-blue-50/80 border-t border-blue-100">
+                    <span className="text-blue-900 font-medium">Total net magasin (produit)</span>
+                    <span className="font-bold text-blue-900">{formatPrice(saleNetTotalAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 text-sm font-semibold bg-amber-50/80 border-t border-amber-100">
+                    <span className="text-amber-900">Total commission livreur</span>
+                    <span className="text-amber-900">{formatPrice(saleTotalDriverCommission)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 font-bold text-sm bg-green-100 rounded-b-2xl border-t border-green-200">
+                    <span className="text-green-900">À déposer au magasin</span>
+                    <span className="text-green-900">{formatPrice(saleAmountToDeposit)}</span>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600">Note (optionnel)</label>
@@ -2562,19 +2564,11 @@ export default function LivreurReapprovisionnementPage() {
             </button>
             <button
               type="button"
-              onClick={() => setMainTab("clotures")}
-              className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
-                mainTab === "clotures" ? "font-semibold" : "text-neutral-400",
-              )}
-              style={mainTab === "clotures" ? { color: ORANGE } : undefined}
-            >
-              <FileText className={cn("h-5 w-5 sm:h-6 sm:w-6", mainTab !== "clotures" && "opacity-70")} />
-              <span className="text-[10px] sm:text-[11px]">Clôtures</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMainTab("retours"); setRetourStep("list"); setRetourItem(null) }}
+              onClick={() => {
+                setMainTab("retours")
+                setRetourStep("list")
+                setRetourItem(null)
+              }}
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 min-w-[3.25rem] shrink-0 py-1 touch-manipulation",
                 mainTab === "retours" ? "font-semibold" : "text-neutral-400",

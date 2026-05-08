@@ -24,7 +24,9 @@
     "permissions:sales": "node scripts/add-sales-permissions.js",
     "permissions:task": "node scripts/add-task-permissions.js",
     "permissions:opportunity": "node scripts/add-opportunity-permissions.js",
-    "delete-test-sales": "npx tsx scripts/delete-test-store-orders.ts"
+    "delete-test-sales": "npx tsx scripts/delete-test-store-orders.ts",
+    "ebilling:probe": "npx tsx scripts/ebilling-auth-probe.ts",
+    "ebilling:ussd": "npx tsx scripts/ebilling-ussd-probe.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

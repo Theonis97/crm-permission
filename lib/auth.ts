@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -147,7 +148,8 @@ export const authOptions: NextAuthOptions = {
       },
     },
   },
-  debug: process.env.NODE_ENV === "development",
+  // true = logs verbeux + POST /api/auth/_log depuis le navigateur (peut 500 avec certaines versions / Next 16).
+  debug: process.env.NEXTAUTH_DEBUG === "true",
   // Pour la production
   ...(process.env.NODE_ENV === "production" && {
     useSecureCookies: true,

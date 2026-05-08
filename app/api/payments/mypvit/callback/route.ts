@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { applyDeferredPosStockForStoreOrder } from "@/lib/pos-deferred-sale-stock"
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,11 +27,13 @@ export async function POST(request: NextRequest) {
            data: {
              paymentStatus: 'PAID',
              paymentMethod: 'MOBILE',
+             paidAt: storeOrder.paidAt ?? new Date(),
              notes: storeOrder.notes 
                ? `${storeOrder.notes}\nMyPVit Ref: ${transactionId} (${operator})` 
                : `MyPVit Ref: ${transactionId} (${operator})`
            }
          })
+         await applyDeferredPosStockForStoreOrder(storeOrder.id)
          console.log(`[MyPVit Callback] StoreOrder ${merchantReferenceId} updated to PAID`)
        } else {
          console.warn(`[MyPVit Callback] StoreOrder not found for ref: ${merchantReferenceId}`)

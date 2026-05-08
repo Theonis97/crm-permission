@@ -9,6 +9,26 @@ import {
   isDeclarationWindowOpen,
   validateSaleBackfillDate,
 } from "@/lib/driver-declaration-window"
+import {
+  calculateCommission,
+  driverDepositAmountAfterCommission,
+  totalCommissionForDriverDeclarationItems,
+} from "@/lib/commission-calculator"
+
+function enrichDriverSaleJson<
+  T extends {
+    netTotalAmount: number
+    items: Array<{ totalPrice: number }>
+  },
+>(sale: T) {
+  const items = sale.items.map((it) => ({
+    ...it,
+    commission: calculateCommission(it.totalPrice),
+  }))
+  const totalCommission = totalCommissionForDriverDeclarationItems(sale.items)
+  const amountToDeposit = driverDepositAmountAfterCommission(sale.netTotalAmount, sale.items)
+  return { ...sale, items, totalCommission, amountToDeposit }
+}
 
 // GET — Historique des ventes du livreur connecté
 export async function GET(req: NextRequest) {
@@ -62,7 +82,8 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({ data: sales })
+    const data = sales.map((s) => enrichDriverSaleJson(s))
+    return NextResponse.json({ data })
   } catch (err) {
     console.error("[GET /api/driver/sales]", err)
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 })
@@ -183,12 +204,8 @@ export async function POST(req: NextRequest) {
       const type = i.deliveryType ?? "none"
       return sum + (type !== "none" ? i.quantity * fee : 0)
     }, 0)
-    const netTotalAmount = items.reduce((sum, i) => {
-      const fee = i.deliveryFee ?? 0
-      const type = i.deliveryType ?? "none"
-      const netUnit = type === "free" ? i.unitPrice - fee : i.unitPrice
-      return sum + i.quantity * netUnit
-    }, 0)
+    /** Net dû au magasin sur le produit : toujours qté × prix de vente client (les frais livraison ne réduisent pas ce net). */
+    const netTotalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0)
 
     // Transaction : créer la vente + décrémenter le stock
     const sale = await prisma.$transaction(async (tx) => {
@@ -206,7 +223,7 @@ export async function POST(req: NextRequest) {
             create: items.map((i) => {
               const fee = i.deliveryFee ?? 0
               const type = i.deliveryType ?? "none"
-              const netUnit = type === "free" ? i.unitPrice - fee : i.unitPrice
+              const netUnit = i.unitPrice
               return {
                 productId: i.productId,
                 variantId: i.variantId ?? null,
@@ -242,7 +259,10 @@ export async function POST(req: NextRequest) {
       return newSale
     })
 
-    return NextResponse.json({ data: sale, message: "Ventes déclarées avec succès" }, { status: 201 })
+    return NextResponse.json({
+      data: enrichDriverSaleJson(sale),
+      message: "Ventes déclarées avec succès",
+    }, { status: 201 })
   } catch (err) {
     console.error("[POST /api/driver/sales]", err)
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 })

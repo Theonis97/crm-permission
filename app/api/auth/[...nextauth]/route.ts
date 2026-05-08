@@ -1,11 +1,26 @@
 import NextAuth from "next-auth"
+import type { NextRequest } from "next/server"
 import { authOptions } from "@/lib/auth"
 
-// Configuration pour la production
-const handler = NextAuth({
-  ...authOptions,
-  // Next.js 15+ / hôte local ou reverse proxy : évite des refus CSRF / host header
-  trustHost: true,
-})
+const handler = NextAuth(authOptions)
 
-export { handler as GET, handler as POST }
+type NextAuthParams = { nextauth: string[] }
+
+/** Compat Next 16 : params asynchrones ; évite les 500 sur l’endpoint interne _log (proxy logger client). */
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<NextAuthParams> },
+) {
+  return handler(req, context)
+}
+
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<NextAuthParams> },
+) {
+  const { nextauth } = await context.params
+  if (nextauth?.[0] === "_log") {
+    return new Response(null, { status: 200 })
+  }
+  return handler(req, context)
+}
